@@ -413,6 +413,188 @@
     "state": "completed",
     "text": "spell word alpha and volume down"
   },
+  "favorites.add_favorite": {
+    "calls": [
+      [
+        "add favorite",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "add favorite",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "add favorite alpha and volume down"
+  },
+  "favorites.favorites_font_size": {
+    "calls": [
+      [
+        "favorites font size",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "favorites font size",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "favorites font size alpha and volume down"
+  },
+  "favorites.favorites_window_size": {
+    "calls": [
+      [
+        "favorites window size",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "favorites window size",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "favorites window size alpha and volume down"
+  },
+  "favorites.hide_favorites": {
+    "calls": [
+      [
+        "hide favorites",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "hide favorites",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "hide favorites alpha and volume down"
+  },
+  "favorites.remove_favorite": {
+    "calls": [
+      [
+        "remove favorite",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "remove favorite",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "remove favorite alpha and volume down"
+  },
+  "favorites.rename_favorite": {
+    "calls": [
+      [
+        "rename favorite",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "rename favorite",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "rename favorite alpha and volume down"
+  },
+  "favorites.show_favorites": {
+    "calls": [
+      [
+        "show favorites",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "show favorites",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "show favorites alpha and volume down"
+  },
   "flashforge_printer.start_print": {
     "calls": [
       [

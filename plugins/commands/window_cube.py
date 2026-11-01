@@ -484,6 +484,9 @@ def _selection_available():
 
 def _make_bare_number_handler(word: str, value: int):
     def _handler(app, remainder):
+        from plugins.commands import favorites
+        if favorites.active(app):
+            return favorites.pick(app, value, remainder)
         from plugins.commands import window_switcher as ws
         if ws.overview_active(app):
             return ws.handle_overview_number(app, value, remainder)
@@ -494,7 +497,7 @@ def _make_bare_number_handler(word: str, value: int):
         return _switch_to_number(app, value)
     _handler.__name__ = f"handle_cube_number_{value}"
     _handler.__doc__ = (
-        f'Selects window {value} from the overview or pinned cube. '
+        f'Opens favorite {value} when the quick list is open; otherwise selects a window. '
         f'Also selects from the pinned cube in command mode.'
     )
     return _handler
@@ -618,8 +621,9 @@ def _reset_for_tests():
 # Registered at the end of the file so no decorator line number moves.
 from samsara import command_scope as _command_scope  # noqa: E402
 def _number_picker_visible():
+    from plugins.commands.favorites import active as favorites_active
     from plugins.commands.window_switcher import overview_active
-    return bool(_pinned or overview_active())
+    return bool(_pinned or overview_active() or favorites_active())
 
 
 _command_scope.register_tag_source("window_cube.visible", _number_picker_visible)

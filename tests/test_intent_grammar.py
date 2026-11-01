@@ -44,7 +44,8 @@ def resolver(records):
 ])
 def test_numeric_spelling_is_exact_without_a_homophone_waiver(resolver, text, cid):
     # 890: mixed ASR digits/words name the same number; safety rules stay on.
-    context = MatchContext.for_app('notepad.exe', tags={'window_overview.visible'})
+    context = MatchContext.for_app('notepad.exe', tags={
+        'window_overview.visible', 'numbered_list.visible'})
     result = resolver.resolve(text, context=context)
     assert result.kind == rs.RESOLVED and result.canonical_id == cid
     assert result.word_penalty == 0

@@ -399,7 +399,7 @@
       "plugin": "ask_ollama",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3488",
+      "source": "plugins/commands/ask_ollama.py:3486",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -420,7 +420,7 @@
       "plugin": "ask_ollama",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3540",
+      "source": "plugins/commands/ask_ollama.py:3538",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -442,7 +442,7 @@
       "plugin": "ask_ollama",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3526",
+      "source": "plugins/commands/ask_ollama.py:3524",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -463,7 +463,7 @@
       "plugin": "ask_ollama",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3567",
+      "source": "plugins/commands/ask_ollama.py:3565",
       "undoable": true,
       "verb": "ava",
       "whole_utterance": false
@@ -524,7 +524,7 @@
       "plugin": "ask_ollama",
       "precondition": "Enable Ava and set up an AI provider first.",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3326",
+      "source": "plugins/commands/ask_ollama.py:3324",
       "undoable": true,
       "verb": "is",
       "whole_utterance": false
@@ -547,7 +547,7 @@
       "plugin": "ask_ollama",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3507",
+      "source": "plugins/commands/ask_ollama.py:3505",
       "undoable": true,
       "verb": "stop",
       "whole_utterance": false
@@ -574,7 +574,7 @@
       "plugin": "ask_ollama",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/ask_ollama.py:3380",
+      "source": "plugins/commands/ask_ollama.py:3378",
       "undoable": true,
       "verb": "yes",
       "whole_utterance": false
@@ -8751,6 +8751,195 @@
     },
     {
       "aliases": [
+        "add favorite",
+        "add this to favorites",
+        "add this to quick list",
+        "add to favorites",
+        "add to quick list"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "favorites.add_favorite",
+      "description": "Adds a full path or website; an empty argument or 'this' reads focused Explorer/browser.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "favorite",
+      "pack": "core",
+      "plugin": "favorites",
+      "precondition": "",
+      "risk": "write",
+      "source": "plugins/commands/favorites.py:184",
+      "undoable": true,
+      "verb": "add",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "favorites font size",
+        "quick list font size"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "favorites.favorites_font_size",
+      "description": "Sets favorites text size from 14 to 32 pixels, including while the list is closed.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "font_size",
+      "pack": "core",
+      "plugin": "favorites",
+      "precondition": "",
+      "risk": "ui",
+      "source": "plugins/commands/favorites.py:263",
+      "undoable": true,
+      "verb": "favorites",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "favorites window size",
+        "quick list window size"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "favorites.favorites_window_size",
+      "description": "Sets favorites width by height in pixels, for example 900 by 700.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "window_size",
+      "pack": "core",
+      "plugin": "favorites",
+      "precondition": "",
+      "risk": "ui",
+      "source": "plugins/commands/favorites.py:276",
+      "undoable": true,
+      "verb": "favorites",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "close favorites",
+        "close quick list",
+        "hide favorites",
+        "hide quick list"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "favorites.hide_favorites",
+      "description": "Closes the quick list.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "favorites",
+      "pack": "core",
+      "plugin": "favorites",
+      "precondition": "",
+      "risk": "ui",
+      "source": "plugins/commands/favorites.py:94",
+      "undoable": true,
+      "verb": "hide",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "remove favorite",
+        "remove from favorites",
+        "remove from quick list"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "favorites.remove_favorite",
+      "description": "Removes a numbered favorite, leaving the actual file or website untouched.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "favorite",
+      "pack": "core",
+      "plugin": "favorites",
+      "precondition": "",
+      "risk": "write",
+      "source": "plugins/commands/favorites.py:214",
+      "undoable": false,
+      "verb": "remove",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "rename favorite"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "favorites.rename_favorite",
+      "description": "Renames a favorite: rename favorite 2 to Project notes.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "favorite",
+      "pack": "core",
+      "plugin": "favorites",
+      "precondition": "",
+      "risk": "write",
+      "source": "plugins/commands/favorites.py:247",
+      "undoable": false,
+      "verb": "rename",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "list favorites",
+        "quick list",
+        "show favorites",
+        "show quick list"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "favorites.show_favorites",
+      "description": "Shows numbered files, folders, shortcuts and websites.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "favorites",
+      "pack": "core",
+      "plugin": "favorites",
+      "precondition": "",
+      "risk": "ui",
+      "source": "plugins/commands/favorites.py:72",
+      "undoable": true,
+      "verb": "show",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "feedback brief"
       ],
       "args": [],
@@ -14403,7 +14592,7 @@
       "plugin": "window_cube",
       "precondition": "First say show window cube. Select the source text in window 2 and put the caret in window 4. Copies the selection from 2 into 4.",
       "risk": "write",
-      "source": "plugins/commands/window_cube.py:566",
+      "source": "plugins/commands/window_cube.py:569",
       "undoable": false,
       "verb": "cube",
       "whole_utterance": false
@@ -14461,7 +14650,7 @@
       "plugin": "window_cube",
       "precondition": "First say show window cube. Use the numbers on the window cards. Places those windows side by side on the screen containing your pointer.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:581",
+      "source": "plugins/commands/window_cube.py:584",
       "undoable": true,
       "verb": "cube",
       "whole_utterance": false
@@ -14479,7 +14668,7 @@
         }
       ],
       "canonical_id": "window_cube.eight",
-      "description": "Selects window 8 from the overview or pinned cube.",
+      "description": "Opens favorite 8 when the quick list is open; otherwise selects a window.",
       "examples": [
         "eight",
         "eight left",
@@ -14514,7 +14703,7 @@
         }
       ],
       "canonical_id": "window_cube.five",
-      "description": "Selects window 5 from the overview or pinned cube.",
+      "description": "Opens favorite 5 when the quick list is open; otherwise selects a window.",
       "examples": [
         "five",
         "five left",
@@ -14549,7 +14738,7 @@
         }
       ],
       "canonical_id": "window_cube.four",
-      "description": "Selects window 4 from the overview or pinned cube.",
+      "description": "Opens favorite 4 when the quick list is open; otherwise selects a window.",
       "examples": [
         "four",
         "four left",
@@ -14605,7 +14794,7 @@
         }
       ],
       "canonical_id": "window_cube.nine",
-      "description": "Selects window 9 from the overview or pinned cube.",
+      "description": "Opens favorite 9 when the quick list is open; otherwise selects a window.",
       "examples": [
         "nine",
         "nine left",
@@ -14640,7 +14829,7 @@
         }
       ],
       "canonical_id": "window_cube.one",
-      "description": "Selects window 1 from the overview or pinned cube.",
+      "description": "Opens favorite 1 when the quick list is open; otherwise selects a window.",
       "examples": [
         "one",
         "one left",
@@ -14696,7 +14885,7 @@
         }
       ],
       "canonical_id": "window_cube.seven",
-      "description": "Selects window 7 from the overview or pinned cube.",
+      "description": "Opens favorite 7 when the quick list is open; otherwise selects a window.",
       "examples": [
         "seven",
         "seven left",
@@ -14753,7 +14942,7 @@
         }
       ],
       "canonical_id": "window_cube.six",
-      "description": "Selects window 6 from the overview or pinned cube.",
+      "description": "Opens favorite 6 when the quick list is open; otherwise selects a window.",
       "examples": [
         "six",
         "six left",
@@ -14788,7 +14977,7 @@
         }
       ],
       "canonical_id": "window_cube.three",
-      "description": "Selects window 3 from the overview or pinned cube.",
+      "description": "Opens favorite 3 when the quick list is open; otherwise selects a window.",
       "examples": [
         "three",
         "three left",
@@ -14823,7 +15012,7 @@
         }
       ],
       "canonical_id": "window_cube.two",
-      "description": "Selects window 2 from the overview or pinned cube.",
+      "description": "Opens favorite 2 when the quick list is open; otherwise selects a window.",
       "examples": [
         "two",
         "two left",
@@ -14870,7 +15059,7 @@
       "plugin": "window_cube",
       "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:504",
+      "source": "plugins/commands/window_cube.py:507",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14900,7 +15089,7 @@
       "plugin": "window_cube",
       "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:504",
+      "source": "plugins/commands/window_cube.py:507",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14930,7 +15119,7 @@
       "plugin": "window_cube",
       "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:504",
+      "source": "plugins/commands/window_cube.py:507",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14960,7 +15149,7 @@
       "plugin": "window_cube",
       "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:504",
+      "source": "plugins/commands/window_cube.py:507",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -14990,7 +15179,7 @@
       "plugin": "window_cube",
       "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:504",
+      "source": "plugins/commands/window_cube.py:507",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -15020,7 +15209,7 @@
       "plugin": "window_cube",
       "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:504",
+      "source": "plugins/commands/window_cube.py:507",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -15050,7 +15239,7 @@
       "plugin": "window_cube",
       "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:504",
+      "source": "plugins/commands/window_cube.py:507",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -15080,7 +15269,7 @@
       "plugin": "window_cube",
       "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:504",
+      "source": "plugins/commands/window_cube.py:507",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -15110,7 +15299,7 @@
       "plugin": "window_cube",
       "precondition": "Open the window overview first. The number selects a window; an optional layout action arranges it. A pinned cube also accepts selection without a layout action.",
       "risk": "ui",
-      "source": "plugins/commands/window_cube.py:504",
+      "source": "plugins/commands/window_cube.py:507",
       "undoable": true,
       "verb": "window",
       "whole_utterance": false
@@ -17855,7 +18044,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_eighteen",
-      "description": "Selects window 18 from the open overview.",
+      "description": "Opens favorite 18 from the quick list, or selects a window from the overview.",
       "examples": [
         "window eighteen",
         "window eighteen left",
@@ -17869,7 +18058,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -17892,7 +18081,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_eighty",
-      "description": "Selects window 80 from the open overview.",
+      "description": "Opens favorite 80 from the quick list, or selects a window from the overview.",
       "examples": [
         "window eighty",
         "window eighty left",
@@ -17906,7 +18095,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -17929,7 +18118,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_eighty_eight",
-      "description": "Selects window 88 from the open overview.",
+      "description": "Opens favorite 88 from the quick list, or selects a window from the overview.",
       "examples": [
         "window eighty eight",
         "window eighty eight left",
@@ -17943,7 +18132,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -17966,7 +18155,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_eighty_five",
-      "description": "Selects window 85 from the open overview.",
+      "description": "Opens favorite 85 from the quick list, or selects a window from the overview.",
       "examples": [
         "window eighty five",
         "window eighty five left",
@@ -17980,7 +18169,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18003,7 +18192,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_eighty_four",
-      "description": "Selects window 84 from the open overview.",
+      "description": "Opens favorite 84 from the quick list, or selects a window from the overview.",
       "examples": [
         "window eighty four",
         "window eighty four left",
@@ -18017,7 +18206,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18040,7 +18229,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_eighty_nine",
-      "description": "Selects window 89 from the open overview.",
+      "description": "Opens favorite 89 from the quick list, or selects a window from the overview.",
       "examples": [
         "window eighty nine",
         "window eighty nine left",
@@ -18054,7 +18243,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18077,7 +18266,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_eighty_one",
-      "description": "Selects window 81 from the open overview.",
+      "description": "Opens favorite 81 from the quick list, or selects a window from the overview.",
       "examples": [
         "window eighty one",
         "window eighty one left",
@@ -18091,7 +18280,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18114,7 +18303,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_eighty_seven",
-      "description": "Selects window 87 from the open overview.",
+      "description": "Opens favorite 87 from the quick list, or selects a window from the overview.",
       "examples": [
         "window eighty seven",
         "window eighty seven left",
@@ -18128,7 +18317,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18151,7 +18340,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_eighty_six",
-      "description": "Selects window 86 from the open overview.",
+      "description": "Opens favorite 86 from the quick list, or selects a window from the overview.",
       "examples": [
         "window eighty six",
         "window eighty six left",
@@ -18165,7 +18354,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18188,7 +18377,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_eighty_three",
-      "description": "Selects window 83 from the open overview.",
+      "description": "Opens favorite 83 from the quick list, or selects a window from the overview.",
       "examples": [
         "window eighty three",
         "window eighty three left",
@@ -18202,7 +18391,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18225,7 +18414,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_eighty_two",
-      "description": "Selects window 82 from the open overview.",
+      "description": "Opens favorite 82 from the quick list, or selects a window from the overview.",
       "examples": [
         "window eighty two",
         "window eighty two left",
@@ -18239,7 +18428,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18262,7 +18451,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_eleven",
-      "description": "Selects window 11 from the open overview.",
+      "description": "Opens favorite 11 from the quick list, or selects a window from the overview.",
       "examples": [
         "window eleven",
         "window eleven left",
@@ -18276,7 +18465,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18299,7 +18488,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_fifteen",
-      "description": "Selects window 15 from the open overview.",
+      "description": "Opens favorite 15 from the quick list, or selects a window from the overview.",
       "examples": [
         "window fifteen",
         "window fifteen left",
@@ -18313,7 +18502,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18336,7 +18525,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_fifty",
-      "description": "Selects window 50 from the open overview.",
+      "description": "Opens favorite 50 from the quick list, or selects a window from the overview.",
       "examples": [
         "window fifty",
         "window fifty left",
@@ -18350,7 +18539,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18373,7 +18562,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_fifty_eight",
-      "description": "Selects window 58 from the open overview.",
+      "description": "Opens favorite 58 from the quick list, or selects a window from the overview.",
       "examples": [
         "window fifty eight",
         "window fifty eight left",
@@ -18387,7 +18576,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18410,7 +18599,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_fifty_five",
-      "description": "Selects window 55 from the open overview.",
+      "description": "Opens favorite 55 from the quick list, or selects a window from the overview.",
       "examples": [
         "window fifty five",
         "window fifty five left",
@@ -18424,7 +18613,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18447,7 +18636,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_fifty_four",
-      "description": "Selects window 54 from the open overview.",
+      "description": "Opens favorite 54 from the quick list, or selects a window from the overview.",
       "examples": [
         "window fifty four",
         "window fifty four left",
@@ -18461,7 +18650,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18484,7 +18673,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_fifty_nine",
-      "description": "Selects window 59 from the open overview.",
+      "description": "Opens favorite 59 from the quick list, or selects a window from the overview.",
       "examples": [
         "window fifty nine",
         "window fifty nine left",
@@ -18498,7 +18687,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18521,7 +18710,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_fifty_one",
-      "description": "Selects window 51 from the open overview.",
+      "description": "Opens favorite 51 from the quick list, or selects a window from the overview.",
       "examples": [
         "window fifty one",
         "window fifty one left",
@@ -18535,7 +18724,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18558,7 +18747,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_fifty_seven",
-      "description": "Selects window 57 from the open overview.",
+      "description": "Opens favorite 57 from the quick list, or selects a window from the overview.",
       "examples": [
         "window fifty seven",
         "window fifty seven left",
@@ -18572,7 +18761,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18595,7 +18784,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_fifty_six",
-      "description": "Selects window 56 from the open overview.",
+      "description": "Opens favorite 56 from the quick list, or selects a window from the overview.",
       "examples": [
         "window fifty six",
         "window fifty six left",
@@ -18609,7 +18798,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18632,7 +18821,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_fifty_three",
-      "description": "Selects window 53 from the open overview.",
+      "description": "Opens favorite 53 from the quick list, or selects a window from the overview.",
       "examples": [
         "window fifty three",
         "window fifty three left",
@@ -18646,7 +18835,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18669,7 +18858,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_fifty_two",
-      "description": "Selects window 52 from the open overview.",
+      "description": "Opens favorite 52 from the quick list, or selects a window from the overview.",
       "examples": [
         "window fifty two",
         "window fifty two left",
@@ -18683,7 +18872,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18706,7 +18895,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_forty",
-      "description": "Selects window 40 from the open overview.",
+      "description": "Opens favorite 40 from the quick list, or selects a window from the overview.",
       "examples": [
         "window forty",
         "window forty left",
@@ -18720,7 +18909,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18743,7 +18932,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_forty_eight",
-      "description": "Selects window 48 from the open overview.",
+      "description": "Opens favorite 48 from the quick list, or selects a window from the overview.",
       "examples": [
         "window forty eight",
         "window forty eight left",
@@ -18757,7 +18946,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18780,7 +18969,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_forty_five",
-      "description": "Selects window 45 from the open overview.",
+      "description": "Opens favorite 45 from the quick list, or selects a window from the overview.",
       "examples": [
         "window forty five",
         "window forty five left",
@@ -18794,7 +18983,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18817,7 +19006,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_forty_four",
-      "description": "Selects window 44 from the open overview.",
+      "description": "Opens favorite 44 from the quick list, or selects a window from the overview.",
       "examples": [
         "window forty four",
         "window forty four left",
@@ -18831,7 +19020,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18854,7 +19043,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_forty_nine",
-      "description": "Selects window 49 from the open overview.",
+      "description": "Opens favorite 49 from the quick list, or selects a window from the overview.",
       "examples": [
         "window forty nine",
         "window forty nine left",
@@ -18868,7 +19057,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18891,7 +19080,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_forty_one",
-      "description": "Selects window 41 from the open overview.",
+      "description": "Opens favorite 41 from the quick list, or selects a window from the overview.",
       "examples": [
         "window forty one",
         "window forty one left",
@@ -18905,7 +19094,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18928,7 +19117,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_forty_seven",
-      "description": "Selects window 47 from the open overview.",
+      "description": "Opens favorite 47 from the quick list, or selects a window from the overview.",
       "examples": [
         "window forty seven",
         "window forty seven left",
@@ -18942,7 +19131,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -18965,7 +19154,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_forty_six",
-      "description": "Selects window 46 from the open overview.",
+      "description": "Opens favorite 46 from the quick list, or selects a window from the overview.",
       "examples": [
         "window forty six",
         "window forty six left",
@@ -18979,7 +19168,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19002,7 +19191,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_forty_three",
-      "description": "Selects window 43 from the open overview.",
+      "description": "Opens favorite 43 from the quick list, or selects a window from the overview.",
       "examples": [
         "window forty three",
         "window forty three left",
@@ -19016,7 +19205,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19039,7 +19228,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_forty_two",
-      "description": "Selects window 42 from the open overview.",
+      "description": "Opens favorite 42 from the quick list, or selects a window from the overview.",
       "examples": [
         "window forty two",
         "window forty two left",
@@ -19053,7 +19242,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19076,7 +19265,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_fourteen",
-      "description": "Selects window 14 from the open overview.",
+      "description": "Opens favorite 14 from the quick list, or selects a window from the overview.",
       "examples": [
         "window fourteen",
         "window fourteen left",
@@ -19090,7 +19279,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19174,7 +19363,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_nineteen",
-      "description": "Selects window 19 from the open overview.",
+      "description": "Opens favorite 19 from the quick list, or selects a window from the overview.",
       "examples": [
         "window nineteen",
         "window nineteen left",
@@ -19188,7 +19377,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19211,7 +19400,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_ninety",
-      "description": "Selects window 90 from the open overview.",
+      "description": "Opens favorite 90 from the quick list, or selects a window from the overview.",
       "examples": [
         "window ninety",
         "window ninety left",
@@ -19225,7 +19414,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19248,7 +19437,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_ninety_eight",
-      "description": "Selects window 98 from the open overview.",
+      "description": "Opens favorite 98 from the quick list, or selects a window from the overview.",
       "examples": [
         "window ninety eight",
         "window ninety eight left",
@@ -19262,7 +19451,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19285,7 +19474,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_ninety_five",
-      "description": "Selects window 95 from the open overview.",
+      "description": "Opens favorite 95 from the quick list, or selects a window from the overview.",
       "examples": [
         "window ninety five",
         "window ninety five left",
@@ -19299,7 +19488,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19322,7 +19511,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_ninety_four",
-      "description": "Selects window 94 from the open overview.",
+      "description": "Opens favorite 94 from the quick list, or selects a window from the overview.",
       "examples": [
         "window ninety four",
         "window ninety four left",
@@ -19336,7 +19525,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19359,7 +19548,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_ninety_nine",
-      "description": "Selects window 99 from the open overview.",
+      "description": "Opens favorite 99 from the quick list, or selects a window from the overview.",
       "examples": [
         "window ninety nine",
         "window ninety nine left",
@@ -19373,7 +19562,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19396,7 +19585,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_ninety_one",
-      "description": "Selects window 91 from the open overview.",
+      "description": "Opens favorite 91 from the quick list, or selects a window from the overview.",
       "examples": [
         "window ninety one",
         "window ninety one left",
@@ -19410,7 +19599,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19433,7 +19622,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_ninety_seven",
-      "description": "Selects window 97 from the open overview.",
+      "description": "Opens favorite 97 from the quick list, or selects a window from the overview.",
       "examples": [
         "window ninety seven",
         "window ninety seven left",
@@ -19447,7 +19636,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19470,7 +19659,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_ninety_six",
-      "description": "Selects window 96 from the open overview.",
+      "description": "Opens favorite 96 from the quick list, or selects a window from the overview.",
       "examples": [
         "window ninety six",
         "window ninety six left",
@@ -19484,7 +19673,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19507,7 +19696,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_ninety_three",
-      "description": "Selects window 93 from the open overview.",
+      "description": "Opens favorite 93 from the quick list, or selects a window from the overview.",
       "examples": [
         "window ninety three",
         "window ninety three left",
@@ -19521,7 +19710,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19544,7 +19733,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_ninety_two",
-      "description": "Selects window 92 from the open overview.",
+      "description": "Opens favorite 92 from the quick list, or selects a window from the overview.",
       "examples": [
         "window ninety two",
         "window ninety two left",
@@ -19558,7 +19747,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19581,7 +19770,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_seventeen",
-      "description": "Selects window 17 from the open overview.",
+      "description": "Opens favorite 17 from the quick list, or selects a window from the overview.",
       "examples": [
         "window seventeen",
         "window seventeen left",
@@ -19595,7 +19784,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19618,7 +19807,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_seventy",
-      "description": "Selects window 70 from the open overview.",
+      "description": "Opens favorite 70 from the quick list, or selects a window from the overview.",
       "examples": [
         "window seventy",
         "window seventy left",
@@ -19632,7 +19821,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19655,7 +19844,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_seventy_eight",
-      "description": "Selects window 78 from the open overview.",
+      "description": "Opens favorite 78 from the quick list, or selects a window from the overview.",
       "examples": [
         "window seventy eight",
         "window seventy eight left",
@@ -19669,7 +19858,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19692,7 +19881,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_seventy_five",
-      "description": "Selects window 75 from the open overview.",
+      "description": "Opens favorite 75 from the quick list, or selects a window from the overview.",
       "examples": [
         "window seventy five",
         "window seventy five left",
@@ -19706,7 +19895,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19729,7 +19918,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_seventy_four",
-      "description": "Selects window 74 from the open overview.",
+      "description": "Opens favorite 74 from the quick list, or selects a window from the overview.",
       "examples": [
         "window seventy four",
         "window seventy four left",
@@ -19743,7 +19932,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19766,7 +19955,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_seventy_nine",
-      "description": "Selects window 79 from the open overview.",
+      "description": "Opens favorite 79 from the quick list, or selects a window from the overview.",
       "examples": [
         "window seventy nine",
         "window seventy nine left",
@@ -19780,7 +19969,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19803,7 +19992,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_seventy_one",
-      "description": "Selects window 71 from the open overview.",
+      "description": "Opens favorite 71 from the quick list, or selects a window from the overview.",
       "examples": [
         "window seventy one",
         "window seventy one left",
@@ -19817,7 +20006,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19840,7 +20029,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_seventy_seven",
-      "description": "Selects window 77 from the open overview.",
+      "description": "Opens favorite 77 from the quick list, or selects a window from the overview.",
       "examples": [
         "window seventy seven",
         "window seventy seven left",
@@ -19854,7 +20043,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19877,7 +20066,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_seventy_six",
-      "description": "Selects window 76 from the open overview.",
+      "description": "Opens favorite 76 from the quick list, or selects a window from the overview.",
       "examples": [
         "window seventy six",
         "window seventy six left",
@@ -19891,7 +20080,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19914,7 +20103,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_seventy_three",
-      "description": "Selects window 73 from the open overview.",
+      "description": "Opens favorite 73 from the quick list, or selects a window from the overview.",
       "examples": [
         "window seventy three",
         "window seventy three left",
@@ -19928,7 +20117,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19951,7 +20140,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_seventy_two",
-      "description": "Selects window 72 from the open overview.",
+      "description": "Opens favorite 72 from the quick list, or selects a window from the overview.",
       "examples": [
         "window seventy two",
         "window seventy two left",
@@ -19965,7 +20154,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -19988,7 +20177,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_sixteen",
-      "description": "Selects window 16 from the open overview.",
+      "description": "Opens favorite 16 from the quick list, or selects a window from the overview.",
       "examples": [
         "window sixteen",
         "window sixteen left",
@@ -20002,7 +20191,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20025,7 +20214,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_sixty",
-      "description": "Selects window 60 from the open overview.",
+      "description": "Opens favorite 60 from the quick list, or selects a window from the overview.",
       "examples": [
         "window sixty",
         "window sixty left",
@@ -20039,7 +20228,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20062,7 +20251,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_sixty_eight",
-      "description": "Selects window 68 from the open overview.",
+      "description": "Opens favorite 68 from the quick list, or selects a window from the overview.",
       "examples": [
         "window sixty eight",
         "window sixty eight left",
@@ -20076,7 +20265,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20099,7 +20288,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_sixty_five",
-      "description": "Selects window 65 from the open overview.",
+      "description": "Opens favorite 65 from the quick list, or selects a window from the overview.",
       "examples": [
         "window sixty five",
         "window sixty five left",
@@ -20113,7 +20302,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20136,7 +20325,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_sixty_four",
-      "description": "Selects window 64 from the open overview.",
+      "description": "Opens favorite 64 from the quick list, or selects a window from the overview.",
       "examples": [
         "window sixty four",
         "window sixty four left",
@@ -20150,7 +20339,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20173,7 +20362,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_sixty_nine",
-      "description": "Selects window 69 from the open overview.",
+      "description": "Opens favorite 69 from the quick list, or selects a window from the overview.",
       "examples": [
         "window sixty nine",
         "window sixty nine left",
@@ -20187,7 +20376,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20210,7 +20399,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_sixty_one",
-      "description": "Selects window 61 from the open overview.",
+      "description": "Opens favorite 61 from the quick list, or selects a window from the overview.",
       "examples": [
         "window sixty one",
         "window sixty one left",
@@ -20224,7 +20413,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20247,7 +20436,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_sixty_seven",
-      "description": "Selects window 67 from the open overview.",
+      "description": "Opens favorite 67 from the quick list, or selects a window from the overview.",
       "examples": [
         "window sixty seven",
         "window sixty seven left",
@@ -20261,7 +20450,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20284,7 +20473,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_sixty_six",
-      "description": "Selects window 66 from the open overview.",
+      "description": "Opens favorite 66 from the quick list, or selects a window from the overview.",
       "examples": [
         "window sixty six",
         "window sixty six left",
@@ -20298,7 +20487,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20321,7 +20510,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_sixty_three",
-      "description": "Selects window 63 from the open overview.",
+      "description": "Opens favorite 63 from the quick list, or selects a window from the overview.",
       "examples": [
         "window sixty three",
         "window sixty three left",
@@ -20335,7 +20524,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20358,7 +20547,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_sixty_two",
-      "description": "Selects window 62 from the open overview.",
+      "description": "Opens favorite 62 from the quick list, or selects a window from the overview.",
       "examples": [
         "window sixty two",
         "window sixty two left",
@@ -20372,7 +20561,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20425,7 +20614,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_ten",
-      "description": "Selects window 10 from the open overview.",
+      "description": "Opens favorite 10 from the quick list, or selects a window from the overview.",
       "examples": [
         "window ten",
         "window ten left",
@@ -20439,7 +20628,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20462,7 +20651,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_thirteen",
-      "description": "Selects window 13 from the open overview.",
+      "description": "Opens favorite 13 from the quick list, or selects a window from the overview.",
       "examples": [
         "window thirteen",
         "window thirteen left",
@@ -20476,7 +20665,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20499,7 +20688,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_thirty",
-      "description": "Selects window 30 from the open overview.",
+      "description": "Opens favorite 30 from the quick list, or selects a window from the overview.",
       "examples": [
         "window thirty",
         "window thirty left",
@@ -20513,7 +20702,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20536,7 +20725,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_thirty_eight",
-      "description": "Selects window 38 from the open overview.",
+      "description": "Opens favorite 38 from the quick list, or selects a window from the overview.",
       "examples": [
         "window thirty eight",
         "window thirty eight left",
@@ -20550,7 +20739,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20573,7 +20762,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_thirty_five",
-      "description": "Selects window 35 from the open overview.",
+      "description": "Opens favorite 35 from the quick list, or selects a window from the overview.",
       "examples": [
         "window thirty five",
         "window thirty five left",
@@ -20587,7 +20776,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20610,7 +20799,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_thirty_four",
-      "description": "Selects window 34 from the open overview.",
+      "description": "Opens favorite 34 from the quick list, or selects a window from the overview.",
       "examples": [
         "window thirty four",
         "window thirty four left",
@@ -20624,7 +20813,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20647,7 +20836,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_thirty_nine",
-      "description": "Selects window 39 from the open overview.",
+      "description": "Opens favorite 39 from the quick list, or selects a window from the overview.",
       "examples": [
         "window thirty nine",
         "window thirty nine left",
@@ -20661,7 +20850,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20684,7 +20873,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_thirty_one",
-      "description": "Selects window 31 from the open overview.",
+      "description": "Opens favorite 31 from the quick list, or selects a window from the overview.",
       "examples": [
         "window thirty one",
         "window thirty one left",
@@ -20698,7 +20887,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20721,7 +20910,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_thirty_seven",
-      "description": "Selects window 37 from the open overview.",
+      "description": "Opens favorite 37 from the quick list, or selects a window from the overview.",
       "examples": [
         "window thirty seven",
         "window thirty seven left",
@@ -20735,7 +20924,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20758,7 +20947,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_thirty_six",
-      "description": "Selects window 36 from the open overview.",
+      "description": "Opens favorite 36 from the quick list, or selects a window from the overview.",
       "examples": [
         "window thirty six",
         "window thirty six left",
@@ -20772,7 +20961,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20795,7 +20984,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_thirty_three",
-      "description": "Selects window 33 from the open overview.",
+      "description": "Opens favorite 33 from the quick list, or selects a window from the overview.",
       "examples": [
         "window thirty three",
         "window thirty three left",
@@ -20809,7 +20998,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20832,7 +21021,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_thirty_two",
-      "description": "Selects window 32 from the open overview.",
+      "description": "Opens favorite 32 from the quick list, or selects a window from the overview.",
       "examples": [
         "window thirty two",
         "window thirty two left",
@@ -20846,7 +21035,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20897,7 +21086,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_twelve",
-      "description": "Selects window 12 from the open overview.",
+      "description": "Opens favorite 12 from the quick list, or selects a window from the overview.",
       "examples": [
         "window twelve",
         "window twelve left",
@@ -20911,7 +21100,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20934,7 +21123,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_twenty",
-      "description": "Selects window 20 from the open overview.",
+      "description": "Opens favorite 20 from the quick list, or selects a window from the overview.",
       "examples": [
         "window twenty",
         "window twenty left",
@@ -20948,7 +21137,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -20971,7 +21160,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_twenty_eight",
-      "description": "Selects window 28 from the open overview.",
+      "description": "Opens favorite 28 from the quick list, or selects a window from the overview.",
       "examples": [
         "window twenty eight",
         "window twenty eight left",
@@ -20985,7 +21174,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -21008,7 +21197,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_twenty_five",
-      "description": "Selects window 25 from the open overview.",
+      "description": "Opens favorite 25 from the quick list, or selects a window from the overview.",
       "examples": [
         "window twenty five",
         "window twenty five left",
@@ -21022,7 +21211,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -21045,7 +21234,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_twenty_four",
-      "description": "Selects window 24 from the open overview.",
+      "description": "Opens favorite 24 from the quick list, or selects a window from the overview.",
       "examples": [
         "window twenty four",
         "window twenty four left",
@@ -21059,7 +21248,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -21082,7 +21271,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_twenty_nine",
-      "description": "Selects window 29 from the open overview.",
+      "description": "Opens favorite 29 from the quick list, or selects a window from the overview.",
       "examples": [
         "window twenty nine",
         "window twenty nine left",
@@ -21096,7 +21285,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -21119,7 +21308,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_twenty_one",
-      "description": "Selects window 21 from the open overview.",
+      "description": "Opens favorite 21 from the quick list, or selects a window from the overview.",
       "examples": [
         "window twenty one",
         "window twenty one left",
@@ -21133,7 +21322,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -21156,7 +21345,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_twenty_seven",
-      "description": "Selects window 27 from the open overview.",
+      "description": "Opens favorite 27 from the quick list, or selects a window from the overview.",
       "examples": [
         "window twenty seven",
         "window twenty seven left",
@@ -21170,7 +21359,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -21193,7 +21382,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_twenty_six",
-      "description": "Selects window 26 from the open overview.",
+      "description": "Opens favorite 26 from the quick list, or selects a window from the overview.",
       "examples": [
         "window twenty six",
         "window twenty six left",
@@ -21207,7 +21396,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -21230,7 +21419,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_twenty_three",
-      "description": "Selects window 23 from the open overview.",
+      "description": "Opens favorite 23 from the quick list, or selects a window from the overview.",
       "examples": [
         "window twenty three",
         "window twenty three left",
@@ -21244,7 +21433,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",
@@ -21267,7 +21456,7 @@
         }
       ],
       "canonical_id": "window_switcher.window_twenty_two",
-      "description": "Selects window 22 from the open overview.",
+      "description": "Opens favorite 22 from the quick list, or selects a window from the overview.",
       "examples": [
         "window twenty two",
         "window twenty two left",
@@ -21281,7 +21470,7 @@
       "risk": "ui",
       "scope": {
         "tags": [
-          "window_overview.visible"
+          "numbered_list.visible"
         ]
       },
       "source": "plugins/commands/window_switcher.py:1525",

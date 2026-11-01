@@ -8708,6 +8708,195 @@
     "precondition": ""
   },
   {
+    "canonical_id": "favorites.add_favorite",
+    "plugin": "favorites",
+    "phrase": "add favorite",
+    "verb": "add",
+    "object": "favorite",
+    "aliases": [
+      "add favorite",
+      "add this to favorites",
+      "add this to quick list",
+      "add to favorites",
+      "add to quick list"
+    ],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": false
+      }
+    ],
+    "description": "Adds a full path or website; an empty argument or 'this' reads focused Explorer/browser.",
+    "risk": "write",
+    "whole_utterance": false,
+    "pack": "core",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
+    "canonical_id": "favorites.favorites_font_size",
+    "plugin": "favorites",
+    "phrase": "favorites font size",
+    "verb": "favorites",
+    "object": "font_size",
+    "aliases": [
+      "favorites font size",
+      "quick list font size"
+    ],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": true
+      }
+    ],
+    "description": "Sets favorites text size from 14 to 32 pixels, including while the list is closed.",
+    "risk": "ui",
+    "whole_utterance": false,
+    "pack": "core",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
+    "canonical_id": "favorites.favorites_window_size",
+    "plugin": "favorites",
+    "phrase": "favorites window size",
+    "verb": "favorites",
+    "object": "window_size",
+    "aliases": [
+      "favorites window size",
+      "quick list window size"
+    ],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": true
+      }
+    ],
+    "description": "Sets favorites width by height in pixels, for example 900 by 700.",
+    "risk": "ui",
+    "whole_utterance": false,
+    "pack": "core",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
+    "canonical_id": "favorites.hide_favorites",
+    "plugin": "favorites",
+    "phrase": "hide favorites",
+    "verb": "hide",
+    "object": "favorites",
+    "aliases": [
+      "close favorites",
+      "close quick list",
+      "hide favorites",
+      "hide quick list"
+    ],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": false
+      }
+    ],
+    "description": "Closes the quick list.",
+    "risk": "ui",
+    "whole_utterance": false,
+    "pack": "core",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
+    "canonical_id": "favorites.remove_favorite",
+    "plugin": "favorites",
+    "phrase": "remove favorite",
+    "verb": "remove",
+    "object": "favorite",
+    "aliases": [
+      "remove favorite",
+      "remove from favorites",
+      "remove from quick list"
+    ],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": true
+      }
+    ],
+    "description": "Removes a numbered favorite, leaving the actual file or website untouched.",
+    "risk": "write",
+    "whole_utterance": false,
+    "pack": "core",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
+    "canonical_id": "favorites.rename_favorite",
+    "plugin": "favorites",
+    "phrase": "rename favorite",
+    "verb": "rename",
+    "object": "favorite",
+    "aliases": [
+      "rename favorite"
+    ],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": true
+      }
+    ],
+    "description": "Renames a favorite: rename favorite 2 to Project notes.",
+    "risk": "write",
+    "whole_utterance": false,
+    "pack": "core",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
+    "canonical_id": "favorites.show_favorites",
+    "plugin": "favorites",
+    "phrase": "show favorites",
+    "verb": "show",
+    "object": "favorites",
+    "aliases": [
+      "list favorites",
+      "quick list",
+      "show favorites",
+      "show quick list"
+    ],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": false
+      }
+    ],
+    "description": "Shows numbered files, folders, shortcuts and websites.",
+    "risk": "ui",
+    "whole_utterance": false,
+    "pack": "core",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
     "canonical_id": "feedback_level.feedback_brief",
     "plugin": "feedback_level",
     "phrase": "feedback brief",
@@ -14427,7 +14616,7 @@
         "required": false
       }
     ],
-    "description": "Selects window 8 from the overview or pinned cube.",
+    "description": "Opens favorite 8 when the quick list is open; otherwise selects a window.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
@@ -14461,7 +14650,7 @@
         "required": false
       }
     ],
-    "description": "Selects window 5 from the overview or pinned cube.",
+    "description": "Opens favorite 5 when the quick list is open; otherwise selects a window.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
@@ -14495,7 +14684,7 @@
         "required": false
       }
     ],
-    "description": "Selects window 4 from the overview or pinned cube.",
+    "description": "Opens favorite 4 when the quick list is open; otherwise selects a window.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
@@ -14550,7 +14739,7 @@
         "required": false
       }
     ],
-    "description": "Selects window 9 from the overview or pinned cube.",
+    "description": "Opens favorite 9 when the quick list is open; otherwise selects a window.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
@@ -14584,7 +14773,7 @@
         "required": false
       }
     ],
-    "description": "Selects window 1 from the overview or pinned cube.",
+    "description": "Opens favorite 1 when the quick list is open; otherwise selects a window.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
@@ -14639,7 +14828,7 @@
         "required": false
       }
     ],
-    "description": "Selects window 7 from the overview or pinned cube.",
+    "description": "Opens favorite 7 when the quick list is open; otherwise selects a window.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
@@ -14695,7 +14884,7 @@
         "required": false
       }
     ],
-    "description": "Selects window 6 from the overview or pinned cube.",
+    "description": "Opens favorite 6 when the quick list is open; otherwise selects a window.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
@@ -14729,7 +14918,7 @@
         "required": false
       }
     ],
-    "description": "Selects window 3 from the overview or pinned cube.",
+    "description": "Opens favorite 3 when the quick list is open; otherwise selects a window.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
@@ -14763,7 +14952,7 @@
         "required": false
       }
     ],
-    "description": "Selects window 2 from the overview or pinned cube.",
+    "description": "Opens favorite 2 when the quick list is open; otherwise selects a window.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
@@ -17692,14 +17881,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 18 from the open overview.",
+    "description": "Opens favorite 18 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -17728,14 +17917,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 80 from the open overview.",
+    "description": "Opens favorite 80 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -17764,14 +17953,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 88 from the open overview.",
+    "description": "Opens favorite 88 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -17800,14 +17989,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 85 from the open overview.",
+    "description": "Opens favorite 85 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -17836,14 +18025,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 84 from the open overview.",
+    "description": "Opens favorite 84 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -17872,14 +18061,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 89 from the open overview.",
+    "description": "Opens favorite 89 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -17908,14 +18097,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 81 from the open overview.",
+    "description": "Opens favorite 81 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -17944,14 +18133,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 87 from the open overview.",
+    "description": "Opens favorite 87 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -17980,14 +18169,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 86 from the open overview.",
+    "description": "Opens favorite 86 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18016,14 +18205,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 83 from the open overview.",
+    "description": "Opens favorite 83 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18052,14 +18241,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 82 from the open overview.",
+    "description": "Opens favorite 82 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18088,14 +18277,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 11 from the open overview.",
+    "description": "Opens favorite 11 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18124,14 +18313,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 15 from the open overview.",
+    "description": "Opens favorite 15 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18160,14 +18349,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 50 from the open overview.",
+    "description": "Opens favorite 50 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18196,14 +18385,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 58 from the open overview.",
+    "description": "Opens favorite 58 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18232,14 +18421,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 55 from the open overview.",
+    "description": "Opens favorite 55 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18268,14 +18457,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 54 from the open overview.",
+    "description": "Opens favorite 54 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18304,14 +18493,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 59 from the open overview.",
+    "description": "Opens favorite 59 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18340,14 +18529,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 51 from the open overview.",
+    "description": "Opens favorite 51 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18376,14 +18565,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 57 from the open overview.",
+    "description": "Opens favorite 57 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18412,14 +18601,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 56 from the open overview.",
+    "description": "Opens favorite 56 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18448,14 +18637,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 53 from the open overview.",
+    "description": "Opens favorite 53 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18484,14 +18673,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 52 from the open overview.",
+    "description": "Opens favorite 52 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18520,14 +18709,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 40 from the open overview.",
+    "description": "Opens favorite 40 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18556,14 +18745,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 48 from the open overview.",
+    "description": "Opens favorite 48 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18592,14 +18781,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 45 from the open overview.",
+    "description": "Opens favorite 45 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18628,14 +18817,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 44 from the open overview.",
+    "description": "Opens favorite 44 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18664,14 +18853,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 49 from the open overview.",
+    "description": "Opens favorite 49 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18700,14 +18889,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 41 from the open overview.",
+    "description": "Opens favorite 41 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18736,14 +18925,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 47 from the open overview.",
+    "description": "Opens favorite 47 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18772,14 +18961,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 46 from the open overview.",
+    "description": "Opens favorite 46 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18808,14 +18997,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 43 from the open overview.",
+    "description": "Opens favorite 43 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18844,14 +19033,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 42 from the open overview.",
+    "description": "Opens favorite 42 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18880,14 +19069,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 14 from the open overview.",
+    "description": "Opens favorite 14 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -18977,14 +19166,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 19 from the open overview.",
+    "description": "Opens favorite 19 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19013,14 +19202,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 90 from the open overview.",
+    "description": "Opens favorite 90 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19049,14 +19238,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 98 from the open overview.",
+    "description": "Opens favorite 98 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19085,14 +19274,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 95 from the open overview.",
+    "description": "Opens favorite 95 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19121,14 +19310,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 94 from the open overview.",
+    "description": "Opens favorite 94 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19157,14 +19346,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 99 from the open overview.",
+    "description": "Opens favorite 99 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19193,14 +19382,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 91 from the open overview.",
+    "description": "Opens favorite 91 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19229,14 +19418,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 97 from the open overview.",
+    "description": "Opens favorite 97 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19265,14 +19454,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 96 from the open overview.",
+    "description": "Opens favorite 96 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19301,14 +19490,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 93 from the open overview.",
+    "description": "Opens favorite 93 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19337,14 +19526,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 92 from the open overview.",
+    "description": "Opens favorite 92 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19373,14 +19562,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 17 from the open overview.",
+    "description": "Opens favorite 17 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19409,14 +19598,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 70 from the open overview.",
+    "description": "Opens favorite 70 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19445,14 +19634,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 78 from the open overview.",
+    "description": "Opens favorite 78 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19481,14 +19670,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 75 from the open overview.",
+    "description": "Opens favorite 75 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19517,14 +19706,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 74 from the open overview.",
+    "description": "Opens favorite 74 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19553,14 +19742,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 79 from the open overview.",
+    "description": "Opens favorite 79 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19589,14 +19778,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 71 from the open overview.",
+    "description": "Opens favorite 71 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19625,14 +19814,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 77 from the open overview.",
+    "description": "Opens favorite 77 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19661,14 +19850,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 76 from the open overview.",
+    "description": "Opens favorite 76 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19697,14 +19886,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 73 from the open overview.",
+    "description": "Opens favorite 73 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19733,14 +19922,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 72 from the open overview.",
+    "description": "Opens favorite 72 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19769,14 +19958,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 16 from the open overview.",
+    "description": "Opens favorite 16 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19805,14 +19994,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 60 from the open overview.",
+    "description": "Opens favorite 60 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19841,14 +20030,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 68 from the open overview.",
+    "description": "Opens favorite 68 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19877,14 +20066,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 65 from the open overview.",
+    "description": "Opens favorite 65 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19913,14 +20102,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 64 from the open overview.",
+    "description": "Opens favorite 64 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19949,14 +20138,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 69 from the open overview.",
+    "description": "Opens favorite 69 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -19985,14 +20174,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 61 from the open overview.",
+    "description": "Opens favorite 61 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20021,14 +20210,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 67 from the open overview.",
+    "description": "Opens favorite 67 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20057,14 +20246,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 66 from the open overview.",
+    "description": "Opens favorite 66 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20093,14 +20282,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 63 from the open overview.",
+    "description": "Opens favorite 63 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20129,14 +20318,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 62 from the open overview.",
+    "description": "Opens favorite 62 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20195,14 +20384,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 10 from the open overview.",
+    "description": "Opens favorite 10 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20231,14 +20420,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 13 from the open overview.",
+    "description": "Opens favorite 13 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20267,14 +20456,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 30 from the open overview.",
+    "description": "Opens favorite 30 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20303,14 +20492,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 38 from the open overview.",
+    "description": "Opens favorite 38 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20339,14 +20528,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 35 from the open overview.",
+    "description": "Opens favorite 35 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20375,14 +20564,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 34 from the open overview.",
+    "description": "Opens favorite 34 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20411,14 +20600,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 39 from the open overview.",
+    "description": "Opens favorite 39 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20447,14 +20636,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 31 from the open overview.",
+    "description": "Opens favorite 31 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20483,14 +20672,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 37 from the open overview.",
+    "description": "Opens favorite 37 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20519,14 +20708,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 36 from the open overview.",
+    "description": "Opens favorite 36 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20555,14 +20744,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 33 from the open overview.",
+    "description": "Opens favorite 33 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20591,14 +20780,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 32 from the open overview.",
+    "description": "Opens favorite 32 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20655,14 +20844,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 12 from the open overview.",
+    "description": "Opens favorite 12 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20691,14 +20880,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 20 from the open overview.",
+    "description": "Opens favorite 20 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20727,14 +20916,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 28 from the open overview.",
+    "description": "Opens favorite 28 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20763,14 +20952,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 25 from the open overview.",
+    "description": "Opens favorite 25 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20799,14 +20988,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 24 from the open overview.",
+    "description": "Opens favorite 24 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20835,14 +21024,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 29 from the open overview.",
+    "description": "Opens favorite 29 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20871,14 +21060,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 21 from the open overview.",
+    "description": "Opens favorite 21 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20907,14 +21096,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 27 from the open overview.",
+    "description": "Opens favorite 27 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20943,14 +21132,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 26 from the open overview.",
+    "description": "Opens favorite 26 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -20979,14 +21168,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 23 from the open overview.",
+    "description": "Opens favorite 23 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [
@@ -21015,14 +21204,14 @@
         "required": false
       }
     ],
-    "description": "Selects window 22 from the open overview.",
+    "description": "Opens favorite 22 from the quick list, or selects a window from the overview.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "window-cube-numbers",
     "kind": "plugin",
     "scope": {
       "tags": [
-        "window_overview.visible"
+        "numbered_list.visible"
       ]
     },
     "examples": [

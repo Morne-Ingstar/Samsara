@@ -1523,14 +1523,14 @@ def _register_overview_numbers():
         if number < 10:
             continue
         def pick(app, remainder, value=number):
-            return handle_overview_number(app, value, remainder)
+            from plugins.commands.favorites import pick_numbered_item
+            return pick_numbered_item(app, value, remainder)
         pick.__name__ = pick.__qualname__ = f'handle_overview_number_{number}'
-        pick.__doc__ = f'Selects window {number} from the open overview.'
+        pick.__doc__ = f'Opens favorite {number} from the quick list, or selects a window from the overview.'
         command(f'window {word}', aliases=[f'window {number}', word, str(number)],
                 pack='window-cube-numbers',
                 risk_class='ui', ai_visible=False,
-                scope={'tags': ['window_overview.visible']})(pick)
-
+                scope={'tags': ['numbered_list.visible']})(pick)
 
 from samsara import command_scope as _overview_scope
 _overview_scope.register_tag_source('window_overview.visible', overview_active)

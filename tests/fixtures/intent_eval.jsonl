@@ -8596,7 +8596,7 @@
 {"accept": ["builtin.quick_switcher"], "id": "builtin.quick_switcher", "kind": "filler", "polarity": "positive", "text": "Can you quick switcher for me please."}
 {"accept": ["builtin.quick_switcher"], "id": "builtin.quick_switcher", "kind": "filler", "polarity": "positive", "text": "could you quick switcher please"}
 {"id": "builtin.quick_switcher", "kind": "sentence", "polarity": "negative", "reject": "builtin.quick_switcher", "text": "during the lecture she explained how to quick switcher without breaking anything"}
-{"id": "builtin.quick_switcher", "kind": "other_command", "polarity": "negative", "reject": "builtin.quick_switcher", "text": "quick memo"}
+{"id": "builtin.quick_switcher", "kind": "other_command", "polarity": "negative", "reject": "builtin.quick_switcher", "text": "quick list"}
 {"id": "builtin.quick_switcher", "kind": "nonsense", "polarity": "negative", "reject": "builtin.quick_switcher", "text": "noodle zeppelin switcher banana wobble"}
 {"accept": ["builtin.quote"], "id": "builtin.quote", "kind": "alias", "polarity": "positive", "text": "quote"}
 {"accept": ["builtin.quote"], "id": "builtin.quote", "kind": "filler", "polarity": "positive", "text": "would you please quote"}
@@ -16518,6 +16518,286 @@
 {"id": "example_greet.greet_me", "kind": "sentence", "polarity": "negative", "reject": "example_greet.greet_me", "text": "last night he wrote in the notes that you can greet me whenever it feels right"}
 {"id": "example_greet.greet_me", "kind": "other_command", "polarity": "negative", "reject": "example_greet.greet_me", "text": "gif me"}
 {"id": "example_greet.greet_me", "kind": "nonsense", "polarity": "negative", "reject": "example_greet.greet_me", "text": "sideways quartz greet wobble glimmer"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "alias", "polarity": "positive", "text": "add favorite"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "determiner", "polarity": "positive", "text": "add the favorite"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "filler", "polarity": "positive", "text": "okay add favorite call mom at five"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "mishear", "polarity": "positive", "text": "add two quick list call mom at five"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "numeral", "polarity": "positive", "text": "add to quick list call mom at 5"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "punct", "polarity": "positive", "text": "Add this to quick list check the oven."}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "reorder", "polarity": "positive", "text": "favorite add"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "slot", "polarity": "positive", "text": "add favorite call mom at five"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "alias", "polarity": "positive", "text": "add to quick list"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "determiner", "polarity": "positive", "text": "add the favorite call mom at five"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "filler", "polarity": "positive", "text": "go ahead and add this to quick list"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "mishear", "polarity": "positive", "text": "add this two quick list check the oven"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "numeral", "polarity": "positive", "text": "add favorite call mom at 5"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "punct", "polarity": "positive", "text": "Add, favorite call mom at five?"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "slot", "polarity": "positive", "text": "add this to favorites buy milk"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "alias", "polarity": "positive", "text": "add this to favorites"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "filler", "polarity": "positive", "text": "so add favorite"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "mishear", "polarity": "positive", "text": "add this two quick list"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "numeral", "polarity": "positive", "text": "add to favorites call mom at 5"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "punct", "polarity": "positive", "text": "Add to quick list."}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "slot", "polarity": "positive", "text": "add to quick list call mom at five"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "alias", "polarity": "positive", "text": "add to favorites"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "filler", "polarity": "positive", "text": "please add this to quick list"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "mishear", "polarity": "positive", "text": "add this two favorites buy milk"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "punct", "polarity": "positive", "text": "Add, this to quick list check the oven?"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "slot", "polarity": "positive", "text": "add to favorites call mom at five"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "alias", "polarity": "positive", "text": "add this to quick list"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "filler", "polarity": "positive", "text": "add this to quick list now"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "mishear", "polarity": "positive", "text": "add two favorites"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "punct", "polarity": "positive", "text": "Add this to favorites."}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "slot", "polarity": "positive", "text": "add this to quick list check the oven"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "filler", "polarity": "positive", "text": "um add favorite"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "mishear", "polarity": "positive", "text": "add this two favorites"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "punct", "polarity": "positive", "text": "Add favorite call mom at five."}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "filler", "polarity": "positive", "text": "add to quick list call mom at five please"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "mishear", "polarity": "positive", "text": "add two favorites call mom at five"}
+{"accept": ["favorites.add_favorite"], "id": "favorites.add_favorite", "kind": "punct", "polarity": "positive", "text": "Add, to quick list call mom at five?"}
+{"id": "favorites.add_favorite", "kind": "sentence", "polarity": "negative", "reject": "favorites.add_favorite", "text": "yesterday afternoon we argued for an hour about who would add favorite first"}
+{"id": "favorites.add_favorite", "kind": "other_command", "polarity": "negative", "reject": "favorites.add_favorite", "text": "add to list"}
+{"id": "favorites.add_favorite", "kind": "nonsense", "polarity": "negative", "reject": "favorites.add_favorite", "text": "wobble quartz favorite saxophone banana"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "determiner", "polarity": "positive", "text": "favorites the font size the build is green"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "filler", "polarity": "positive", "text": "can you please favorites font size the build is green"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "numeral", "polarity": "positive", "text": "quick list font size call mom at 5"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "punct", "polarity": "positive", "text": "Quick, list font size the build is green?"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "slot", "polarity": "positive", "text": "quick list font size call mom at five"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "determiner", "polarity": "positive", "text": "quick the list font size the build is green"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "filler", "polarity": "positive", "text": "quick list font size call mom at five now"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "numeral", "polarity": "positive", "text": "favorites font size call mom at 5"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "punct", "polarity": "positive", "text": "Favorites font size the build is green."}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "slot", "polarity": "positive", "text": "favorites font size the build is green"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "determiner", "polarity": "positive", "text": "quick the list font size call mom at five"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "filler", "polarity": "positive", "text": "can you please quick list font size the build is green"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "punct", "polarity": "positive", "text": "Quick list font size the build is green."}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "slot", "polarity": "positive", "text": "favorites font size call mom at five"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "determiner", "polarity": "positive", "text": "favorites the font size call mom at five"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "filler", "polarity": "positive", "text": "could you just favorites font size the build is green"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "punct", "polarity": "positive", "text": "Quick list font size call mom at five."}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "slot", "polarity": "positive", "text": "quick list font size the build is green"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "filler", "polarity": "positive", "text": "okay favorites font size the build is green"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "punct", "polarity": "positive", "text": "Favorites font size call mom at five."}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "filler", "polarity": "positive", "text": "please favorites font size call mom at five"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "punct", "polarity": "positive", "text": "Favorites, font size the build is green?"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "filler", "polarity": "positive", "text": "uh favorites font size the build is green"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "punct", "polarity": "positive", "text": "Quick, list font size call mom at five?"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "filler", "polarity": "positive", "text": "could you just quick list font size the build is green"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "punct", "polarity": "positive", "text": "Favorites, font size call mom at five?"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "filler", "polarity": "positive", "text": "uh quick list font size call mom at five"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "filler", "polarity": "positive", "text": "i need you to quick list font size call mom at five"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "filler", "polarity": "positive", "text": "quick list font size the build is green please"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "filler", "polarity": "positive", "text": "go ahead and favorites font size the build is green"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "filler", "polarity": "positive", "text": "would you please quick list font size the build is green"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "filler", "polarity": "positive", "text": "go ahead and quick list font size the build is green"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "filler", "polarity": "positive", "text": "quick list font size call mom at five please"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "filler", "polarity": "positive", "text": "hey quick list font size the build is green"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "filler", "polarity": "positive", "text": "so quick list font size the build is green"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "filler", "polarity": "positive", "text": "please favorites font size the build is green"}
+{"accept": ["favorites.favorites_font_size"], "id": "favorites.favorites_font_size", "kind": "filler", "polarity": "positive", "text": "i need you to quick list font size the build is green"}
+{"id": "favorites.favorites_font_size", "kind": "sentence", "polarity": "negative", "reject": "favorites.favorites_font_size", "text": "during the lecture she explained how to favorites font size call mom at five without breaking anything"}
+{"id": "favorites.favorites_font_size", "kind": "other_command", "polarity": "negative", "reject": "favorites.favorites_font_size", "text": "quick list window size buy milk"}
+{"id": "favorites.favorites_font_size", "kind": "nonsense", "polarity": "negative", "reject": "favorites.favorites_font_size", "text": "zeppelin wobble favorites sideways banana"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "determiner", "polarity": "positive", "text": "quick the list window size buy milk"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "filler", "polarity": "positive", "text": "quick list window size buy milk please"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "mishear_unknown", "polarity": "positive", "text": "quick list widow size buy milk"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "punct", "polarity": "positive", "text": "Quick, list window size buy milk?"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "slot", "polarity": "positive", "text": "favorites window size the build is green"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "determiner", "polarity": "positive", "text": "favorites the window size buy milk"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "filler", "polarity": "positive", "text": "quick list window size the build is green now"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "mishear_unknown", "polarity": "positive", "text": "favorites widow size buy milk"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "punct", "polarity": "positive", "text": "Favorites, window size the build is green?"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "slot", "polarity": "positive", "text": "quick list window size the build is green"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "determiner", "polarity": "positive", "text": "quick the list window size the build is green"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "filler", "polarity": "positive", "text": "uh quick list window size the build is green"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "mishear_unknown", "polarity": "positive", "text": "quick list widow size the build is green"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "punct", "polarity": "positive", "text": "Quick, list window size the build is green?"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "slot", "polarity": "positive", "text": "favorites window size buy milk"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "determiner", "polarity": "positive", "text": "favorites the window size the build is green"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "filler", "polarity": "positive", "text": "could you quick list window size the build is green"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "mishear_unknown", "polarity": "positive", "text": "favorites widow size the build is green"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "punct", "polarity": "positive", "text": "Favorites window size the build is green."}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "slot", "polarity": "positive", "text": "quick list window size buy milk"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "filler", "polarity": "positive", "text": "would you please quick list window size buy milk"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "punct", "polarity": "positive", "text": "Quick list window size the build is green."}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "filler", "polarity": "positive", "text": "uh favorites window size buy milk"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "punct", "polarity": "positive", "text": "Favorites, window size buy milk?"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "filler", "polarity": "positive", "text": "can you favorites window size buy milk"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "punct", "polarity": "positive", "text": "Quick list window size buy milk."}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "filler", "polarity": "positive", "text": "favorites window size buy milk right now"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "punct", "polarity": "positive", "text": "Favorites window size buy milk."}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "filler", "polarity": "positive", "text": "favorites window size the build is green for me"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "filler", "polarity": "positive", "text": "hey favorites window size buy milk"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "filler", "polarity": "positive", "text": "favorites window size the build is green for me please"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "filler", "polarity": "positive", "text": "i need you to quick list window size the build is green"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "filler", "polarity": "positive", "text": "i need you to favorites window size the build is green"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "filler", "polarity": "positive", "text": "um favorites window size buy milk"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "filler", "polarity": "positive", "text": "so favorites window size buy milk"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "filler", "polarity": "positive", "text": "go ahead and favorites window size buy milk"}
+{"accept": ["favorites.favorites_window_size"], "id": "favorites.favorites_window_size", "kind": "filler", "polarity": "positive", "text": "could you favorites window size buy milk"}
+{"id": "favorites.favorites_window_size", "kind": "sentence", "polarity": "negative", "reject": "favorites.favorites_window_size", "text": "yesterday i told my sister we should favorites window size water the plants before dinner"}
+{"id": "favorites.favorites_window_size", "kind": "other_command", "polarity": "negative", "reject": "favorites.favorites_window_size", "text": "quick list font size buy milk"}
+{"id": "favorites.favorites_window_size", "kind": "nonsense", "polarity": "negative", "reject": "favorites.favorites_window_size", "text": "octopus pickle favorites zeppelin thunderous"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "alias", "polarity": "positive", "text": "close quick list"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "determiner", "polarity": "positive", "text": "close the quick list"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "filler", "polarity": "positive", "text": "would you please hide favorites water the plants"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "mishear", "polarity": "positive", "text": "clothes favorites"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "numeral", "polarity": "positive", "text": "close quick list call mom at 5"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "punct", "polarity": "positive", "text": "Hide quick list the build is green."}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "reorder", "polarity": "positive", "text": "favorites close"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "slot", "polarity": "positive", "text": "close quick list call mom at five"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym", "polarity": "positive", "text": "quit favorites check the oven"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym_unknown", "polarity": "positive", "text": "stash quick list"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "alias", "polarity": "positive", "text": "hide quick list"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "determiner", "polarity": "positive", "text": "hide the quick list"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "filler", "polarity": "positive", "text": "close favorites check the oven now"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "mishear", "polarity": "positive", "text": "clothes favorites check the oven"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "punct", "polarity": "positive", "text": "Close, favorites check the oven?"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "reorder", "polarity": "positive", "text": "favorites hide"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "slot", "polarity": "positive", "text": "hide quick list the build is green"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym", "polarity": "positive", "text": "quit favorites"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym_unknown", "polarity": "positive", "text": "stash favorites"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "alias", "polarity": "positive", "text": "close favorites"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "determiner", "polarity": "positive", "text": "close the quick list call mom at five"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "filler", "polarity": "positive", "text": "uh hide quick list the build is green"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "mishear", "polarity": "positive", "text": "clothes quick list"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "punct", "polarity": "positive", "text": "Close, favorites?"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "slot", "polarity": "positive", "text": "close favorites check the oven"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym", "polarity": "positive", "text": "dismiss quick list"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym_unknown", "polarity": "positive", "text": "nuke quick list call mom at five"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "alias", "polarity": "positive", "text": "hide favorites"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "determiner", "polarity": "positive", "text": "hide the quick list the build is green"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "filler", "polarity": "positive", "text": "could you close favorites"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "mishear", "polarity": "positive", "text": "clothes quick list call mom at five"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "punct", "polarity": "positive", "text": "Hide quick list."}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "slot", "polarity": "positive", "text": "hide favorites water the plants"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym", "polarity": "positive", "text": "quit quick list call mom at five"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym_unknown", "polarity": "positive", "text": "nuke quick list"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "determiner", "polarity": "positive", "text": "hide the favorites"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "filler", "polarity": "positive", "text": "close quick list right now"}
+{"id": "favorites.hide_favorites", "kind": "sentence", "polarity": "negative", "reject": "favorites.hide_favorites", "text": "my grandmother never understood why people would close favorites on a sunday"}
+{"id": "favorites.hide_favorites", "kind": "other_command", "polarity": "negative", "reject": "favorites.hide_favorites", "text": "quick list"}
+{"id": "favorites.hide_favorites", "kind": "nonsense", "polarity": "negative", "reject": "favorites.hide_favorites", "text": "zeppelin cobalt favorites noodle velvet"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "determiner", "polarity": "positive", "text": "remove the favorite call mom at five"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "filler", "polarity": "positive", "text": "uh remove from favorites the build is green"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "numeral", "polarity": "positive", "text": "remove favorite call mom at 5"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "punct", "polarity": "positive", "text": "Remove favorite call mom at five."}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "slot", "polarity": "positive", "text": "remove favorite call mom at five"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "synonym", "polarity": "positive", "text": "erase from quick list the build is green"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "determiner", "polarity": "positive", "text": "remove the favorite check the oven"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "filler", "polarity": "positive", "text": "could you just remove favorite check the oven"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "punct", "polarity": "positive", "text": "Remove favorite check the oven."}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "slot", "polarity": "positive", "text": "remove from quick list the build is green"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "synonym", "polarity": "positive", "text": "erase favorite call mom at five"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "determiner", "polarity": "positive", "text": "remove the from favorites the build is green"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "filler", "polarity": "positive", "text": "um remove from quick list the build is green"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "punct", "polarity": "positive", "text": "Remove from quick list the build is green."}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "slot", "polarity": "positive", "text": "remove from favorites the build is green"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "synonym", "polarity": "positive", "text": "erase from favorites check the oven"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "determiner", "polarity": "positive", "text": "remove the from quick list the build is green"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "filler", "polarity": "positive", "text": "hey remove from quick list the build is green"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "punct", "polarity": "positive", "text": "Remove from favorites check the oven."}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "slot", "polarity": "positive", "text": "remove from favorites check the oven"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "synonym", "polarity": "positive", "text": "delete favorite check the oven"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "determiner", "polarity": "positive", "text": "remove the from favorites check the oven"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "filler", "polarity": "positive", "text": "i need you to remove from favorites check the oven"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "punct", "polarity": "positive", "text": "Remove, favorite call mom at five?"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "slot", "polarity": "positive", "text": "remove favorite check the oven"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "synonym", "polarity": "positive", "text": "delete from quick list water the plants"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "determiner", "polarity": "positive", "text": "remove the from quick list water the plants"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "filler", "polarity": "positive", "text": "okay remove favorite check the oven"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "punct", "polarity": "positive", "text": "Remove, favorite check the oven?"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "slot", "polarity": "positive", "text": "remove from quick list water the plants"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "synonym", "polarity": "positive", "text": "delete favorite call mom at five"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "filler", "polarity": "positive", "text": "remove from quick list the build is green now"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "punct", "polarity": "positive", "text": "Remove, from quick list water the plants?"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "synonym", "polarity": "positive", "text": "delete from quick list the build is green"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "filler", "polarity": "positive", "text": "can you remove from favorites check the oven"}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "punct", "polarity": "positive", "text": "Remove from quick list water the plants."}
+{"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "synonym", "polarity": "positive", "text": "erase favorite check the oven"}
+{"id": "favorites.remove_favorite", "kind": "sentence", "polarity": "negative", "reject": "favorites.remove_favorite", "text": "in the story the old captain decides to remove favorite check the oven as the storm arrives"}
+{"id": "favorites.remove_favorite", "kind": "other_command", "polarity": "negative", "reject": "favorites.remove_favorite", "text": "quick list"}
+{"id": "favorites.remove_favorite", "kind": "nonsense", "polarity": "negative", "reject": "favorites.remove_favorite", "text": "glimmer quartz favorite banana zeppelin"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "determiner", "polarity": "positive", "text": "rename the favorite buy milk"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "so rename favorite buy milk"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "punct", "polarity": "positive", "text": "Rename, favorite buy milk?"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "slot", "polarity": "positive", "text": "rename favorite buy milk"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "can you rename favorite buy milk"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "punct", "polarity": "positive", "text": "Rename favorite buy milk."}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "can you please rename favorite buy milk"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "could you rename favorite buy milk"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "hey rename favorite buy milk"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "uh rename favorite buy milk"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "rename favorite buy milk for me"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "rename favorite buy milk now"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "okay rename favorite buy milk"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "rename favorite buy milk thanks"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "um rename favorite buy milk"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "please rename favorite buy milk"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "would you please rename favorite buy milk"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "go ahead and rename favorite buy milk"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "rename favorite buy milk for me please"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "i need you to rename favorite buy milk"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "rename favorite buy milk please"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "could you just rename favorite buy milk"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "rename favorite buy milk right now"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "can you rename favorite buy milk please"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "Can you rename favorite buy milk please."}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "can you rename favorite buy milk for me"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "Can you rename favorite buy milk for me."}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "can you rename favorite buy milk now"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "Can you rename favorite buy milk now."}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "can you rename favorite buy milk thanks"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "Can you rename favorite buy milk thanks."}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "can you rename favorite buy milk right now"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "Can you rename favorite buy milk right now."}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "can you rename favorite buy milk for me please"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "Can you rename favorite buy milk for me please."}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "could you rename favorite buy milk please"}
+{"accept": ["favorites.rename_favorite"], "id": "favorites.rename_favorite", "kind": "filler", "polarity": "positive", "text": "Could you rename favorite buy milk please."}
+{"id": "favorites.rename_favorite", "kind": "sentence", "polarity": "negative", "reject": "favorites.rename_favorite", "text": "honestly the whole point of the meeting was to rename favorite buy milk and nobody did"}
+{"id": "favorites.rename_favorite", "kind": "other_command", "polarity": "negative", "reject": "favorites.rename_favorite", "text": "rename file"}
+{"id": "favorites.rename_favorite", "kind": "nonsense", "polarity": "negative", "reject": "favorites.rename_favorite", "text": "noodle banana favorite pickle zeppelin"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "alias", "polarity": "positive", "text": "show quick list"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "determiner", "polarity": "positive", "text": "quick the list call mom at five"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "filler", "polarity": "positive", "text": "i need you to quick list call mom at five"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "numeral", "polarity": "positive", "text": "list favorites call mom at 5"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "punct", "polarity": "positive", "text": "Quick list."}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "reorder", "polarity": "positive", "text": "favorites show"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "slot", "polarity": "positive", "text": "show quick list check the oven"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym", "polarity": "positive", "text": "display favorites buy milk"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym_unknown", "polarity": "positive", "text": "surface quick list"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "alias", "polarity": "positive", "text": "quick list"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "determiner", "polarity": "positive", "text": "show the quick list check the oven"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "filler", "polarity": "positive", "text": "please quick list call mom at five"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "numeral", "polarity": "positive", "text": "quick list call mom at 5"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "punct", "polarity": "positive", "text": "Quick, list?"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "reorder", "polarity": "positive", "text": "favorites list"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "slot", "polarity": "positive", "text": "list favorites call mom at five"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym", "polarity": "positive", "text": "pull up quick list"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym_unknown", "polarity": "positive", "text": "surface favorites"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "alias", "polarity": "positive", "text": "show favorites"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "determiner", "polarity": "positive", "text": "list the favorites call mom at five"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "filler", "polarity": "positive", "text": "could you just show favorites buy milk"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "punct", "polarity": "positive", "text": "Show favorites."}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "reorder", "polarity": "positive", "text": "list quick"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "slot", "polarity": "positive", "text": "quick list call mom at five"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym", "polarity": "positive", "text": "display favorites"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym_unknown", "polarity": "positive", "text": "surface quick list check the oven"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "alias", "polarity": "positive", "text": "list favorites"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "determiner", "polarity": "positive", "text": "show the quick list"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "filler", "polarity": "positive", "text": "go ahead and show quick list"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "punct", "polarity": "positive", "text": "Show quick list check the oven."}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "slot", "polarity": "positive", "text": "show favorites buy milk"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym", "polarity": "positive", "text": "display quick list check the oven"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym_unknown", "polarity": "positive", "text": "surface favorites buy milk"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "determiner", "polarity": "positive", "text": "list the favorites"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "filler", "polarity": "positive", "text": "can you list favorites"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "punct", "polarity": "positive", "text": "Quick list call mom at five."}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym", "polarity": "positive", "text": "pull up favorites buy milk"}
+{"id": "favorites.show_favorites", "kind": "sentence", "polarity": "negative", "reject": "favorites.show_favorites", "text": "during the lecture she explained how to list favorites without breaking anything"}
+{"id": "favorites.show_favorites", "kind": "other_command", "polarity": "negative", "reject": "favorites.show_favorites", "text": "show task list"}
+{"id": "favorites.show_favorites", "kind": "nonsense", "polarity": "negative", "reject": "favorites.show_favorites", "text": "quartz velvet favorites saxophone glimmer"}
 {"accept": ["feedback_level.feedback_brief"], "id": "feedback_level.feedback_brief", "kind": "alias", "polarity": "positive", "text": "feedback brief"}
 {"accept": ["feedback_level.feedback_brief"], "id": "feedback_level.feedback_brief", "kind": "determiner", "polarity": "positive", "text": "feedback the brief"}
 {"accept": ["feedback_level.feedback_brief"], "id": "feedback_level.feedback_brief", "kind": "filler", "polarity": "positive", "text": "hey feedback brief"}
@@ -23916,7 +24196,7 @@
 {"accept": ["tasks.add_to_list"], "id": "tasks.add_to_list", "kind": "filler", "polarity": "positive", "text": "add to list call mom at five now"}
 {"accept": ["tasks.add_to_list"], "id": "tasks.add_to_list", "kind": "mishear", "polarity": "positive", "text": "knew task"}
 {"id": "tasks.add_to_list", "kind": "sentence", "polarity": "negative", "reject": "tasks.add_to_list", "text": "honestly the whole point of the meeting was to add task and nobody did"}
-{"id": "tasks.add_to_list", "kind": "other_command", "polarity": "negative", "reject": "tasks.add_to_list", "text": "add that to the dictionary"}
+{"id": "tasks.add_to_list", "kind": "other_command", "polarity": "negative", "reject": "tasks.add_to_list", "text": "add to quick list"}
 {"id": "tasks.add_to_list", "kind": "nonsense", "polarity": "negative", "reject": "tasks.add_to_list", "text": "noodle cobalt task velvet thunderous"}
 {"accept": ["tasks.clear_completed"], "id": "tasks.clear_completed", "kind": "alias", "polarity": "positive", "text": "clear completed"}
 {"accept": ["tasks.clear_completed"], "id": "tasks.clear_completed", "kind": "determiner", "polarity": "positive", "text": "clear the completed"}
@@ -34836,7 +35116,7 @@
 {"accept": ["word.font_size"], "id": "word.font_size", "kind": "filler", "polarity": "positive", "text": "could you font size buy milk please"}
 {"accept": ["word.font_size"], "id": "word.font_size", "kind": "filler", "polarity": "positive", "text": "Could you font size buy milk please."}
 {"id": "word.font_size", "kind": "sentence", "polarity": "negative", "reject": "word.font_size", "text": "honestly the whole point of the meeting was to font size buy milk and nobody did"}
-{"id": "word.font_size", "kind": "other_command", "polarity": "negative", "reject": "word.font_size", "text": "set font check the oven"}
+{"id": "word.font_size", "kind": "other_command", "polarity": "negative", "reject": "word.font_size", "text": "favorites font size buy milk"}
 {"id": "word.font_size", "kind": "nonsense", "polarity": "negative", "reject": "word.font_size", "text": "zeppelin marmalade font saxophone sideways"}
 {"accept": ["word.font_smaller"], "id": "word.font_smaller", "kind": "alias", "polarity": "positive", "text": "font smaller"}
 {"accept": ["word.font_smaller"], "id": "word.font_smaller", "kind": "determiner", "polarity": "positive", "text": "font the smaller"}

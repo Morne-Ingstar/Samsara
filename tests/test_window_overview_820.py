@@ -142,7 +142,7 @@ def test_real_registry_routes_scoped_followups(overview, monkeypatch, phrase, nu
     invoke = Mock(return_value=True)
     monkeypatch.setattr(ws, 'overview_action', invoke)
     registry = _matcher()
-    context = MatchContext(tags=frozenset({'window_overview.visible', 'window_cube.visible'}))
+    context = MatchContext(tags=frozenset({'window_overview.visible', 'window_cube.visible', 'numbered_list.visible'}))
     entry, remainder = registry.match(phrase, context=context)
     assert entry.handler(app, remainder)
     assert invoke.call_args.args[:3] == (app, number, action)
@@ -156,7 +156,7 @@ def test_reviewed_number_examples_reach_overview_actions(overview, monkeypatch):
     invoke = Mock(return_value=True)
     monkeypatch.setattr(ws, 'overview_action', invoke)
     registry = _matcher()
-    context = MatchContext(tags=frozenset({'window_overview.visible', 'window_cube.visible'}))
+    context = MatchContext(tags=frozenset({'window_overview.visible', 'window_cube.visible', 'numbered_list.visible'}))
     words = {value: word for word, value in NUMBER_WORDS.items()}
     for number in range(1, 100):
         word = words.get(number) or words[number // 10 * 10] + ' ' + words[number % 10]
@@ -182,7 +182,7 @@ def test_followups_do_not_capture_numbers_when_hidden(overview):
 
 def test_new_number_commands_have_two_word_canonical_names(overview):
     registry = _matcher()
-    context = MatchContext(tags=frozenset({'window_overview.visible'}))
+    context = MatchContext(tags=frozenset({'window_overview.visible', 'numbered_list.visible'}))
     for text in ('12', 'twelve', 'window 12', 'window twelve'):
         entry, remainder = registry.match(text, context=context)
         assert entry.phrase == 'window twelve'

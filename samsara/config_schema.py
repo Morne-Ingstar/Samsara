@@ -64,6 +64,18 @@ def spoken_notices_for_level(level) -> str:
 
 
 SETTINGS_SCHEMA = {
+    "favorites.font_size": {
+        "type": "int", "min": 14, "max": 32, "default": 18, "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Favorites HUD A−/A+ controls and favorites font size voice command.",
+    },
+    "favorites.width": {
+        "type": "int", "min": 480, "max": 1600, "default": 760, "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Resizable Favorites HUD and favorites window size voice command.",
+    },
+    "favorites.height": {
+        "type": "int", "min": 320, "max": 1200, "default": 760, "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Resizable Favorites HUD and favorites window size voice command.",
+    },
     "plugins.personal_dir": {
         "type": "str", "default": "", "tab": "commands", "settings_ui": False,
         "ui_less_reason": "Optional external plugin folder; configured in the config file.",

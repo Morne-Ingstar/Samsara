@@ -553,7 +553,8 @@ class CommandMatcher:
         self._has_scoped = bool(scoped)
         self._needs_foreground = any(e.scope.needs_foreground for e in scoped)
         self._amount_entries = [e for e in self._sorted
-                                if getattr(e.handler, 'spoken_amount_prefixes', None)]
+                                if (getattr(e.handler, 'spoken_amount_prefixes', None)
+                                    or getattr(e.handler, 'spoken_argument_prefixes', None))]
 
         self._frozen = True
 
@@ -622,10 +623,11 @@ class CommandMatcher:
             # (queue 58 / 68). disabled_pack_for() / out_of_scope_for() say why.
             return None
 
-        # Amount syntax is validated before matching, rather than registering
-        # a bare alias (948: "back a minute" must not claim browser "back").
+        # Argument syntax is validated before matching, rather than registering
+        # a bare alias (948: "back a minute"; 958: "add <path> to favorites").
         for entry in self._amount_entries:
-            prefixes = getattr(entry.handler, 'spoken_amount_prefixes', {})
+            prefixes = (getattr(entry.handler, 'spoken_argument_prefixes', {})
+                        or getattr(entry.handler, 'spoken_amount_prefixes', {}))
             if not prefixes or not self._pack_enabled(entry.pack):
                 continue
             for prefix, parse_amount in prefixes.items():
@@ -634,7 +636,8 @@ class CommandMatcher:
                 if len(tokens) <= n or text_tokens[:n] != prefix_tokens:
                     continue
                 start = tokens[n - 1][2]
-                remainder = argument_text(text, start)
+                remainder = (text[start:].lstrip() if getattr(entry.handler, 'verbatim_argument', False)
+                             else argument_text(text, start))
                 if not self.is_live(entry, context, remainder):
                     continue
                 try:

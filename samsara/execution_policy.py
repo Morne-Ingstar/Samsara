@@ -549,7 +549,7 @@ def command_exists(command_id: str, *, executor=None, app=None) -> bool:
 # replaces the whole computed list; execution_policy.model_tool_extra adds.
 DEFAULT_MODEL_EXTRA_ALLOWLIST = frozenset({
     "close window", "close tab", "enter", "submit", "new line",
-    "permanent delete", "going dark",
+    "permanent delete", "going dark", "add favorite", "remove favorite", "rename favorite",
     "delete selection", "delete word", "delete next word", "delete line",
     "cut", "paste", "undo", "redo", "select all",
     "action2:close",
