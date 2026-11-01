@@ -96,14 +96,12 @@ def test_done_recap_keeps_incoming_width_and_truthful_states(
         tutorial._try_page.kept = kept
         tutorial.show()
         for width in (620, 1000):
-            tutorial._step = 4
-            tutorial._show_step()
+            tutorial._open_optional('display')  # 940: same incoming-width proof from optional Display.
             tutorial.resize(min(width, tutorial.maximumWidth()), tutorial.height())
             tutorial._fit_available_screen()
             _settle(qapp)
             incoming_width = tutorial.width()
-            tutorial._step = len(tutorial._steps) - 1
-            tutorial._show_step()
+            tutorial._return_to_done()  # 940: real optional-lesson return; recap checks stay intact.
             _settle(qapp)
             assert tutorial.width() == incoming_width
             assert area.contains(tutorial.frameGeometry())

@@ -92,8 +92,9 @@ def setup_window(qapp, monkeypatch, tmp_path, devices):
 
 @pytest.mark.parametrize("name", BLUETOOTH_NAMES)
 @pytest.mark.parametrize("refresh", [False, True], ids=["initial", "refresh"])
+@pytest.mark.parametrize("choose", [False, True], ids=["system-default", "explicit"])
 def test_setup_selects_and_continues_with_bluetooth(
-    devices, setup_window, monkeypatch, name, refresh,
+    devices, setup_window, monkeypatch, name, refresh, choose,
 ):
     win, open_stream = setup_window
     # Entered setup with no devices: both paths must recover the sole input.
@@ -106,16 +107,24 @@ def test_setup_selects_and_continues_with_bluetooth(
         wizard.force_rescan.assert_called_once_with()
     else:
         win._load_mics()
-    assert win._mic_combo.currentText() == name
+    assert win._mic_combo.currentText() == "System default"
     assert win._get_current_mic_id() == 0
     open_stream.assert_called_once()
     assert open_stream.call_args.kwargs["device"] == 0
     open_stream.return_value.start.assert_called_once_with()
+    if choose:
+        win._mic_combo.setCurrentText(name)
+        assert win._get_current_mic_id() == 0
+        assert open_stream.call_count == 2
+        open_stream.return_value.stop.assert_called_once_with()
+        open_stream.return_value.close.assert_called_once_with()
+        open_stream.return_value.reset_mock()
     assert win._mic_capture_ready
     assert win._next_btn.isEnabled()
     win._next_btn.click()
-    assert wizard._STEPS[win._step][0] == "Components"
-    assert win._config["microphone"] == 0
+    assert wizard._STEPS[win._step][0] == "Recognition"
+    assert win._config["microphone"] == (0 if choose else None)
+    assert win._config["microphone_name"] == (name if choose else "System default")
     open_stream.return_value.stop.assert_called_once_with()
     open_stream.return_value.close.assert_called_once_with()
 
@@ -125,7 +134,7 @@ def test_bluetooth_still_needs_a_stream_that_opens(devices, setup_window):
     devices.append(_input(BLUETOOTH_NAMES[0]))
     open_stream.side_effect = RuntimeError("synthetic stream open failure")
     win._load_mics()
-    assert win._mic_combo.currentText() == BLUETOOTH_NAMES[0]
+    assert win._mic_combo.currentText() == "System default"
     open_stream.assert_called_once()
     assert not win._mic_capture_ready
     assert not win._next_btn.isEnabled()

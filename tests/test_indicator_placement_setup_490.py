@@ -125,23 +125,18 @@ def test_tutorial_uses_settings_apply_and_full_controller(windows):
 def test_leaving_page_and_closing_stops_demo(windows, qapp, tmp_path, kind):
     win = wizard._WizardWindow(tmp_path/'new.json') if kind == 'setup' else tutorial_qt.TutorialWindow(SimpleNamespace(config={}))
     windows.append(win)
-    if kind == 'setup':
-        index = next(i for i, step in enumerate(wizard._STEPS) if step[0] == 'Position')
-        page = win._display_placement_page
-    else:
-        index = next(i for i, step in enumerate(win._steps) if step[0] == 'display')
-        page = win._display_page
-    win._step = index
+    # 940: both retained demonstrations are now entered through optional identities.
+    enter = (lambda: win._show_optional('Position')) if kind == 'setup' else (lambda: win._open_optional('display'))
+    leave = win._return_to_ready if kind == 'setup' else win._return_to_done
+    page = win._display_placement_page if kind == 'setup' else win._display_page
     win.show()
-    win._show_step()
+    enter()
     qapp.processEvents()
     if page.picker.timer is not None:
         assert page.picker.timer.isActive()
-    win._step = index + 1
-    win._show_step()
+    leave()  # 940: real optional return must stop the demo.
     assert page.picker.timer is None or not page.picker.timer.isActive()
-    win._step = index
-    win._show_step()
+    enter()
     win.close()
     assert page.picker.timer is None or not page.picker.timer.isActive()
 
@@ -153,9 +148,9 @@ def test_tutorial_page_fits_default_and_order(windows, qapp, monkeypatch, with_t
     original = tutorial_qt.TutorialWindow._build_step_list
     def steps(self):
         original(self)
-        self._steps = [step for step in self._steps if step[0] != 'try']
-        if with_try:
-            self._steps.insert(-1, ('try', 'Try'))
+        # 940: simulate optional Try availability without inserting it into core progress.
+        if not with_try:
+            self._optional_steps.pop('try')
     monkeypatch.setattr(tutorial_qt.TutorialWindow, '_build_step_list', steps)
     builder = tutorial_qt.TutorialWindow._build_page
     from PySide6.QtWidgets import QWidget
@@ -163,11 +158,11 @@ def test_tutorial_page_fits_default_and_order(windows, qapp, monkeypatch, with_t
     win = tutorial_qt.TutorialWindow(SimpleNamespace(config={}))
     windows.append(win)
     keys = [key for key, _ in win._steps]
-    assert keys[keys.index('ways')+1] == 'display'
-    assert keys.index('display') < keys.index('done')
-    win._step = keys.index('display')
+    # 940: core order and optional display identity replace the obsolete seven-page order.
+    assert keys == ['welcome', 'dictation', 'command', 'done']
+    assert list(win._optional_steps) == (['ways', 'display', 'try'] if with_try else ['ways', 'display'])
     win.show()
-    win._show_step()
+    win._open_optional('display')
     qapp.processEvents()
     assert win.height() <= win._default_window_height
     assert win._display_page.minimumSizeHint().height() <= win._display_page.height()
@@ -183,12 +178,11 @@ def test_setup_page_fits_default(windows, qapp, tmp_path, monkeypatch, reduced):
     win = wizard._WizardWindow(tmp_path/'new.json')
     windows.append(win)
     default = win.height()
-    win._step = next(i for i, step in enumerate(wizard._STEPS) if step[0] == 'Position')
     win.show()
-    win._show_step()
+    win._show_optional('Position')  # 940: retained optional setup placement controls.
     qapp.processEvents()
     assert win.height() == default
-    page = win._pages[win._step]
+    page = win._page_by_name['Position']  # 940: optional identity, same layout assertions.
     assert page.widget().minimumSizeHint().height() <= page.viewport().height()
     assert page.verticalScrollBar().maximum() == 0
     assert win._display_placement_page.picker.focusProxy() is win._display_placement_page.picker.targets['bottom-left']

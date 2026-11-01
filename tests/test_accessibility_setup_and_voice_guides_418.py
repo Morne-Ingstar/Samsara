@@ -100,10 +100,11 @@ def test_every_fixed_row_has_effective_name_and_native_role(guides, row, owner, 
     assert name in visible_words, row
 
 
-@pytest.mark.parametrize("page,selector", [(3, "_model_group")])
+@pytest.mark.parametrize("page,selector", [("Recognition", "_model_group")])
 def test_choice_group_tab_arrows_activation_and_checked_state(guides, qapp, page, selector):
     window = guides["first"]
-    window._step = page
+    from samsara.ui.first_run_wizard_qt import _STEPS
+    window._step = next(i for i, (name, _) in enumerate(_STEPS) if name == page)
     window._show_step()
     window.show()
     window.activateWindow()

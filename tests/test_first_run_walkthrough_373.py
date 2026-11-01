@@ -21,6 +21,9 @@ from samsara.ui import network_voice_notice
 def make_window(qapp, tmp_path, monkeypatch):
     monkeypatch.setattr(wizard.thread_registry, 'spawn', lambda *a, **k: None)
     monkeypatch.setattr(pages, 'cuda_chosen', lambda _: False)
+    # 935: preserve 919's real calibration separately; choice tests use no audio.
+    monkeypatch.setattr(wizard._WizardWindow, '_calibrate_wake',
+                        lambda self: setattr(self, '_wake_calibration_offered', True))
     monkeypatch.setattr(QLocale, 'system', lambda: QLocale('en_US'))
     monkeypatch.setattr(pages.autostart, 'sync_run_entry', Mock())
     monkeypatch.setattr(network_voice_notice, 'request_acceptance', lambda _: False)
@@ -31,17 +34,18 @@ def make_window(qapp, tmp_path, monkeypatch):
     monkeypatch.setattr(wizard._WizardWindow, '_start_meter', meter)
     windows = []
 
-    def make(existing=None):
-        path = tmp_path / f'config_{len(windows)}.json'
+    def make(existing=None, *, config_path=None):
+        path = config_path or tmp_path / f'config_{len(windows)}.json'
         if existing is not None:
             path.write_text(json.dumps(existing), encoding='utf-8')
         window = wizard._WizardWindow(path)
         windows.append(window)
+        window._wake_calibration_offered = True
         window._mics = [{'id': 7, 'name': 'Synthetic microphone'},
                         {'id': 8, 'name': 'Second synthetic microphone'}]
         window._mic_result.emit('_load_done_', '')
-        if window._config['microphone'] is None:
-            window._config['microphone'] = 7
+        wizard.mic_selection.collect_choice(window)
+        window._mic_validated = True  # Synthetic meter above accepts this setup input.
         window._decisions.receive_facts({'cpu_cores': 8, 'ram_gb': 16, 'gpu_usable': False})
         window.resize(1000, 800)
         window.show()
@@ -58,8 +62,13 @@ def make_window(qapp, tmp_path, monkeypatch):
 
 
 def visit(window, name):
-    window._step = [name for name, _ in wizard._STEPS].index(name)
-    window._show_step()
+    # 935: optional pages are reached from Ready, outside mandatory progress.
+    if name in dict(wizard._OPTIONAL_STEPS):
+        window._show_optional(name)
+    else:
+        window._optional_step = None
+        window._step = [name for name, _ in wizard._STEPS].index(name)
+        window._show_step()
 
 
 def choose(group, value):
@@ -77,8 +86,9 @@ def finish(window):
 
 def test_steps_preserve_listening_display_and_remove_use_case():
     assert [name for name, _ in wizard._STEPS] == [
-        'Welcome', 'Microphone', 'Components', 'Recognition', 'Talking',
-        'Music', 'Voice', 'Listening display', 'Position', 'Complete']
+        'Welcome', 'Microphone', 'Recognition', 'Talking', 'Complete']  # 935
+    assert [name for name, _ in wizard._OPTIONAL_STEPS] == [
+        'Components', 'Music', 'Voice', 'Listening display', 'Position']
     assert not hasattr(wizard, '_USE_CASE_CONFIGS')
 
 
@@ -131,7 +141,7 @@ def test_rerun_preselects_and_preserves_nested_answers(make_window):
         'launch_at_login': True, 'continuous_hotkey': 'f9', 'wake_word_hotkey': 'f10', 'command_hotkey': 'f11'}
     window = make_window(existing)
     d = window._decisions
-    assert not d.reason.isVisibleTo(window._pages[3])
+    assert not d.reason.isVisibleTo(window._page_by_name['Recognition'])
     assert d.language.currentData() == 'auto'
     assert d.selected(d.mode) == 'toggle'
     assert d.hands_free.combo == 'mouse5'
@@ -316,12 +326,14 @@ def test_back_next_keeps_answer(make_window, name):
     window = make_window({'model_size': 'small', 'language': 'fr', 'mode': 'toggle',
         'wake_word_enabled': True, 'ducking': {'recording_mode': 'pause'},
         'tts': {'feedback_level': 'full'}})
-    while wizard._STEPS[window._step][0] != name:
-        window._go_next()
+    visit(window, name)  # 935: mandatory or optional identity, no numeric loop
     window._collect_step()
     before = deepcopy(window._config)
     window._go_back()
-    window._go_next()
+    if name in dict(wizard._OPTIONAL_STEPS):
+        window._show_optional(name)  # 935: return from Ready to optional choice
+    else:
+        window._go_next()
     window._collect_step()
     assert window._config == before
 
@@ -334,7 +346,7 @@ def test_keyboard_arrows_and_enter_advance(make_window, qapp):
     QTest.keyClick(buttons[0], Qt.Key.Key_Down)
     assert buttons[1].isChecked()
     QTest.keyClick(buttons[1], Qt.Key.Key_Return)
-    assert wizard._STEPS[window._step][0] == 'Music'
+    assert wizard._STEPS[window._step][0] == 'Complete'  # 935: five-step route
 
 
 @pytest.mark.parametrize('existing', [{}, {'mode': 'continuous', 'model_size': 'medium'}])
@@ -405,7 +417,7 @@ def test_circle_strip_gaps_and_narrow_label_fallback(make_window, qapp, scale):
         qapp.processEvents()
     strip = window._step_indicator
     assert strip.variant == 'A'
-    assert strip.count() == 10
+    assert strip.count() == 5  # 935: shorter mandatory route
     assert strip.horizontalScrollBar().maximum() == 0
     assert strip.verticalScrollBar().maximum() == 0
     metrics = QFontMetrics(theme.qfont(round(theme.TYPE_MIN * scale)))
@@ -566,7 +578,7 @@ def test_music_labels_match_settings_and_schema():
         assert f"'{value}': '{title}'" in source
 
 
-@pytest.mark.parametrize('name', [name for name, _ in wizard._STEPS])
+@pytest.mark.parametrize('name', [name for name, _ in wizard._STEPS + wizard._OPTIONAL_STEPS])  # 935: retain every existing layout case
 def test_labels_fit_at_150_percent(make_window, qapp, monkeypatch, name):
     from types import SimpleNamespace
     from PySide6.QtCore import QRect
@@ -690,3 +702,208 @@ def test_question_rows_have_equal_hairline_gaps(make_window, qapp, name, wake_on
                 assert gap == theme.SPACE_1
     if not wake_on:
         assert not window._decisions.phrase.parentWidget().isVisibleTo(window)
+
+# 935: acceptance checks for the reduced mandatory route and deferred choices.
+def test_short_route_never_collects_optional_decisions(make_window, monkeypatch):
+    window = make_window()
+    calls = []
+    collect = window._decisions.collect
+    monkeypatch.setattr(window._decisions, 'collect', lambda name: (calls.append(name), collect(name)))
+    result = finish(window)
+    assert result['first_run_complete'] is True
+    assert set(calls) <= {'Recognition', 'Talking'}
+    assert result['tts']['engine'] == 'winrt'
+    assert result['tts']['network_voice_accepted'] is False
+    assert result['ducking']['recording_mode'] == config_defaults.cfg_get({}, 'ducking.recording_mode')
+    assert result['ui']['listening_display'] == 'full'
+
+
+def test_skipped_voice_cannot_enable_unaccepted_network(make_window):
+    window = make_window({'tts': {'engine': 'edge', 'network_voice_accepted': False}})
+    result = finish(window)
+    assert result['tts']['engine'] == 'winrt'
+    assert result['tts']['network_voice_accepted'] is False
+
+
+@pytest.mark.parametrize('display', ['compact', 'full'])
+def test_short_route_preserves_saved_optional_choices(make_window, display):
+    saved = {'ui': {'listening_display': display, 'live_surface': {'show_idle_mark': False}},
+             'tts': {'engine': 'edge', 'network_voice_accepted': True, 'feedback_level': 'full', 'enabled': True},
+             'ducking': {'recording_mode': 'off', 'enabled': True}}
+    window = make_window(saved)
+    result = finish(window)
+    for key in saved:
+        assert result[key] == saved[key]
+
+
+def test_optional_choices_return_to_ready_without_completing(make_window):
+    window = make_window()
+    visit(window, 'Complete')
+    window._show_optional('Voice')
+    choose(window._decisions.level, 'silent')
+    window._go_next()
+    assert window._step_name == 'Complete'
+    assert len(window._pages) == 5
+    assert window.result is None
+    assert window._config['tts']['feedback_level'] == 'silent'
+
+
+def test_cancel_does_not_write_or_complete_and_reopen_keeps_saved_choices(make_window):
+    saved = {'first_run_complete': False, 'hotkey': 'f8', 'tts': {'engine': 'winrt'}}
+    window = make_window(saved)
+    path = Path(window.config_path)
+    original = path.read_bytes()
+    visit(window, 'Talking')
+    choose(window._decisions.mode, 'toggle')
+    window.close()
+    assert window.result is None
+    assert path.read_bytes() == original
+    reopened = make_window(saved)
+    assert reopened._step_name == 'Welcome'
+    assert reopened._config['hotkey'] == 'f8'
+    assert reopened._config['first_run_complete'] is False
+
+
+@pytest.mark.parametrize(('display', 'show_idle'), [
+    (None, True), ('full', True), ('full', False),
+    ('compact', True), ('compact', False),
+])
+def test_cancel_first_launch_reopen_finish_matches_ready_display(
+        make_window, tmp_path, display, show_idle):
+    # 935 FINISH IT 1: a cancelled startup seed is not a saved display choice.
+    from samsara.config_seed import build_default_config, incomplete_setup_config
+    from samsara.listening_display import display_choice
+
+    first = make_window()
+    path = Path(first.config_path)
+    first.close()
+    assert first.result is None
+    assert not path.exists()
+
+    # Model the caller's post-cancel save using the real seed, without bootstrap.
+    saved = incomplete_setup_config(build_default_config(
+        home=tmp_path, macro_defaults={}, notification_defaults={}))
+    assert 'listening_display' not in saved.get('ui', {})
+    assert saved['listening_indicator_enabled'] is False
+    if display is not None:
+        saved['ui'] = {'listening_display': display,
+                       'live_surface': {'show_idle_mark': show_idle}}
+    path.write_text(json.dumps(saved), encoding='utf-8')
+    before = path.read_bytes()
+    reopened = make_window(config_path=path)
+    assert reopened._config['first_run_complete'] is False
+    for _ in range(len(wizard._STEPS) - 1):
+        reopened._go_next()
+    assert reopened._step_name == 'Complete'
+    expected = display or 'full'
+    assert f'Listening display: {expected.title()}' in [
+        label.text() for label in reopened._summary_labels]
+    assert path.read_bytes() == before
+
+    result = finish(reopened)
+    assert result['first_run_complete'] is True
+    assert display_choice(result).value == expected
+    assert display_choice(result).show_idle is show_idle
+    if display is not None:
+        assert result['ui'] == saved['ui']
+    # The caller persists the returned successful result, not an intermediate page.
+    path.write_text(json.dumps(result), encoding='utf-8')
+    assert display_choice(json.loads(path.read_text(encoding='utf-8'))) == display_choice(result)
+
+
+def test_missing_microphone_cannot_advance_and_refresh_remains_available(make_window, monkeypatch):
+    window = make_window()
+    monkeypatch.setattr(window, '_start_meter', lambda: None)
+    window._mics = []
+    window._config['microphone'] = None
+    window._mic_result.emit('_refresh_done_', '')
+    visit(window, 'Microphone')
+    window._mic_capture_ready = False
+    window._go_next()
+    assert window._step_name == 'Microphone'
+    assert window.result is None
+    assert not window._next_btn.isEnabled()
+    assert any(button.text() == 'Refresh' and button.isEnabled()
+               for button in window._current_page.findChildren(pages.QPushButton))
+    window._mics = [{'id': 7, 'name': 'Synthetic microphone'}]
+    window._mic_result.emit('_refresh_done_', '')
+    window._mic_capture_ready = True
+    window._go_next()
+    assert window._step_name == 'Recognition'
+
+
+def test_readiness_never_claims_missing_model_is_ready(make_window):
+    from types import SimpleNamespace
+    window = make_window()
+    d = window._decisions
+    assert 'after setup' in d.readiness.text()
+    for phase, expected in [('downloading', 'downloading'), ('loading', 'Loading'), ('failed', 'restart')]:
+        window._samsara_app = SimpleNamespace(model_loaded=False, _speech_model_phase=phase)
+        d.refresh_readiness()
+        assert expected in d.readiness.text()
+        visit(window, 'Recognition')
+        window._go_next()
+        assert window._step_name == 'Talking'
+
+
+def test_wake_calibration_still_precedes_ready(make_window, monkeypatch, qapp):
+    from PySide6.QtCore import QObject, Signal
+    class Guide(QObject):
+        finished = Signal(object)
+    window = make_window()
+    guide = Guide()
+    offered = []
+    def calibrate():
+        offered.append(True)
+        window._wake_calibration_offered = True
+        return guide
+    monkeypatch.setattr(window, '_calibrate_wake', calibrate)
+    window._wake_calibration_offered = False
+    visit(window, 'Talking')
+    window._decisions.wake.buttons()[0].setChecked(True)
+    window._go_next()
+    assert offered == [True]
+    assert window._step_name == 'Talking'
+    assert window._config['wake_word_config']['phrase'] == 'jarvis'
+    guide.finished.emit(False)
+    assert window._step_name == 'Complete'
+    from samsara.wake_setup import calibration_needed
+    assert calibration_needed(window._config)  # skipping retains Home's pending reminder
+
+
+def test_guide_handoff_waits_for_startup_and_does_not_run_on_cancel(make_window, qapp):
+    from threading import Event
+    from types import SimpleNamespace
+    calls = []
+    app = SimpleNamespace(_startup_shell_ready=Event(), open_mic_setup_guide=lambda: calls.append('mic'))
+    window = make_window()
+    window._samsara_app = app
+    visit(window, 'Complete')
+    window._decisions.finish_to_destination('guide', 'open_mic_setup_guide')
+    timer = app._setup_destination_timer
+    timer.timeout.emit()
+    assert calls == []
+    assert window.result['first_run_complete'] is True
+    app._startup_shell_ready.set()
+    timer.timeout.emit()
+    assert calls == ['mic']
+    assert app._setup_destination_timer is None
+    cancelled = make_window()
+    cancelled._samsara_app = app
+    cancelled.close()
+    assert calls == ['mic']
+
+@pytest.mark.parametrize('name', ['Talking', 'Voice'])
+def test_935_painted_choices_fit_at_200_percent(make_window, qapp, name):
+    from tools.wizard_screenshots import scale_walkthrough_text
+    window = make_window()
+    visit(window, name)
+    scale_walkthrough_text(window, 2.0)
+    for _ in range(4):
+        qapp.processEvents()
+    for segments in window._current_page.findChildren(pages.SetupSegmentedChoice):
+        for button in segments.buttons:
+            _, _, text = segments.paint_rects(button)
+            assert text.width() >= button.fontMetrics().horizontalAdvance(button.text())
+            assert text.height() >= button.fontMetrics().height()
+    assert window._current_page.horizontalScrollBar().maximum() == 0

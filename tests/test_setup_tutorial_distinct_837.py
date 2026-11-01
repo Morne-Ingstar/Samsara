@@ -40,11 +40,13 @@ def test_titles_and_flow_labels_differ(windows):
     assert first.windowTitle() == first._title_lbl.text() == 'Set up Samsara'
     assert learn.windowTitle() == learn._title_lbl.text() == 'Learn Samsara'
     assert first._step_lbl.text().endswith('\nSetup')
-    assert learn._step_lbl.text() == 'Step 1 of 7'
+    assert learn._step_lbl.text() == 'Step 1 of 4'  # 940: four core tutorial pages.
     assert learn._step_indicator.variant == 'C'
     assert first._step_indicator.variant == 'A'
-    assert learn._step_indicator.steps[4] == 'Show'
-    assert first._step_indicator.count() == 10
+    # 940: saved-display demonstration is retained outside the progress strip.
+    assert learn._step_indicator.steps == ['Welcome', 'Dictation', 'Command', 'Done']
+    assert 'display' in learn._optional_steps
+    assert first._step_indicator.count() == 5  # 935/940: shorter setup, independent tutorial.
 
 
 @pytest.mark.parametrize('display', ['full', 'compact'])
@@ -55,8 +57,7 @@ def test_show_uses_saved_display_and_position_without_chooser(windows, display, 
     config.update(placement_updates(config, position))
     before = deepcopy(config)
     win = windows('tutorial', SimpleNamespace(config=config))
-    win._step = next(i for i, (key, _) in enumerate(win._steps) if key == 'display')
-    win._show_step()
+    win._open_optional('display')  # 940: retained read-only display lesson.
     page = win._current_page
     assert not page.findChildren(IndicatorPlacePicker)
     assert not page.findChildren(QRadioButton)
@@ -97,7 +98,7 @@ def test_complete_action_hands_off_after_finish_and_home_still_opens_welcome(win
         tutorial.show_tutorial(app)
         assert opened[-1]._step == 1
         assert opened[-1]._steps[1][0] == 'dictation'
-        assert opened[-1]._step_lbl.text().startswith('Step 2 of 7')
+        assert opened[-1]._step_lbl.text().startswith('Step 2 of 4')  # 940: same Dictation handoff.
         assert app._tutorial_window is opened[-1]
         tutorial.show_tutorial(app)
         assert opened[-1]._step == 0

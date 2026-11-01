@@ -51,6 +51,8 @@ def setup(qapp, monkeypatch, profile):
     monkeypatch.setattr(wizard.thread_registry, 'spawn', lambda *a, **k: None)
     monkeypatch.setattr(wizard, 'register_notifications', lambda *a, **k: None)
     monkeypatch.setattr(wizard, 'capture_endpoints', lambda: ())
+    import sounddevice as sd
+    monkeypatch.setattr(sd, 'query_devices', lambda *a, **k: {'name': 'Synthetic USB microphone'})
     monkeypatch.setattr(pages, 'cuda_chosen', lambda _: False)
     monkeypatch.setattr(pages.autostart, 'sync_run_entry', Mock())
     monkeypatch.setattr(wizard._WizardWindow, '_open_meter_stream', lambda *a:

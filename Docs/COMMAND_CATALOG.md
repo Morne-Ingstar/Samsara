@@ -421,21 +421,21 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | examples | before you say it | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|---|---|
-| `cockpit.approve_cockpit_memo_batch` | `approve cockpit memo batch` | proposal_id:text*, proposal_hash:text*, request_id:text*, source_hash:text*, context_hash:text*, generation:int* | - | - | destructive | no |  | Registry identity for bound policy only. | `plugins/commands/cockpit.py:207` |
-| `cockpit.choose_cockpit_target` | `choose cockpit target` | remainder:text* | - | - | write | no |  | PLACEHOLDER: choose cockpit target item two candidate one. | `plugins/commands/cockpit.py:181` |
-| `cockpit.cockpit_today` | `cockpit today`, `read cockpit today`, `what should i do in cockpit` | remainder:text | - | - | read | yes |  | cockpit today | `plugins/commands/cockpit.py:268` |
-| `cockpit.complete_cockpit_item` | `complete cockpit item` | remainder:text* | - | - | write | no |  | complete cockpit item | `plugins/commands/cockpit.py:347` |
-| `cockpit.move_cockpit_item` | `move cockpit item` | remainder:text* | - | - | write | no |  | move cockpit item | `plugins/commands/cockpit.py:328` |
-| `cockpit.preview_cockpit_memos` | `preview cockpit memos`, `turn my last memo into a cockpit update`, `use memos for cockpit` | remainder:text | - | - | read | yes |  | preview cockpit memos | `plugins/commands/cockpit.py:102` |
-| `cockpit.read_next_cockpit_changes` | `read next cockpit changes` | remainder:text | - | - | read | yes |  | read next cockpit changes | `plugins/commands/cockpit.py:120` |
-| `cockpit.recover_cockpit_batch` | `recover cockpit batch` | remainder:text | - | - | read | yes |  | recover cockpit batch | `plugins/commands/cockpit.py:148` |
-| `cockpit.review_cockpit_batch` | `review cockpit batch` | remainder:text | - | - | write | no |  | review cockpit batch | `plugins/commands/cockpit.py:134` |
-| `cockpit.set_cockpit_deadline` | `set cockpit deadline` | remainder:text* | - | - | write | no |  | set cockpit deadline | `plugins/commands/cockpit.py:338` |
-| `cockpit.set_cockpit_priority` | `set cockpit priority` | remainder:text* | - | - | write | no |  | set cockpit priority | `plugins/commands/cockpit.py:353` |
-| `cockpit.skip_cockpit_item` | `skip cockpit item` | remainder:text* | - | - | write | no |  | skip cockpit item | `plugins/commands/cockpit.py:163` |
-| `cockpit.undo_cockpit_update` | `undo cockpit update` | remainder:text | - | - | write | yes |  | undo cockpit update | `plugins/commands/cockpit.py:362` |
-| `cockpit.use_todays_memos_for_cockpit` | `use todays memos for cockpit` | remainder:text | - | - | read | yes |  | use todays memos for cockpit | `plugins/commands/cockpit.py:114` |
-| `cockpit.why_cockpit_item` | `what about cockpit item`, `why cockpit item` | remainder:text | - | - | read | yes |  | why cockpit item | `plugins/commands/cockpit.py:275` |
+| `cockpit.approve_cockpit_memo_batch` | `approve cockpit memo batch` | proposal_id:text*, proposal_hash:text*, request_id:text*, source_hash:text*, context_hash:text*, generation:int* | - | Bound approval policy identity; this is not a spoken command. | destructive | no |  | Registry identity for bound policy only. | `plugins/commands/cockpit.py:207` |
+| `cockpit.choose_cockpit_target` | `choose cockpit target` | remainder:text* | `choose cockpit target item two candidate one` | Create a memo preview with a second item and a matching first target candidate; refreshes the preview without applying changes. | write | no |  | PLACEHOLDER: choose cockpit target item two candidate one. | `plugins/commands/cockpit.py:181` |
+| `cockpit.cockpit_today` | `cockpit today`, `read cockpit today`, `what should i do in cockpit` | remainder:text | `cockpit today` | Connect Cockpit first; reads its current briefing. | read | yes |  | cockpit today | `plugins/commands/cockpit.py:268` |
+| `cockpit.complete_cockpit_item` | `complete cockpit item` | remainder:text* | `complete cockpit item sample task` | Requires a writable Cockpit task with that exact title; previews completion for approval. | write | no |  | complete cockpit item | `plugins/commands/cockpit.py:347` |
+| `cockpit.move_cockpit_item` | `move cockpit item` | remainder:text* | `move cockpit item sample task to tomorrow` | Requires a writable Cockpit task or event with that exact title; previews a change for approval. | write | no |  | move cockpit item | `plugins/commands/cockpit.py:328` |
+| `cockpit.preview_cockpit_memos` | `preview cockpit memos`, `turn my last memo into a cockpit update`, `use memos for cockpit` | remainder:text | `preview cockpit memos last three` | Requires saved memos and an enabled, qualified extraction backend. Preview applies no changes. | read | yes |  | preview cockpit memos | `plugins/commands/cockpit.py:102` |
+| `cockpit.read_next_cockpit_changes` | `read next cockpit changes` | remainder:text | `read next cockpit changes` | Create a memo preview first; reads its next three proposed changes. | read | yes |  | read next cockpit changes | `plugins/commands/cockpit.py:120` |
+| `cockpit.recover_cockpit_batch` | `recover cockpit batch` | remainder:text | `recover cockpit batch` | Requires a batch request from this session; checks its receipt without submitting another batch. | read | yes |  | recover cockpit batch | `plugins/commands/cockpit.py:148` |
+| `cockpit.review_cockpit_batch` | `review cockpit batch` | remainder:text | `review cockpit batch` | Create a memo preview first; review and confirm the bound approval before changes are applied. | write | no |  | review cockpit batch | `plugins/commands/cockpit.py:134` |
+| `cockpit.set_cockpit_deadline` | `set cockpit deadline` | remainder:text* | `set cockpit deadline sample task to tomorrow` | Requires a writable Cockpit task with that exact title; previews a deadline change for approval. | write | no |  | set cockpit deadline | `plugins/commands/cockpit.py:338` |
+| `cockpit.set_cockpit_priority` | `set cockpit priority` | remainder:text* | `set cockpit priority sample task to high` | Requires a writable Cockpit task with that exact title; previews a priority change for approval. | write | no |  | set cockpit priority | `plugins/commands/cockpit.py:353` |
+| `cockpit.skip_cockpit_item` | `skip cockpit item` | remainder:text* | `skip cockpit item two` | Create a memo preview with at least two items first; refreshes the preview without applying changes. | write | no |  | skip cockpit item | `plugins/commands/cockpit.py:163` |
+| `cockpit.undo_cockpit_update` | `undo cockpit update` | remainder:text | `undo cockpit update` | Requires an applied Cockpit receipt from this session; previews its undo for approval. | write | yes |  | undo cockpit update | `plugins/commands/cockpit.py:362` |
+| `cockpit.use_todays_memos_for_cockpit` | `use todays memos for cockpit` | remainder:text | `use today's memos for cockpit` | Requires saved memos and an enabled, qualified extraction backend. Preview applies no changes. | read | yes |  | use todays memos for cockpit | `plugins/commands/cockpit.py:114` |
+| `cockpit.why_cockpit_item` | `what about cockpit item`, `why cockpit item` | remainder:text | `why cockpit item` | Read a Cockpit briefing first; explains its recommended item. You can also name an exact title or namespaced ID. | read | yes |  | why cockpit item | `plugins/commands/cockpit.py:275` |
 
 ## comfy (7)
 
@@ -477,7 +477,7 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | examples | before you say it | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|---|---|
-| `digest_reply.digest_that` | `digest that`, `digest the reply`, `summarize that reply` | remainder:text | - | - | ui | yes |  | Reads a short summary of your last CLI agent reply; say again, longer for more. | `plugins/commands/digest_reply.py:64` |
+| `digest_reply.digest_that` | `digest that`, `digest the reply`, `summarize that reply` | remainder:text | `digest that`<br>`digest that longer` | Get a reply from a CLI agent first; summarizes that reply. Uses the agent connection with a local fallback. | ui | yes |  | Reads a short summary of your last CLI agent reply; say again, longer for more. | `plugins/commands/digest_reply.py:64` |
 
 ## example_greet (1)
 
@@ -489,13 +489,13 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | examples | before you say it | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|---|---|
-| `favorites.add_favorite` | `add favorite`, `add this to favorites`, `add this to quick list`, `add to favorites`, `add to quick list` | remainder:text | - | - | write | yes |  | Adds a full path or website; an empty argument or 'this' reads focused Explorer/browser. | `plugins/commands/favorites.py:184` |
-| `favorites.favorites_font_size` | `favorites font size`, `quick list font size` | remainder:text* | - | - | ui | yes |  | Sets favorites text size from 14 to 32 pixels, including while the list is closed. | `plugins/commands/favorites.py:263` |
-| `favorites.favorites_window_size` | `favorites window size`, `quick list window size` | remainder:text* | - | - | ui | yes |  | Sets favorites width by height in pixels, for example 900 by 700. | `plugins/commands/favorites.py:276` |
-| `favorites.hide_favorites` | `close favorites`, `close quick list`, `hide favorites`, `hide quick list` | remainder:text | - | - | ui | yes |  | Closes the quick list. | `plugins/commands/favorites.py:94` |
-| `favorites.remove_favorite` | `remove favorite`, `remove from favorites`, `remove from quick list` | remainder:text* | - | - | write | no |  | Removes a numbered favorite, leaving the actual file or website untouched. | `plugins/commands/favorites.py:214` |
-| `favorites.rename_favorite` | `rename favorite` | remainder:text* | - | - | write | no |  | Renames a favorite: rename favorite 2 to Project notes. | `plugins/commands/favorites.py:247` |
-| `favorites.show_favorites` | `list favorites`, `quick list`, `show favorites`, `show quick list` | remainder:text | - | - | ui | yes |  | Shows numbered files, folders, shortcuts and websites. | `plugins/commands/favorites.py:72` |
+| `favorites.add_favorite` | `add favorite`, `add this to favorites`, `add this to quick list`, `add to favorites`, `add to quick list` | remainder:text | `add favorite https://example.com` | Adds the website to your profile-local favorites list. | write | yes |  | Adds a full path or website; an empty argument or 'this' reads focused Explorer/browser. | `plugins/commands/favorites.py:184` |
+| `favorites.favorites_font_size` | `favorites font size`, `quick list font size` | remainder:text* | `favorites font size 18` | Changes the favorites list font size; the list keeps this setting. | ui | yes |  | Sets favorites text size from 14 to 32 pixels, including while the list is closed. | `plugins/commands/favorites.py:263` |
+| `favorites.favorites_window_size` | `favorites window size`, `quick list window size` | remainder:text* | `favorites window size 640 by 480` | Changes the favorites list window size; the list keeps this setting. | ui | yes |  | Sets favorites width by height in pixels, for example 900 by 700. | `plugins/commands/favorites.py:276` |
+| `favorites.hide_favorites` | `close favorites`, `close quick list`, `hide favorites`, `hide quick list` | remainder:text | `hide favorites` | Closes the favorites list if it is open. | ui | yes |  | Closes the quick list. | `plugins/commands/favorites.py:94` |
+| `favorites.remove_favorite` | `remove favorite`, `remove from favorites`, `remove from quick list` | remainder:text* | `remove favorite two` | Show favorites first and use a number from that list; leaves the original file or website untouched. | write | no |  | Removes a numbered favorite, leaving the actual file or website untouched. | `plugins/commands/favorites.py:214` |
+| `favorites.rename_favorite` | `rename favorite` | remainder:text* | `rename favorite two to reference` | Show favorites first and use a number from that list; changes its display name. | write | no |  | Renames a favorite: rename favorite 2 to Project notes. | `plugins/commands/favorites.py:247` |
+| `favorites.show_favorites` | `list favorites`, `quick list`, `show favorites`, `show quick list` | remainder:text | `show favorites` | Shows the saved favorites list; say a visible number to open an item. | ui | yes |  | Shows numbered files, folders, shortcuts and websites. | `plugins/commands/favorites.py:72` |
 
 ## feedback_level (7)
 

@@ -7,13 +7,25 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QWidget, QLabel, QPushButton, QComboBox, QCheckBox, QAbstractSpinBox,
-    QLineEdit, QMenu, QVBoxLayout, QHBoxLayout, QSizePolicy, QDialog, QScrollArea,
+    QLineEdit, QMenu, QVBoxLayout, QHBoxLayout, QLayout, QSizePolicy, QDialog, QScrollArea,
 )
 from samsara.ui import theme, qt_runtime
 from samsara.config_schema import SETTINGS_SCHEMA
 from .presentation import Page, SettingRow, CleanComboBox
 from .calm_controls import PercentSpinBox, short_choice, switch
 from .lazy_access import assembling, source_config
+
+
+def _detach_from_layout(widget):
+    """Invalidate retained item wrappers before an implicit native transfer."""
+    parent = widget.parentWidget()
+    if parent is not None and parent.layout() is not None:
+        root = parent.layout()
+        for layout in (root, *root.findChildren(QLayout)):
+            if layout.indexOf(widget) >= 0:
+                layout.removeWidget(widget)
+                break
+    return widget
 
 
 class PageAssembly:
@@ -90,11 +102,11 @@ class PageAssembly:
             # their own destination has been visited.
             section = page.findChild(QWidget, 'todoistSection')
             self._widgets['_todoist_section'] = section
-            section.setParent(self._source_store)
+            _detach_from_layout(section).setParent(self._source_store)
             section.hide()
             hermes = page.findChild(QWidget, 'hermesSection')
             if hermes is not None:
-                hermes.setParent(self._source_store)
+                _detach_from_layout(hermes).setParent(self._source_store)
                 hermes.hide()
 
     @assembling
@@ -115,17 +127,17 @@ class PageAssembly:
         placeholder.deleteLater()
         if name in ('Shortcuts', 'Audio'):
             key = 'modes_collision_warn' if name == 'Shortcuts' else 'tts_test_status'
-            page.column.insertWidget(2, self._widgets[key])
+            page.column.insertWidget(2, _detach_from_layout(self._widgets[key]))
         if name == 'Ava':
             for key, row_key in [('cloud_test_status', 'cloud_api_key'), ('cloud_info_label', 'cloud_provider')]:
                 row = self._rows_by_widget[row_key]
-                row.grid.addWidget(self._widgets[key], row.grid.rowCount(), 0, 1, 3)
-            page.smart_corrections.layout().insertWidget(1, self._widgets['sc_status_label'])
+                row.grid.addWidget(_detach_from_layout(self._widgets[key]), row.grid.rowCount(), 0, 1, 3)
+            page.smart_corrections.layout().insertWidget(1, _detach_from_layout(self._widgets['sc_status_label']))
             self._sync_openrouter_picker()
         if name == 'Dictation':
-            self._rows_by_widget['adv_device'].grid.addWidget(self._widgets['cuda_status'], 2, 0, 1, 3)
+            self._rows_by_widget['adv_device'].grid.addWidget(_detach_from_layout(self._widgets['cuda_status']), 2, 0, 1, 3)
         if name == 'Help':
-            page.column.insertWidget(2, self._source_store.findChild(QLabel, 'feedbackStatusLabel'))
+            page.column.insertWidget(2, _detach_from_layout(self._source_store.findChild(QLabel, 'feedbackStatusLabel')))
         self._add_beta_notice(page)
         self._connect_conditions()
         self._build_search_registry()
@@ -273,6 +285,7 @@ class PageAssembly:
                 left = layout.itemAt(0)
                 if left and left.widget():
                     left.widget().hide()
+        _detach_from_layout(widget)
         if key in ('adv_ducking_level', 'adv_hands_free_ducking_level', 'adv_hands_free_idle_level'):
             widget = PercentSpinBox.adapt(widget, self)
             self._widgets[key] = widget
@@ -334,7 +347,7 @@ class PageAssembly:
                 for key in keys:
                     warning = self._widgets.get(key + '_warn')
                     if warning is not None:
-                        row.grid.addWidget(warning, row.grid.rowCount(), 0, 1, 3)
+                        row.grid.addWidget(_detach_from_layout(warning), row.grid.rowCount(), 0, 1, 3)
         return page
 
     def _choice_button(self, title, names):

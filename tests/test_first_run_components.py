@@ -376,7 +376,9 @@ class TestWizardHosting:
         from samsara.ui import first_run_wizard_qt as wz
 
         names = [s[0] for s in wz._STEPS]
-        assert names.index("Components") == names.index("Microphone") + 1
-        assert names.count("Components") == 1
-        assert len(wz._STEPS) == 10  # 490: placement follows listening display choice.
-        assert names.count("Listening display") == 1
+        assert names[names.index("Microphone") + 1] == "Recognition"
+        assert len(wz._STEPS) == 5
+        optional = [s[0] for s in wz._OPTIONAL_STEPS]
+        assert optional.count("Components") == 1
+        assert optional.count("Listening display") == 1
+        assert "Components" not in names

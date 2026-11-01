@@ -383,5 +383,10 @@ def test_every_real_window_button_keeps_focus_pixels(qapp, quiet_windows, kind):
             ancestor.setEnabled(True)
             ancestor = parent
             assert ancestor is not None, (kind, button.text())
+        if kind == 'tutorial':
+            # Showing Try starts a readiness poll that can disable unavailable
+            # synthetic speech controls. Freeze it for this eventual-style check.
+            window._try_page.timer.stop()
+            button.setEnabled(True)
         settle(qapp)
         assert_button_focus(qapp, button)

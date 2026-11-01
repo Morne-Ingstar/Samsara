@@ -32,8 +32,7 @@ def build(qapp):
     def create(config=None):
         window = tutorial_qt.TutorialWindow(SimpleNamespace(config=config or {}))
         window.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)
-        window._step = 3
-        window._show_step()
+        window._open_optional('ways')  # 940: Ways is retained as an optional lesson.
         window.show()
         qapp.processEvents()
         windows.append(window)
@@ -54,32 +53,38 @@ def row_text(window, key):
 
 def test_seven_steps_and_passive_navigation(build, qapp):
     window = build()
-    assert [key for key, _ in window._steps] == ['welcome', 'dictation', 'command', 'ways', 'display', 'try', 'done']
+    # 940: preserve passive navigation/cleanup checks on the four-page route.
+    assert [key for key, _ in window._steps] == ['welcome', 'dictation', 'command', 'done']
+    assert list(window._optional_steps) == ['ways', 'display', 'try']
     interface = QAccessible.queryAccessibleInterface(window._step_indicator)
     assert interface.childCount() == len(window._steps)
     assert window._next_btn.isEnabled() and window._back_btn.isEnabled()
     assert not getattr(window._app, '_tutorial_hooks', {})
     assert window._hint_timer is None
     window._go_back()
+    assert window._active_key() == 'done'
+    window._go_back()
     assert window._steps[window._step][0] == 'command'
     assert 'command' in window._app._tutorial_hooks
     window._skip_step()
-    assert window._steps[window._step][0] == 'ways'
+    assert window._active_key() == 'done'
     assert window._next_btn.isEnabled() and not window._app._tutorial_hooks
-    window._go_next()
-    assert window._steps[window._step][0] == 'display'
-    window._go_next()
-    assert window._steps[window._step][0] == 'try'
-    for _ in range(3):  # Each Try walkthrough step must be visited.
+    for key in ('ways', 'display'):
+        window._open_optional(key)
+        assert window._active_key() == key
+        window._go_next()
+        assert window._active_key() == 'done'
+    window._open_optional('try')
+    for _ in range(3):  # Each retained Try walkthrough step must be visited.
         window._go_next()
     assert window._steps[window._step][0] == 'done'
-    window._go_back()
-    assert window._steps[window._step][0] == 'try'
+    window._open_optional('try')
+    assert window._active_key() == 'try'
     for _ in range(3):
         window._go_back()
-    assert window._steps[window._step][0] == 'display'
-    window._go_back()
-    assert window._next_btn.isEnabled() and window._step_lbl.text() == f'Step 4 of {len(window._steps)}'
+    assert window._active_key() == 'done'
+    window._open_optional('ways')
+    assert window._next_btn.isEnabled() and window._step_lbl.text() == 'Optional lesson'
 
 
 def test_defaults_match_shared_controls(build):
@@ -196,10 +201,7 @@ def test_commit_word_matches_accepted_config(build, monkeypatch, word):
     assert f'"{expected}"' in tutorial_qt._hands_free_text(config)
     assert session_modes.DEFAULT_DICTATE_COMMIT_PHRASE not in row_text(window, 'hands_free')
     # Done deliberately preserves recovery-only copy, with no redundant paste word.
-    window._go_next()  # Ways -> Display
-    window._go_next()  # Display -> Try
-    for _ in range(3):  # Try's three steps -> Done
-        window._go_next()
+    window._go_next()  # 940: optional Ways returns directly to Done.
     assert 'scratch that' in '\n'.join(l.text() for l in window._current_page.findChildren(QLabel))
 
 
@@ -211,15 +213,13 @@ def test_each_detail_button_accessibility_and_exclusive_shared_copy(build, qapp)
         frame = window._current_page.findChild(QWidget, f'tutorialWay_{row["key"]}')
         from PySide6.QtWidgets import QPushButton
         buttons = frame.findChildren(QPushButton)
+        # 939: the two glossary details now contain Close and optional web actions.
+        if row['key'] not in ('wake', 'hands_free'):
+            assert len(buttons) == 1
         button, detail = window._way_details[row['key']]
-        if row['key'] == 'wake':
-            calibrate = frame.findChild(QPushButton, 'tutorialWakeCalibrate')
-            assert set(buttons) == {button, calibrate}
-            assert calibrate.isVisibleTo(frame)
-            assert calibrate.text() == 'Calibrate wake word'
-        else:
-            assert buttons == [button]
-        assert button.text() == '?' and button.accessibleName() == f'More about {row["name"]}'
+        expected_name = ('Explain wake word' if row['key'] == 'wake' else
+                         'Explain hands-free' if row['key'] == 'hands_free' else f'More about {row["name"]}')
+        assert button.text() == '?' and button.accessibleName() == expected_name
         assert button.width() >= 44 and button.height() >= 44
         assert button.focusPolicy() == Qt.FocusPolicy.StrongFocus
         button.click()
@@ -303,8 +303,9 @@ def test_compact_closed_cards_and_centered_targets(build, qapp):
         assert (button.width(), button.height()) == (44, 44)
         position = button.mapTo(frame, QPoint())
         assert abs(position.y() + button.height()/2 - frame.height()/2) <= 2
-        assert [control for control in frame.findChildren(QPushButton)
-                if control.isVisibleTo(frame)] == [button]
+        # 940: 939's inline help adds Close and web actions in these two rows.
+        expected = [button, detail.close_button, detail.guide_button] if key in ('wake', 'hands_free') else [button]
+        assert frame.findChildren(QPushButton) == expected
         assert frame.layout().contentsMargins().top() == 12
         assert frame.layout().contentsMargins().bottom() == 12
         column = frame.layout().itemAt(0).layout().itemAt(0).layout()
@@ -326,6 +327,7 @@ def test_shared_strip_has_twelve_pixel_gap_on_every_page(build, qapp):
     from PySide6.QtWidgets import QFrame
     window = build()
     indicator = window._step_indicator
+    window._optional_key = None  # 940: leave the fixture's optional Ways page.
     for index in range(len(window._steps)):
         window._step = index
         window._show_step()

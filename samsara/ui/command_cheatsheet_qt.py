@@ -41,32 +41,13 @@ from samsara.log import get_logger
 from samsara.ui import theme
 from samsara.ui.command_reference_detail import CommandDetailCard, CommandRowDelegate, row_help_lines, style_search
 from samsara.ui.settings.calm_layout import ScrollEdges
+from samsara.ui.command_reference_examples import ExampleDetailCardMixin
 
 logger = get_logger(__name__)
 
 
-class _ExampleDetailCard(CommandDetailCard):
-    """Add spoken help at the reference's detail-card seam (774)."""
-
-    def open(self, command, origin, anchor):
-        command = dict(command)
-        command['row_tags'] = row_tags(command)
-        command['aliases'] = command.get('display_aliases', command_catalog.display_aliases(
-            command, limit=len(command.get('aliases', ()))))
-        examples = command.get('examples', ())
-        precondition = command.get('precondition', '')
-        if precondition:
-            command['description'] = '\n\n'.join(
-                part for part in (command.get('description', '').strip(), precondition) if part)
-        super().open(command, origin, anchor)
-        if examples:
-            self.labels[3].setText('Say it like this:\n' + '\n'.join(examples))
-        elif precondition:
-            self.labels[3].hide()
-        description = '\n'.join(label.text() for label in self.labels + [self.metadata] if not label.isHidden())
-        self.setAccessibleDescription(description)
-        self.run_button.setAccessibleDescription(description)
-        self.place(anchor)
+class _ExampleDetailCard(ExampleDetailCardMixin, CommandDetailCard):
+    pass
 
 
 def _migrate_palette_state(legacy_path: Path, target_path: Path) -> None:
@@ -1023,6 +1004,8 @@ class _CheatSheetWindow(QMainWindow):
         self._detail_card = _ExampleDetailCard(self, inner)
         self._disclosure = ReferenceDisclosure(self)
         self.refresh_commands()
+        from samsara.ui.context_help_qt import reference_help
+        reference_help(self)
 
     # ----------------------------------------------------------------
     # Commands

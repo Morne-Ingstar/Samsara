@@ -9,7 +9,7 @@ from pathlib import Path
 from PySide6.QtCore import QEvent, QLocale, QObject, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
-    QAbstractButton, QButtonGroup, QCheckBox, QComboBox, QFrame,
+    QApplication, QAbstractButton, QButtonGroup, QCheckBox, QComboBox, QFrame,
     QHBoxLayout, QLabel, QLayout, QPushButton, QScrollArea, QRadioButton, QSizePolicy, QVBoxLayout, QWidget,
 )
 
@@ -35,7 +35,15 @@ class SetupSegmentedChoice(SegmentedChoice):
             # Reserve separate text and tick lanes inside the painted part.
             button.setFixedWidth(button.fontMetrics().horizontalAdvance(button.text()) + theme.SPACE_6)
             button.installEventFilter(self)
-        self.setFixedWidth(sum(button.width() for button in self.buttons) + 2)
+        self.fit_labels()
+
+    def fit_labels(self):
+        # 935: size the painted text after theme/font changes, including 200%.
+        for button in self.buttons:
+            button.setFixedSize(button.fontMetrics().horizontalAdvance(button.text()) + theme.SPACE_6,
+                                max(theme.HIT_TARGET_MIN, button.fontMetrics().height() + theme.SPACE_2))
+        self.setFixedSize(sum(button.width() for button in self.buttons) + 2,
+                          max(button.height() for button in self.buttons) + 2)
 
     @staticmethod
     def paint_rects(button):
@@ -47,6 +55,8 @@ class SetupSegmentedChoice(SegmentedChoice):
         return box, tick, text
 
     def eventFilter(self, widget, event):
+        if widget in self.buttons and event.type() == QEvent.Type.FontChange:
+            self.fit_labels()
         if widget in self.buttons and event.type() == QEvent.Type.Paint:
             painter = QPainter(widget)
             try:
@@ -262,6 +272,8 @@ class Decisions(QObject):
         self.refresh_recognition()
 
     def eventFilter(self, watched, event):
+        if watched is getattr(self, 'phrase', None) and event.type() == QEvent.Type.FontChange:
+            self.fit_phrase()
         if watched.property('setupChoiceQuestion'):
             if event.type() == QEvent.Type.FontChange:
                 watched.setMaximumWidth(watched.fontMetrics().horizontalAdvance(watched.text()) + 2)
@@ -305,7 +317,7 @@ class Decisions(QObject):
         if self.closed:
             return
         self.closed = True
-        self.owner._mic_result.disconnect(self.restore_saved_mic)
+        self.readiness_timer.stop()
         for signal in (self.owner._model_group.buttonClicked, self.wake.buttonToggled,
                        self.level.buttonToggled, self.engine.buttonClicked, self.facts_ready):
             signal.disconnect()
@@ -462,13 +474,21 @@ class Decisions(QObject):
             index = widget.count() - 1
         widget.setCurrentIndex(index)
         widget.installEventFilter(self)
-        layout.addWidget(widget)
+        widget.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        layout.addWidget(widget, alignment=Qt.AlignmentFlag.AlignLeft)
         return widget
 
     def recognition(self):
         w, layout = page(self.owner)
         self.reason = label('')
         layout.addWidget(self.reason)
+        self.readiness = label('')
+        layout.addWidget(self.readiness)
+        self.readiness_timer = QTimer(self)
+        self.readiness_timer.setInterval(500)
+        self.readiness_timer.timeout.connect(self.refresh_readiness)
+        self.readiness_timer.start()
+        self.refresh_readiness()
         layout.addWidget(label(COPY['recognition.change']))
         rows = [('tiny', 'Tiny', 'Uses the least memory.'),
                 ('base', 'Base', 'Balances accuracy and memory.'),
@@ -486,6 +506,24 @@ class Decisions(QObject):
         self.language = self.combo(layout, COPY['recognition.language'], LANGUAGES, language)
         layout.addStretch()
         return w
+
+    def refresh_readiness(self):
+        # Setup precedes model initialization on first launch. Never infer ready
+        # from a missing field, nor download/load a model inside this wizard.
+        app = self.owner._samsara_app
+        if app is None or not hasattr(app, 'model_loaded'):
+            text = ('The speech model downloads, if needed, and loads after setup. '
+                    'Wait for Samsara to finish getting ready before talking. '
+                    'If a download fails, reconnect and restart Samsara to retry.')
+        elif not app.model_loaded:
+            from samsara.speech_readiness import status
+            suffix = ('. Finish setup, then restart Samsara to try again.'
+                      if getattr(app, '_speech_model_phase', '') == 'failed'
+                      else '. You can finish setup while it gets ready.')
+            text = status(app) + suffix
+        else:
+            text = 'The current speech model is loaded. A changed model applies after startup.'
+        self.readiness.setText(text)  # PLACEHOLDER COPY (935)
 
     def refresh_recognition(self):
         if 'model_size' in self.owner._existing_config:
@@ -582,9 +620,7 @@ class Decisions(QObject):
             self.phrase, saved, layout, fallback_pending=bool(
                 self.owner._config['wake_word_config'].get('phrase_fallback_pending')))
         self.phrase.ensurePolished()
-        phrase_width = max(self.phrase.fontMetrics().horizontalAdvance(self.phrase.itemText(i))
-                           for i in range(self.phrase.count()))
-        self.phrase.setFixedWidth(phrase_width + theme.SPACE_4 + theme.HIT_TARGET_MIN)
+        self.fit_phrase()
         self.phrase.installEventFilter(self)
         phrase_layout.addWidget(self.phrase)
         self.wake._row.layout().addWidget(phrase_row)
@@ -604,6 +640,11 @@ class Decisions(QObject):
         layout.addWidget(label(COPY['talking.tutorial']))
         layout.addStretch()
         return w
+
+    def fit_phrase(self):
+        width = max(self.phrase.fontMetrics().horizontalAdvance(self.phrase.itemText(i))
+                    for i in range(self.phrase.count()))
+        self.phrase.setFixedWidth(width + theme.SPACE_4 + theme.HIT_TARGET_MIN)
 
     @staticmethod
     def wake_phrases():
@@ -679,7 +720,7 @@ class Decisions(QObject):
 
     def complete(self):
         w, layout = page(self.owner)
-        layout.addWidget(label('Check your choices, then start Samsara.'))
+        layout.addWidget(label('Start Samsara when you are ready. Learning and extra settings are optional.'))  # PLACEHOLDER COPY (935)
         card = QFrame()
         theme.style_card(card)
         rows = QVBoxLayout(card)
@@ -700,6 +741,42 @@ class Decisions(QObject):
         self.include_beta_updates.setChecked(config_defaults.cfg_get(self.owner._config, 'updates.include_prerelease') is True)
         self.include_beta_updates.installEventFilter(self)
         layout.addWidget(self.include_beta_updates)
+        # PLACEHOLDER COPY (935): one optional group, outside the five-step route.
+        more = QPushButton('Optional settings and guides')
+        more.setCheckable(True)
+        theme.make_secondary(more)
+        layout.addWidget(more, alignment=Qt.AlignmentFlag.AlignLeft)
+        extras = QWidget()
+        links = QVBoxLayout(extras)
+        links.setContentsMargins(0, 0, 0, 0)
+        for name, text in (
+                ('Components', 'Add-ons'),
+                ('Music', 'Music while recording'),
+                ('Voice', 'Voice feedback'),
+                ('Listening display', 'Listening display'),
+                ('Position', 'Display position')):
+            button = QPushButton(text)
+            theme.make_secondary(button)
+            button.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+            button.clicked.connect(lambda checked=False, name=name: self.owner._show_optional(name))
+            links.addWidget(button, alignment=Qt.AlignmentFlag.AlignLeft)
+        links.addWidget(label('Later: add-ons are in Settings > Components; music and voice in '
+                              'Settings > Audio; display and position in Settings > General.'))
+        for kind, target, text in (
+                ('settings', 'General', 'Start and open Settings'),
+                ('guide', 'open_mic_setup_guide', 'Start and open Mic Setup Guide'),
+                ('guide', 'open_ava_guide', 'Start and open Ava Setup Guide')):
+            button = QPushButton(text)
+            theme.make_secondary(button)
+            button.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+            button.setEnabled(self.owner._samsara_app is not None)
+            button.clicked.connect(lambda checked=False, kind=kind, target=target:
+                                   self.finish_to_destination(kind, target))
+            links.addWidget(button, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(extras)
+        extras.hide()
+        more.toggled.connect(extras.setVisible)
+        self.more_options = more
         layout.addStretch()
         return w
 
@@ -718,7 +795,40 @@ class Decisions(QObject):
         for widget, text in zip(self.owner._summary_labels, lines):
             widget.setText(text)
 
+    def finish_to_destination(self, kind, target):
+        app = self.owner._samsara_app
+        if app is None:
+            return
+        self.owner._finish()
+        if self.owner.result is None:
+            return
+        # The app is only half constructed during first run. Reuse its existing
+        # shell-ready barrier before calling an existing Settings/guide surface.
+        timer = QTimer(QApplication.instance())
+        timer.setInterval(250)
+        app._setup_destination_timer = timer
+        def open_when_ready():
+            barrier = getattr(app, '_startup_shell_ready', None)
+            if barrier is not None and not barrier.is_set():
+                return
+            timer.stop()
+            timer.deleteLater()
+            app._setup_destination_timer = None
+            if kind == 'settings':
+                from samsara.ui.settings_qt import SettingsQt
+                if getattr(app, '_settings_qt', None) is None:
+                    app._settings_qt = SettingsQt(app)
+                app._settings_qt.show_page(target)
+            else:
+                getattr(app, target)()
+        timer.timeout.connect(open_when_ready)
+        timer.start()
+
     def finish(self):
+        # Skipping Voice must never turn an unconsented network engine on.
+        if (config_defaults.cfg_get(self.owner._config, 'tts.engine') == 'edge'
+                and not config_defaults.cfg_get(self.owner._config, network_voice_notice.ACCEPTANCE_KEY)):
+            put(self.owner._config, 'tts.engine', 'winrt')
         put(self.owner._config, 'updates.include_prerelease', self.include_beta_updates.isChecked())
         requested = self.launch.isChecked()
         if requested or self.owner._existing_config.get('launch_at_login', False):
@@ -730,8 +840,8 @@ class Decisions(QObject):
         self.owner._config['launch_at_login'] = requested
 
     def prepare_navigation(self):
+        self.fit_phrase()
         self.owner._listening_display_page.prepare_question_rows(self.row_separator)
-        self.owner._mic_result.connect(self.restore_saved_mic)
         for control in (self.owner._next_btn, self.owner._back_btn, self.owner._mic_combo):
             control.setAccessibleName(control.text() if isinstance(control, QAbstractButton) else 'Microphone')
         for item in self.owner.findChildren(QAbstractButton):
@@ -749,25 +859,15 @@ class Decisions(QObject):
         for name, copy_key in [('Microphone', 'progress.microphone'),
                 ('Components', 'progress.components'), ('Recognition', 'progress.recognition'),
                 ('Listening display', 'progress.display')]:
-            strip.steps[strip.steps.index(name)] = COPY[copy_key]
+            if name in strip.steps:
+                strip.steps[strip.steps.index(name)] = COPY[copy_key]
+        strip.steps[strip.steps.index('Complete')] = 'Ready'  # PLACEHOLDER COPY (935)
         strip._refresh()
         self.fit_progress()
         strip.installEventFilter(self)
 
-    def restore_saved_mic(self, message, _color):
-        if self.closed or self.mic_restored or not self.owner._mics:
-            return
-        if message not in ('_load_done_', '_refresh_done_'):
-            return
-        self.mic_restored = True
-        saved = self.owner._existing_config.get('microphone')
-        for mic in self.owner._mics:
-            if mic['id'] == saved:
-                self.owner._mic_combo.setCurrentText(mic['name'])
-                break
-
     def scroll_existing_pages(self):
-        for index, widget in enumerate(self.owner._pages):
+        for name, widget in list(self.owner._page_by_name.items()):
             for item in widget.findChildren(QLabel):
                 item.setWordWrap(True)
             if isinstance(widget, QScrollArea):
@@ -778,8 +878,10 @@ class Decisions(QObject):
             scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             widget.layout().setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
             scroll.setWidget(widget)
-            self.owner._pages[index] = scroll
-        for widget in self.owner._pages:
+            self.owner._page_by_name[name] = scroll
+        from samsara.ui.first_run_wizard_qt import _STEPS
+        self.owner._pages = [self.owner._page_by_name[name] for name, _ in _STEPS]
+        for widget in self.owner._page_by_name.values():
             widget.widget()._setup_margins = widget.widget().layout().contentsMargins()
             widget.widget().setProperty("setupFitContent", True)
             widget.widget().installEventFilter(self)

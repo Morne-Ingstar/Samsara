@@ -88,7 +88,8 @@ def test_recovery_help_mouse_activation(qapp, recovery_host, label_index):
 
 def test_available_examples_stay_plain_text(qapp, monkeypatch, recovery_host):
     window, opener = recovery_host
-    monkeypatch.setattr(tutorial_qt, "_command_examples", lambda *args: ["scroll down"])
+    # 940: the shorter command exercise requests one example explicitly.
+    monkeypatch.setattr(tutorial_qt, "_command_examples", lambda *args, count=1: ["scroll down"][:count])
     page = window._build_command()
     try:
         labels = page.findChildren(tutorial_qt._HelpLabel)

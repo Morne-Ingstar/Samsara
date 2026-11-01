@@ -68,7 +68,8 @@ class PlainChoices(QWidget):
         for index, (text, _) in enumerate(rows):
             control = button(text, lambda checked=False, i=index: self.choose(i))
             control.setCheckable(True)
-            control.setStyleSheet(control.styleSheet() + f'QPushButton:checked{{border-color:{theme.ACCENT};background:{theme.BG1};color:{theme.ACCENT};}}')
+            control.setStyleSheet(control.styleSheet() + f'QPushButton:checked{{border-color:{theme.ACCENT};background:{theme.BG1};color:{theme.ACCENT};}}'
+                f'QPushButton:checked:focus{{border-color:{theme.TEXT_PRIMARY};}}')
             self.buttons.append(control)
             layout.addWidget(control)
         layout.addStretch()

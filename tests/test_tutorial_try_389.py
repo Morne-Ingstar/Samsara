@@ -73,8 +73,7 @@ def build(qapp, monkeypatch):
         app._schedule_ui = lambda fn, *args: fn(*args)
         window = tutorial_qt.TutorialWindow(app)
         window.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)
-        window._step = next(i for i, (key, _) in enumerate(window._steps) if key == 'try')
-        window._show_step()
+        window._open_optional('try')  # 940: retained Try is an optional lesson.
         window.show()
         qapp.processEvents()
         windows.append(window)
@@ -119,7 +118,9 @@ def select(box, value):
 def test_step_navigation_and_skip_does_not_write(build):
     window, page, app = build()
     before = deepcopy(app.config)
-    assert [key for key, _ in window._steps] == ['welcome', 'dictation', 'command', 'ways', 'display', 'try', 'done']
+    # 940: core progress is separate from the retained optional lessons.
+    assert [key for key, _ in window._steps] == ['welcome', 'dictation', 'command', 'done']
+    assert list(window._optional_steps) == ['ways', 'display', 'try']
     assert window._next_btn.isEnabled()
     for _ in range(3):
         window._go_next()
@@ -691,9 +692,10 @@ def test_broken_or_stubbed_try_page_keeps_tutorial_and_done_available(build, mon
     try:
         other.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)
         other.show()
-        expected = ['welcome', 'dictation', 'command', 'ways', 'display', 'done']
-        if failure == 'plain_widget':
-            expected.insert(-1, 'try')
+        # 940: a broken optional Try cannot alter core progress or Done.
+        expected = ['welcome', 'dictation', 'command', 'done']
+        assert ('try' in other._optional_pages) == (failure == 'plain_widget')
+        assert other._optional_buttons['try'].isEnabled() == (failure == 'plain_widget')
         assert [key for key, _ in other._steps] == expected
         assert other._step_indicator.count() == len(expected)
         for index in range(len(expected)):

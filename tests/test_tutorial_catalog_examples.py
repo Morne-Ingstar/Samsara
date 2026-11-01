@@ -18,7 +18,9 @@ def _page_labels(window):
     """Every QLabel on every tutorial page (pages other than the current step
     are not parented to the window, so window.findChildren misses them)."""
     from PySide6.QtWidgets import QLabel
-    return [lbl for page in window._pages for lbl in page.findChildren(QLabel)]
+    # 940: retain coverage of every lesson after the optional-route split.
+    return [lbl for page in [*window._pages, *window._optional_pages.values()]
+            for lbl in page.findChildren(QLabel)]
 
 
 @pytest.fixture(scope="module")
@@ -108,7 +110,7 @@ def test_tutorial_window_uses_live_registry_examples(qapp):
     window = tut.TutorialWindow(app)
     try:
         records = cc.catalog_from_registry_rows(executor._matcher.list_commands())
-        expected = tut._command_examples(records, {})
+        expected = tut._command_examples(records, {}, count=1)  # 940: one core exercise example.
         text = " ".join(lbl.text() for lbl in _page_labels(window))
         assert expected and all(f"'{p}'" in text or f'"{p}"' in text for p in expected)
     finally:

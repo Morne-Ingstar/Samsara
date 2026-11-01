@@ -27,6 +27,7 @@ from samsara.constants import DEFAULT_WAKE_PHRASE, DEFAULT_WAKE_PHRASE_OPTIONS
 from samsara import session_modes
 from samsara.runtime import thread_registry
 from samsara.ui import qt_runtime, theme
+from samsara.ui import first_run_mic_selection as mic_selection
 from samsara.ui.first_run_pages_qt import Decisions, initial_config, setup_page
 from samsara.onboarding.first_run_recommend import COPY
 from samsara.ui.widgets.step_strip import StepStrip as SetupStepIndicator
@@ -258,18 +259,22 @@ class _WizardChoiceIndicator(QRadioButton):
             p.drawEllipse(focus)
 
 
+# Stable identities are independent of the short progress labels. PLACEHOLDER COPY (935).
 _STEPS = [
-    ("Welcome",    "Set up Samsara"),  # PLACEHOLDER COPY (837)
+    ("Welcome", "Set up Samsara"),
     ("Microphone", "Select Your Microphone"),
+    ("Recognition", "Recognition and readiness"),
+    ("Talking", "How to start talking"),
+    ("Complete", "Ready to start"),
+]
+_OPTIONAL_STEPS = [
     ("Components", "Optional Components"),
-    ("Recognition", COPY["recognition.title"]),
-    ("Talking", COPY["talking.title"]),
     ("Music", COPY["music.title"]),
     ("Voice", COPY["voice.title"]),
     (listening_display.LABEL, listening_display.QUESTION),
     ("Position", PLACEMENT_TITLE),
-    ("Complete",   "Setup Complete!"),
 ]
+
 
 def _merge_wake_word_config(config: dict, phrase=None, wake_command_timeout=None) -> dict:
     """Read-merge-write config["wake_word_config"] (and its "audio" sub-dict):
@@ -562,7 +567,16 @@ class _WizardWindow(QMainWindow):
         self._samsara_app = samsara_app
         self.result = None
         self._step = 0
+        self._optional_step = None
         self._config, self._existing_config = initial_config(_DEFAULTS, config_path)
+        if self._config.get('ui', {}).get('listening_display') not in listening_display.VALUES:
+            # 935: cancelled first-run defaults are not an established preference.
+            # Resolve once, before building the display page/Ready summary, so
+            # both show exactly the choice Finish will return to the caller.
+            setup = (not self._existing_config
+                     or self._existing_config.get('first_run_complete') is False)
+            value = listening_display.display_choice(self._existing_config, setup=setup).value
+            self._config.update(listening_display.choice_updates(self._config, value, chosen=setup))
         from samsara.ui.tutorial_display_qt import placement_monitor
         seed_fresh(self._config, fresh=not Path(config_path).exists(), monitor=placement_monitor(self._config))
         self._mics: list[dict] = []
@@ -613,6 +627,7 @@ class _WizardWindow(QMainWindow):
         tbl = QVBoxLayout(title_bar)
         tbl.setContentsMargins(28, 14, 28, 8)
         self._title_lbl = QLabel()
+        self._title_lbl.setWordWrap(True)
         self._title_lbl.setStyleSheet(
             f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_TITLE}px;font-weight:bold;"
         )
@@ -645,18 +660,19 @@ class _WizardWindow(QMainWindow):
 
         self._components_page = None
         self._decisions = Decisions(self)
-        self._pages = [
-            self._build_welcome(),
-            self._build_microphone(),
-            self._build_components(),
-            self._build_model(),
-            self._decisions.talking(),
-            self._decisions.music(),
-            self._decisions.voice(),
-            setup_page(self),
-            setup_placement_page(self),
-            self._build_complete(),
-        ]
+        self._page_by_name = {
+            "Welcome": self._build_welcome(),
+            "Microphone": self._build_microphone(),
+            "Components": self._build_components(),
+            "Recognition": self._build_model(),
+            "Talking": self._decisions.talking(),
+            "Music": self._decisions.music(),
+            "Voice": self._decisions.voice(),
+            listening_display.LABEL: setup_page(self),
+            "Position": setup_placement_page(self),
+            "Complete": self._build_complete(),
+        }
+        self._pages = [self._page_by_name[name] for name, _ in _STEPS]
         self._current_page: QWidget | None = None
 
         sep_bot = QFrame()
@@ -679,7 +695,7 @@ class _WizardWindow(QMainWindow):
 
         nl.addStretch()
 
-        self._tutorial_btn = QPushButton("Try it now - 2 min")  # PLACEHOLDER COPY (837)
+        self._tutorial_btn = QPushButton("Learn Samsara")  # PLACEHOLDER COPY (935)
         self._tutorial_btn.setAutoDefault(True)
         theme.make_primary(self._tutorial_btn)
         self._tutorial_btn.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
@@ -772,10 +788,9 @@ class _WizardWindow(QMainWindow):
 
         for icon, text in [
             ("1.", "Select your microphone"),
-            ("2.", "Add optional components, now or later"),
-            ("3.", COPY["welcome.recognition"]),
-            ("4.", COPY["welcome.talking"]),
-            ("5.", "Choose a listening display"),
+            ("2.", "Choose recognition settings"),  # PLACEHOLDER COPY (935)
+            ("3.", "Choose how to start talking"),
+            ("4.", "Start Samsara, or try the optional tutorial"),
         ]:
             row = QHBoxLayout()
             icon_lbl = QLabel(icon)
@@ -791,7 +806,7 @@ class _WizardWindow(QMainWindow):
         lay.addWidget(steps_frame)
         lay.addSpacing(8)
 
-        note = QLabel("Setup is quick. You can change everything later in Settings.")
+        note = QLabel("You can change these choices later in Settings. Optional extras are at the end.")  # PLACEHOLDER COPY (935)
         note.setWordWrap(True)
         note.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(note)
@@ -878,12 +893,29 @@ class _WizardWindow(QMainWindow):
     # Navigation
     # ------------------------------------------------------------------
 
+    @property
+    def _step_name(self):
+        return self._optional_step or _STEPS[self._step][0]
+
+    def _show_optional(self, name):
+        if name not in dict(_OPTIONAL_STEPS):
+            raise ValueError(name)
+        self._collect_step()
+        self._optional_step = name
+        self._show_step()
+
+    def _return_to_ready(self):
+        self._collect_step()
+        self._optional_step = None
+        self._step = next(i for i, (name, _) in enumerate(_STEPS) if name == 'Complete')
+        self._show_step()
+
     def _show_step(self):
         # Tear down any running meter; restart if entering the mic step
         self._stop_meter()
 
         # Swap page content
-        page = self._pages[self._step]
+        page = self._page_by_name[self._step_name]
         if self._current_page is not None:
             self._stack_layout.removeWidget(self._current_page)
             self._current_page.hide()
@@ -891,9 +923,11 @@ class _WizardWindow(QMainWindow):
         page.show()
         self._current_page = page
 
-        name, title = _STEPS[self._step]
+        name = self._step_name
+        title = dict(_STEPS + _OPTIONAL_STEPS)[name]
         # PLACEHOLDER COPY (837)
-        self._step_lbl.setText(f"Step {self._step + 1} of {len(_STEPS)}\nSetup")
+        self._step_lbl.setText("Optional settings\nSetup" if self._optional_step else
+                               f"Step {self._step + 1} of {len(_STEPS)}\nSetup")  # PLACEHOLDER COPY (935)
         self._title_lbl.setText(title)
 
         self._step_indicator.set_progress(self._step)
@@ -901,10 +935,11 @@ class _WizardWindow(QMainWindow):
 
         # Button states
         self._back_btn.setEnabled(self._step > 0)
-        is_last = self._step == len(_STEPS) - 1
+        is_last = name == "Complete"
         self._tutorial_btn.setVisible(is_last)
         (theme.make_secondary if is_last else theme.make_primary)(self._next_btn)
-        self._next_btn.setText("Start Samsara" if is_last else "Next")
+        self._next_btn.setText("Back to Ready" if self._optional_step else
+                               "Start Samsara" if is_last else "Next")  # PLACEHOLDER COPY (935)
         self._decisions.prepare_step(name)
 
         # Populate complete page summary when we reach it
@@ -918,8 +953,11 @@ class _WizardWindow(QMainWindow):
         self._next_btn.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _go_next(self):
+        if self._optional_step:
+            self._return_to_ready()
+            return
         self._collect_step()
-        if _STEPS[self._step][0] == 'Talking':
+        if self._step_name == 'Talking':
             from samsara.wake_setup import calibration_needed
             if calibration_needed(self._config) and not getattr(self, '_wake_calibration_offered', False):
                 guide = self._calibrate_wake()
@@ -933,10 +971,15 @@ class _WizardWindow(QMainWindow):
         if self._step == len(_STEPS) - 1:
             self._finish()
             return
+        if self._step_name == 'Microphone':
+            self._mic_validated = True
         self._step += 1
         self._show_step()
 
     def _go_back(self):
+        if self._optional_step:
+            self._return_to_ready()
+            return
         self._collect_step()
         if self._step > 0:
             self._step -= 1
@@ -951,17 +994,13 @@ class _WizardWindow(QMainWindow):
         return open_wake_calibration(self._wake_setup_app, parent=self)
 
     def _collect_step(self):
-        step_name = _STEPS[self._step][0]
+        step_name = self._step_name
         if step_name in ("Recognition", "Talking", "Music", "Voice"):
             self._decisions.collect(step_name)
         elif step_name == listening_display.LABEL:
             self._listening_display_page.save_to(self._config)
         elif step_name == "Microphone" and self._mic_combo:
-            mic_name = self._mic_combo.currentText()
-            for m in self._mics:
-                if m['name'] == mic_name:
-                    self._config['microphone'] = m['id']
-                    break
+            mic_selection.collect_choice(self)
 
     def _fill_summary(self):
         self._decisions.summary()
@@ -970,10 +1009,9 @@ class _WizardWindow(QMainWindow):
         self._finish(learn=True)
 
     def _finish(self, *, learn=False):
-        if self._config.get('microphone') is None:
+        if self._config.get('microphone') is None and not getattr(self, '_mic_validated', False):
             return
         self._collect_step()
-        self._listening_display_page.save_to(self._config)
         self._decisions.finish()
         self._config['first_run_complete'] = True
         if self._no_hints_cb is not None and self._no_hints_cb.isChecked():
@@ -1138,15 +1176,10 @@ class _WizardWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _get_current_mic_id(self):
-        if not self._mics or not self._mic_combo:
-            return None
-        name = self._mic_combo.currentText()
-        for m in self._mics:
-            if m['name'] == name:
-                return m['id']
-        return None
+        return mic_selection.current_device(self)
 
     def _on_mic_device_changed(self, _index: int):
+        mic_selection.remember_choice(self)
         if getattr(self, '_offered_mic', None) == self._mic_combo.currentText():
             self._offered_mic = None
             self._mic_notice.hide()
@@ -1327,89 +1360,8 @@ class _WizardWindow(QMainWindow):
             )
 
     def _populate_mic_combo(self, preserve_selection: bool = False):
-        if self._mic_combo is None:
-            return
-        preserved_name = self._mic_combo.currentText() if preserve_selection else None
-        old_names = getattr(self, '_known_mic_names', None)
-        if preserve_selection and self._mic_scan_error and old_names is not None:
-            # An enumeration error is not evidence that an input was unplugged.
-            self._mics = list(self._last_mic_list)
-            if self._mic_page.isVisible():
-                self._start_meter()
-            if self._mic_status:
-                self._mic_status.setText("Couldn't scan audio devices — press Refresh")
-            return
-        self._last_mic_list = list(self._mics)
-        current_names = {m['name'] for m in self._mics}
-        removed = (preserve_selection and old_names is not None
-                   and preserved_name in old_names and preserved_name not in current_names)
-        self._mic_combo.blockSignals(True)
-        self._mic_combo.clear()
-        if self._mics:
-            self._mic_combo.addItems([m['name'] for m in self._mics])
-            self._mic_combo.setEnabled(True)
-            if preserve_selection:
-                idx = pick_index_by_name(self._mics, preserved_name)
-                if idx is not None:
-                    self._mic_combo.setCurrentIndex(idx)
-                elif removed:
-                    self._mic_combo.setCurrentIndex(self._default_mic_index())
-            if self._mic_status:
-                self._mic_status.setText("Speak to test your microphone")
-                self._mic_status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
-        else:
-            if self._mic_scan_error is not None:
-                self._mic_combo.addItem("Couldn't scan audio devices — press Refresh")
-                if self._mic_status:
-                    self._mic_status.setText(
-                        f"Mic scan failed ({self._mic_scan_error})",
-                    )
-                    self._mic_status.setStyleSheet(
-                        f"color:{theme.WARNING};font-size:{theme.TYPE_BODY}px;",
-                    )
-            else:
-                self._mic_combo.addItem("No microphones detected")
-                if self._mic_status:
-                    self._mic_status.setText("")
-            self._mic_combo.setEnabled(False)
-        self._mic_combo.blockSignals(False)
-        self._known_mic_names = {m['name'] for m in self._mics}
-        self._last_mic_list = list(self._mics)
-        if hasattr(self, '_mic_notice'):
-            if removed:
-                self._offered_mic = None
-                if self._get_current_mic_id() is not None:
-                    message = f"{preserved_name} was disconnected. Using the system default microphone."
-                else:
-                    message = f"{preserved_name} was disconnected. Select a working microphone to continue."
-                self._show_mic_notice(message)
-            elif old_names is not None and current_names - old_names:
-                self._offered_mic = next(m['name'] for m in self._mics
-                                         if m['name'] not in old_names)
-                self._show_mic_notice(f"{self._offered_mic} was plugged in.")
-            elif self._offered_mic not in current_names:
-                self._offered_mic = None
-                self._mic_notice.hide()
-        # Restart meter now that device list is ready
-        if _STEPS[self._step][0] == "Microphone":
+        if mic_selection.populate(self, preserve_selection) and _STEPS[self._step][0] == 'Microphone':
             self._start_meter()
-
-    def _default_mic_index(self):
-        """Select Windows' default input, never whichever device happens to be first."""
-        try:
-            import sounddevice as sd
-            info = sd.query_devices(kind='input')
-            index = pick_index_by_name(self._mics, info['name'])
-            if index is not None:
-                return index
-            device_id = int(sd.default.device[0])
-            if device_id >= 0:
-                self._mics.append({'id': device_id, 'name': info['name']})
-                self._mic_combo.addItem(info['name'])
-                return len(self._mics) - 1
-        except Exception:
-            logger.debug("No system default input available", exc_info=True)
-        return -1
 
     def _show_mic_notice(self, message):
         self._mic_notice_text.setText(message)
@@ -1420,9 +1372,9 @@ class _WizardWindow(QMainWindow):
     def _use_new_mic(self):
         index = pick_index_by_name(self._mics, self._offered_mic)
         if index is not None:
-            if self._mic_combo.currentIndex() == index:
+            if self._mic_combo.currentIndex() == index + 1:
                 self._start_meter()
             else:
-                self._mic_combo.setCurrentIndex(index)
+                self._mic_combo.setCurrentIndex(index + 1)
         self._offered_mic = None
         self._mic_notice.hide()

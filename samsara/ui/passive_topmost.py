@@ -3,11 +3,15 @@ import ctypes
 import sys
 
 from PySide6.QtCore import QCoreApplication, QObject, QEvent, QTimer
+from PySide6.QtGui import QGuiApplication
 from shiboken6 import isValid
 
 
 def restore(widget):
     if sys.platform != 'win32' or not widget.isVisible():
+        return
+    # Offscreen/minimal QPA widgets do not expose Windows HWNDs, even on Windows.
+    if QGuiApplication.platformName() != 'windows':
         return
     # Explicit pointer types are required for 64-bit HWNDs. Never activate,
     # reposition, resize, or reorder an owner as part of repairing this HWND.

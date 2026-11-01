@@ -589,6 +589,11 @@ _INTERNAL_HELP = {
     for verb in ("close", "focus", "maximize", "minimize", "move", "snap")
 }
 
+_INTERNAL_HELP["approve cockpit memo batch"] = (
+    "Bound approval policy identity; this is not a spoken command.")
+
+
+
 # Compatibility aliases remain matchable, but are misleading as instructions.
 _HIDDEN_HELP_ALIASES = frozenset({"cube tile and", "cube copy into"})
 
@@ -616,8 +621,9 @@ def spoken_help(phrase: str) -> tuple[list, str]:
             "Select some text first. Needs Ava for AI; goes to your AI provider if cloud is chosen. "
             "Say apply or discard after the proposal." +
             (" Simple dictation cleanup also works offline." if verb in {"clean", "tidy", "fix", "correct", "punctuate"} else ""))
+    from samsara.command_help_recent import HELP as recent_help
     examples, precondition = _OVERVIEW_HELP.get(
-        phrase, _COMMAND_HELP.get(phrase, ((), _INTERNAL_HELP.get(phrase, ""))))
+        phrase, _COMMAND_HELP.get(phrase, recent_help.get(phrase, ((), _INTERNAL_HELP.get(phrase, "")))))
     return list(examples), precondition
 
 

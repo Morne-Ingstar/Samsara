@@ -111,7 +111,7 @@ def preview_memos(app, remainder=""):
         return False
 
 
-@command("use today's memos for cockpit", pack="utilities", risk_class="read", ai_composable=True,
+@command("use today's memos for cockpit", aliases=["use todays memos for cockpit"], pack="utilities", risk_class="read", ai_composable=True,
          side_effects=["network", "ui"], param_schema={"remainder": {"type": "str", "max_len": 0}})
 def preview_today(app, remainder=""):
     return preview_memos(app, "today")

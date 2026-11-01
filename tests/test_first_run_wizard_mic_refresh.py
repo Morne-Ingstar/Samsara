@@ -235,7 +235,7 @@ class TestMicEnumerationErrorHandlingInUi:
         wizard._populate_mic_combo()
 
         assert wizard._mics == []
-        assert wizard._mic_combo.items == ["Couldn't scan audio devices — press Refresh"]
+        assert wizard._mic_combo.items == ["System default"]
         assert wizard._mic_status.text == "Mic scan failed (RuntimeError)"
         assert wizard._mic_status.style
 
@@ -255,8 +255,8 @@ class TestMicEnumerationErrorHandlingInUi:
         wizard._populate_mic_combo()
 
         assert wizard._mics == []
-        assert wizard._mic_combo.items == ["No microphones detected"]
-        assert wizard._mic_status.text == ""
+        assert wizard._mic_combo.items == ["System default"]
+        assert wizard._mic_status.text == "No microphones detected"
 
     def test_devices_populate_into_combo_when_available(self, monkeypatch):
         wizard = _LoadWizard()
@@ -274,4 +274,4 @@ class TestMicEnumerationErrorHandlingInUi:
         wizard._populate_mic_combo()
 
         assert wizard._mics == [{'id': 5, 'name': 'Focusrite'}, {'id': 7, 'name': 'Desk Mic'}]
-        assert wizard._mic_combo.items == ["Focusrite", "Desk Mic"]
+        assert wizard._mic_combo.items == ["System default", "Focusrite", "Desk Mic"]

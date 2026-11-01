@@ -13,12 +13,11 @@ Architecture mirrors first_run_wizard_qt.py exactly:
 Steps:
   0  Welcome     — passive: "takes two minutes" + Let's go
   1  Dictation   — speak → text lands in box → green check
-  2  Command     — say any command → green check
-  3  Ways        — passive overview of the user's current capture controls
-  4  Show        — read-only demonstration of the chosen listening display
-  5  Try         — live voice, pace and feedback trials; each card saves on Keep
-  6  Done        — checklist recap, all items ticked; points to Ava and
-                   the click-by-number overlay as things to try once set up
+  2  Command     — one safe catalog example → green check
+  3  Done        — truthful recap and optional next steps
+
+Optional lessons reuse Ways, Show and Try from Done. They do not extend the
+core route or change settings merely by being opened.
 
 Every "try saying ..." example and every command named in the text is read
 from the command catalog at runtime (samsara.command_catalog, built from the
@@ -34,10 +33,10 @@ from __future__ import annotations
 
 from samsara.ui.tutorial_try_qt import _TryPage
 
-from PySide6.QtCore import Qt, QTimer, Signal, QRectF
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLabel, QLayout, QMainWindow,
-    QPushButton, QScrollArea, QTextEdit, QVBoxLayout, QWidget,
+    QPushButton, QScrollArea, QSizePolicy, QTextEdit, QVBoxLayout, QWidget,
 )
 
 from samsara import command_catalog, tutorial_capture
@@ -46,7 +45,7 @@ from samsara.log import get_logger
 from samsara.onboarding.guidance_facts import facts_from_config
 from samsara import listening_display
 from samsara.onboarding.display_placement import current_position
-from samsara.ui.widgets.indicator_demo import DesktopSketch, IndicatorDemo, POSITIONS
+from samsara.ui.tutorial_chosen_display import _ChosenDisplayDemo
 from samsara.onboarding.mode_details import detail_from_config
 from samsara.support_feedback import open_support_tab
 from samsara.ui import theme
@@ -129,7 +128,9 @@ def _command_instruction(examples, hotkey: str, wake: str, wake_enabled: bool,
         )
     if rest:
         bullets.append("  • Or any command you know — " + ", ".join(f"'{p}'" for p in rest) + ", etc.")
-    return "Say a voice command. Try one of:\n" + "\n".join(bullets)
+    # PLACEHOLDER COPY (936)
+    heading = "Say a voice command. Try this:" if len(examples) == 1 else "Say a voice command. Try one of:"
+    return heading + "\n" + "\n".join(bullets)
 
 
 def _command_hint(examples) -> str:
@@ -337,106 +338,6 @@ class _ModeDetailButton(QPushButton):
         super().keyPressEvent(event)
 
 
-class _ChosenDisplaySketch(DesktopSketch):
-    """Illustrate saved placement without any draggable/choosable targets."""
-
-    def indicator_size(self):
-        if self.display == 'full':
-            return super().indicator_size()
-        from samsara.ui.widgets.indicator_demo import compact_stand_in
-        from samsara.ui.listening_indicator import ListeningIndicator
-        proxy = compact_stand_in()
-        proxy._font = lambda: ListeningIndicator._font(proxy)
-        return ListeningIndicator._pill_width(proxy, self.state_words()[0], True), 36
-
-    def paint_desktop(self, painter):
-        # These examples keep drafts in Samsara; none imply text was inserted.
-        beat = self.beat
-        try:
-            self.beat = 0
-            super().paint_desktop(painter)
-        finally:
-            self.beat = beat
-
-    def indicator_rect(self):
-        config = self.parentWidget().config
-        width, height = self.indicator_size()
-        position = current_position(config, self.display)
-        if position in POSITIONS:
-            return self.target_rect(position, width, height)
-        if self.display == 'compact':
-            record = config.get('listening_indicator_custom_position') or {}
-            cx, cy = record.get('cx', .5), record.get('cy', .5)
-        else:
-            from samsara.live_surface.placement import normalize_placement
-            placement = ((config.get('ui') or {}).get('live_surface') or {}).get('placement') or {}
-            record = (placement.get('monitors') or {}).get(placement.get('preferred_monitor')) or placement.get('seed')
-            saved = normalize_placement(record)
-            cx, cy = {'top': (saved.t, 0), 'bottom': (saved.t, 1),
-                      'left': (0, saved.t), 'right': (1, saved.t)}.get(saved.edge.value, (saved.free_cx, saved.free_cy))
-        area = self.work_rect().adjusted(10, 10, -10, -10)
-        return QRectF(area.left() + (area.width()-width)*cx,
-                      area.top() + (area.height()-height)*cy, width, height)
-
-    def demo_view(self):
-        from samsara.live_surface.model import LiveSurfaceModel, Lane, CaptureState, DocumentState
-        model = LiveSurfaceModel(clock=lambda: 0)
-        model.lane = Lane.HOLD if self.beat < 2 else Lane.HANDS_FREE_DICTATE
-        model.capture = CaptureState.RECORDING if self.beat in (0, 3) else CaptureState.HANDS_FREE_LISTENING
-        if self.beat in (1, 4):
-            model.capture = CaptureState.OFF
-            model.text = 'A new thought.'  # PLACEHOLDER COPY (837): illustrative sample.
-            model.document = DocumentState.EDITABLE_DRAFT
-        return model.view()
-
-    def working(self):
-        return False
-
-    def result_message(self):
-        return ''
-
-    def _paint_indicator_into(self, painter, rect, dpr):
-        header, subline = self.state_words()
-        state = 'recording' if self.beat in (0, 3) else 'idle'
-        if self.display == 'full':
-            beat = self.beat
-            try:
-                # The shared painter puts a level meter on beat 1 only.
-                self.beat = 1 if state == 'recording' else 0
-                self._paint_indicator_body(painter, rect, dpr, header, subline, '', state, 0)
-            finally:
-                self.beat = beat
-        else:
-            from samsara.ui.widgets.indicator_demo import compact_stand_in
-            from samsara.ui.listening_indicator import ListeningIndicator
-            proxy = compact_stand_in(listening=state == 'recording', mode_text=header)
-            proxy._glyph_mark = lambda: (state, 'asleep', 0, 1.0)
-            proxy._font = lambda: ListeningIndicator._font(proxy)
-            bg, fg, label, glyph = ListeningIndicator._resolve_colors(proxy)
-            ListeningIndicator._paint_pill(proxy, painter, rect, bg, fg, label, glyph)
-
-
-class _ChosenDisplayDemo(IndicatorDemo):
-    # PLACEHOLDER COPY (837)
-    captions = (
-        'Recording — Samsara is listening to your voice.',
-        'Staged — your words are waiting to be pasted.',
-        'Hands-free — listening for your next thought or command.',
-        'Hands-free recording — speak without holding a key.',
-        'Staged — your draft stays available until you paste it.',
-    )
-
-    def __init__(self, config, parent):
-        self.config = config
-        super().__init__(parent, display=listening_display.display_choice(config).value,
-                         desktop_type=_ChosenDisplaySketch)
-        for index, button in enumerate(self.steps):
-            button.setAccessibleName(self.captions[index])
-
-    def caption_for_beat(self, beat):
-        return self.captions[beat]
-
-
 class TutorialWindow(QMainWindow):
     """Interactive post-wizard tutorial.
 
@@ -451,6 +352,7 @@ class TutorialWindow(QMainWindow):
         super().__init__()
         self._app = app
         self._step = 1 if from_setup else 0
+        self._optional_key: str | None = None
         self._completed: set[int] = set()
         self._skipped_steps: set[int] = set()
         self._hint_timer: QTimer | None = None
@@ -530,6 +432,20 @@ class TutorialWindow(QMainWindow):
                 self._steps.remove((key, title))
                 self._step_indicator.steps.remove(key.capitalize())
                 self._step_indicator.takeItem(step_index)
+        # Build the existing lessons once; they are reached by explicit identity,
+        # independently of the four-page route. A broken Try remains optional.
+        self._optional_pages = {}
+        for key in self._optional_steps:
+            try:
+                page = self._scroll_page(self._build_page(key))
+                page.hide()
+                self._optional_pages[key] = page
+            except Exception:
+                if key != 'try':
+                    raise
+                logger.exception('Optional tutorial Try page unavailable')
+                self._try_page = None
+                self._optional_buttons[key].setEnabled(False)
         self._current_page: QWidget | None = None
 
         root.addWidget(self._separator())
@@ -542,6 +458,7 @@ class TutorialWindow(QMainWindow):
         nl = QHBoxLayout(nav)
         nl.setContentsMargins(28, theme.SPACE_1, 28, theme.SPACE_1)
         nl.setSpacing(theme.SPACE_3)
+        self._wake_calibration_button = None
 
         self._skip_all_btn = QPushButton("Skip tutorial")
         theme.make_secondary(self._skip_all_btn)
@@ -597,6 +514,13 @@ class TutorialWindow(QMainWindow):
                                 'QPushButton{min-height:42px;min-width:42px;'
                                 'max-height:42px;max-width:42px;padding:0px;}')
             button.setFixedSize(44, 44)
+        # 940: Try supplies its own approved control styling, as it did while
+        # unparented in the old route. Parent it after the generic design pass
+        # so that pass cannot replace its 44px trial/Keep button rules.
+        for page in self._optional_pages.values():
+            if page.parentWidget() is None:
+                page.setParent(self._stack)
+                page.hide()
         self._show_step()
 
     # ------------------------------------------------------------------
@@ -679,14 +603,14 @@ class TutorialWindow(QMainWindow):
         if content is None or layout is None:
             return
         layout.activate()
-        if self._steps[self._step][0] in ('ways', 'try', 'done'):
-            if self._steps[self._step][0] == 'try':
+        if self._active_key() in ('ways', 'try', 'done'):
+            if self._active_key() == 'try':
                 self.resize(min(self.maximumWidth(), max(self.width(), 1000)), self.height())
                 self._fit_available_screen()
                 content.resize(page.viewport().width(), content.height())
                 layout.activate()
             natural_height = max(content.minimumSizeHint().height(), layout.minimumSize().height())
-            if self._steps[self._step][0] == 'try' and layout.hasHeightForWidth():
+            if self._active_key() == 'try' and layout.hasHeightForWidth():
                 natural_height = max(natural_height, layout.heightForWidth(page.viewport().width()))
             chrome = self.height() - page.viewport().height()
             self.resize(self.width(), min(self.maximumHeight(),
@@ -710,12 +634,27 @@ class TutorialWindow(QMainWindow):
             ("welcome",   "Learn Samsara"),  # PLACEHOLDER COPY (837)
             ("dictation", "Talk → It Types"),
             ("command",   "Say a Command"),
-            # PLACEHOLDER COPY (378)
-            ("ways",      "Ways to talk to Samsara"),
-            ("display",   "Your listening display"),  # PLACEHOLDER COPY (837)
-            ("try",       "Try your settings"),
-            ("done",      "Tutorial complete"),
+            ("done",      "Tutorial complete"),  # PLACEHOLDER COPY (936)
         ]
+        self._optional_steps = {
+            'ways': 'Ways to talk to Samsara',
+            'display': 'Your listening display',
+            'try': 'Try your settings',
+        }
+
+    def _active_key(self):
+        return self._optional_key or self._steps[self._step][0]
+
+    def _open_optional(self, key):
+        if key not in self._optional_pages:
+            return
+        self._optional_key = key
+        self._show_step()
+
+    def _return_to_done(self):
+        self._optional_key = None
+        self._step = next(i for i, (key, _) in enumerate(self._steps) if key == 'done')
+        self._show_step()
 
     # ------------------------------------------------------------------
     # Page builders
@@ -782,7 +721,8 @@ class TutorialWindow(QMainWindow):
             "try":       lambda: _TryPage(self),
             "done":      self._build_done,
         }
-        return builders[key]()
+        from samsara.ui.context_help_qt import tutorial_page_help
+        return tutorial_page_help(self, key, builders[key]())
 
     def _build_display_show(self):
         content, layout = self._padded()
@@ -871,6 +811,9 @@ class TutorialWindow(QMainWindow):
         return scroll
 
     def _toggle_way_detail(self, key, opened):
+        from samsara.ui.context_help_qt import tutorial_way_help
+        if tutorial_way_help(self, key, opened):
+            return
         for row_key, (button, detail) in self._way_details.items():
             active = row_key == key and opened
             button.setChecked(active)
@@ -878,7 +821,7 @@ class TutorialWindow(QMainWindow):
         QTimer.singleShot(0, self, self._fit_done_page_height)
 
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key.Key_Escape and self._steps[self._step][0] == 'ways':
+        if event.key() == Qt.Key.Key_Escape and self._active_key() == 'ways':
             self._toggle_way_detail(None, False)
             event.accept()
             return
@@ -895,8 +838,9 @@ class TutorialWindow(QMainWindow):
         lay.addWidget(headline)
 
         sub = QLabel(
-            "Let's try each thing once — it takes about two minutes. "
-            "Every step is skippable."
+            # PLACEHOLDER COPY (936)
+            "Dictate into the practice box, then try one command. "
+            "You can skip either exercise. Extra lessons are at the end."
         )
         sub.setWordWrap(True)
         sub.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
@@ -981,7 +925,7 @@ class TutorialWindow(QMainWindow):
         wake = cfg.get('wake_word_config', {}).get('phrase', DEFAULT_WAKE_PHRASE)
 
         self._catalog = _tutorial_catalog(self._app)
-        self._examples = _command_examples(self._catalog, cfg)
+        self._examples = _command_examples(self._catalog, cfg, count=1)
         box = self._instruction_box(_command_instruction(
             self._examples, cmd_hotkey, wake, bool(cfg.get('wake_word_enabled', False)),
             bool((cfg.get('wake_word_config') or {}).get('opens_session', False))))
@@ -1100,6 +1044,31 @@ class TutorialWindow(QMainWindow):
         hf_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;")
         lay.addWidget(hf_lbl)
 
+        # PLACEHOLDER COPY (936): existing lessons, kept out of the core route.
+        optional_label = QLabel('Optional lessons')
+        optional_label.setStyleSheet(f'color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;font-weight:600;')
+        lay.addWidget(optional_label)
+        self._optional_buttons = {}
+        optional_row = QHBoxLayout()
+        optional_row.setSpacing(8)
+        for key, text in [('ways', 'Ways to talk'), ('display', 'Display'),
+                          ('try', 'Preferences')]:
+            button = QPushButton(text)
+            button.setObjectName(f'tutorialOptional_{key}')
+            theme.make_secondary(button)
+            button.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+            button.clicked.connect(lambda checked=False, k=key: self._open_optional(k))
+            optional_row.addWidget(button)
+            self._optional_buttons[key] = button
+        optional_row.addStretch()
+        lay.addLayout(optional_row)
+
+        settings_note = QLabel('Ways to talk covers hands-free and wake word. '
+                              'Preferences cover voice, feedback and pace; also in Settings > Audio and Dictation.')
+        settings_note.setWordWrap(True)
+        settings_note.setStyleSheet(f'color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;')
+        lay.addWidget(settings_note)
+
         # --- Advanced guides ---
         next_lbl = QLabel("Go deeper when you're ready:")
         next_lbl.setWordWrap(True)
@@ -1188,7 +1157,7 @@ class TutorialWindow(QMainWindow):
         self._display_demo._stop()
 
         # Restore the user's pre-Try width and keep all frame edges inside the work area.
-        key = self._steps[self._step][0]
+        key = self._active_key()
         previous_try = self._current_page is not None and self._current_page is getattr(self, '_try_page', None)
         if key == 'try' and not previous_try:
             self._try_previous_width = self.width()
@@ -1199,7 +1168,7 @@ class TutorialWindow(QMainWindow):
             self._next_btn.setEnabled(True)
             self._next_btn.setFocus()
         # Swap page
-        page = self._pages[self._step]
+        page = self._optional_pages[key] if self._optional_key else self._pages[self._step]
         if self._current_page is not None:
             self._stack_layout.removeWidget(self._current_page)
             self._current_page.hide()
@@ -1210,14 +1179,18 @@ class TutorialWindow(QMainWindow):
         self._current_page = page
 
         if key == 'ways':
-            from samsara.ui.wake_setup_qt import refresh_tutorial_wake
-            refresh_tutorial_wake(self)
+            self._refresh_ways_wake()
+        elif self._wake_calibration_button is not None:
+            self._wake_calibration_button.hide()
 
-        key, title = self._steps[self._step]
-        self._step_lbl.setText(f"Step {self._step + 1} of {len(self._steps)}")
+        title = self._optional_steps[key] if self._optional_key else self._steps[self._step][1]
+        # PLACEHOLDER COPY (936)
+        self._step_lbl.setText('Optional lesson' if self._optional_key else
+                               f"Step {self._step + 1} of {len(self._steps)}")
         self._title_lbl.setText(title)
 
-        self._step_indicator.set_progress(self._step, self._skipped_steps)
+        progress = len(self._steps) - 1 if self._optional_key else self._step
+        self._step_indicator.set_progress(progress, self._skipped_steps)
 
         is_last    = self._step == len(self._steps) - 1
         is_welcome = key == "welcome"
@@ -1225,11 +1198,17 @@ class TutorialWindow(QMainWindow):
         is_interactive = key in ("dictation", "command")
 
         # Nav button states
-        self._back_btn.setEnabled(self._step > 0)
+        self._back_btn.setEnabled(bool(self._optional_key) or self._step > 0)
         self._skip_step_btn.setVisible(is_interactive)
         self._next_btn.setVisible(True)
+        self._skip_all_btn.setVisible(not is_done and not self._optional_key)
 
-        if is_done:
+        if self._optional_key:
+            # PLACEHOLDER COPY (936): Try still walks its existing substeps.
+            last_trial = key == 'try' and getattr(self._try_page, 'stage', 0) < 2
+            self._next_btn.setText('Next' if last_trial else 'Back to Done')
+            self._next_btn.setEnabled(True)
+        elif is_done:
             self._refresh_done_checks()
             self._next_btn.setText("Start using Samsara")
             self._next_btn.setEnabled(True)
@@ -1259,6 +1238,33 @@ class TutorialWindow(QMainWindow):
         else:
             self.resize(self.width(), min(self._default_window_height, self.maximumHeight()))
 
+    def _refresh_ways_wake(self):
+        """Keep wake readiness intact without adding a second row to its card."""
+        from samsara.ui.wake_setup_qt import refresh_tutorial_wake
+        frame = self.findChild(QWidget, 'tutorialWay_wake')
+        button = self._wake_calibration_button
+        if button is not None:
+            # The shared adapter resolves readiness and instruction copy from
+            # this row. Return its same control temporarily, then place the
+            # contextual action in the existing footer, beside navigation.
+            frame.layout().addWidget(button)
+        refresh_tutorial_wake(self)
+        button = frame.findChild(QPushButton, 'tutorialWakeCalibrate')
+        needed = not button.isHidden()
+        if self._wake_calibration_button is None:
+            button.clicked.disconnect()
+            button.clicked.connect(self._calibrate_ways_wake)
+            self._wake_calibration_button = button
+        frame.layout().removeWidget(button)
+        self._next_btn.parentWidget().layout().insertWidget(
+            0, button, 0, Qt.AlignmentFlag.AlignLeft)
+        button.setVisible(needed and self._active_key() == 'ways')
+
+    def _calibrate_ways_wake(self):
+        from samsara.ui.mic_setup_wizard_qt import open_wake_calibration
+        guide = open_wake_calibration(self._app, parent=self)
+        guide.finished.connect(lambda _: self._refresh_ways_wake())
+
     def _open_guide(self, method):
         from samsara.ui.tutorial_guides import open_guide
         open_guide(self, method)
@@ -1283,8 +1289,13 @@ class TutorialWindow(QMainWindow):
             )
 
     def _go_next(self):
-        key = self._steps[self._step][0]
+        key = self._active_key()
         if key == 'try' and getattr(self, '_try_page', None) is not None and self._try_page.advance(1):
+            if self._optional_key:
+                self._next_btn.setText('Next' if self._try_page.stage < 2 else 'Back to Done')
+            return
+        if self._optional_key:
+            self._return_to_done()
             return
         if key == "done":
             self._finish()
@@ -1294,8 +1305,13 @@ class TutorialWindow(QMainWindow):
         self._show_step()
 
     def _go_back(self):
-        if (self._steps[self._step][0] == 'try' and getattr(self, '_try_page', None) is not None
+        if (self._active_key() == 'try' and getattr(self, '_try_page', None) is not None
                 and self._try_page.advance(-1)):
+            if self._optional_key:
+                self._next_btn.setText('Next')
+            return
+        if self._optional_key:
+            self._return_to_done()
             return
         # Reuses _show_step() -- the exact same page-setup/dots/title/nav-
         # button routine forward navigation uses, so there is no separate
@@ -1407,7 +1423,7 @@ class TutorialWindow(QMainWindow):
         """Handle success signals delivered from worker threads via Signal."""
         if tutorial_capture.accept_event(self._app, event):
             self._complete_dictation(payload)
-        elif event == "command_done":
+        elif event == "command_done" and self._active_key() == 'command':
             self._complete_command(payload)
 
     def _dictation_text_changed(self):
