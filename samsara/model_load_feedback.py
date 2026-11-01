@@ -41,6 +41,12 @@ def load_speech_model(update_splash, model_factory, model_name, device, compute_
         speech_readiness.phase(update_splash, 'downloading')
         update_splash(LOADING_STATUS, 68, "Downloading the speech model; a network connection is needed")
 
+    def resolve():
+        from samsara.setup_model_download import resolve_for_startup
+        return resolve_for_startup(getattr(update_splash, '__self__', None), model_name)
+
+    downloading.resolve = resolve
+
     return load_model_with_feedback(
         update_splash,
         model_factory,

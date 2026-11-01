@@ -610,6 +610,9 @@ class _MainWindow(QMainWindow):
             pause_hands_free(self._app)
         elif action == 'resume':
             resume_hands_free(self._app)
+        elif action == 'retry_speech':
+            from samsara.setup_model_download import retry_startup
+            retry_startup(self._app)
         self._refresh_status()
 
     # ---- Navigation ---------------------------------------------------------

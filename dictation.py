@@ -346,13 +346,12 @@ _samsara_boot.check_vc_redistributable()
 def _create_whisper_model(*args, **kwargs):
     from faster_whisper import WhisperModel
     from faster_whisper.utils import download_model
-
+    from samsara.speech_model_transfer import downloaded_whisper_model
     on_download = kwargs.pop("_on_download", None)
     model = args[0] if args else kwargs.get("model_size_or_path")
     if model is None or os.path.isdir(model):
         kwargs["local_files_only"] = True
         return WhisperModel(*args, **kwargs)
-
     # Resolve cached snapshots without allowing snapshot_download to contact
     # the Hub, then construct faster-whisper from the local model directory.
     cache_options = {
@@ -366,7 +365,7 @@ def _create_whisper_model(*args, **kwargs):
     except Exception:
         if on_download is not None:
             on_download()
-        return WhisperModel(*args, **kwargs)
+        return downloaded_whisper_model(WhisperModel, args, kwargs, on_download)
 
     cached_args = (model_path, *args[1:]) if args else args
     cached_kwargs = dict(kwargs)
@@ -380,7 +379,7 @@ def _create_whisper_model(*args, **kwargs):
         # repair/download before permitting faster-whisper to use the Hub.
         if on_download is not None:
             on_download()
-        return WhisperModel(*args, **kwargs)
+        return downloaded_whisper_model(WhisperModel, args, kwargs, on_download)
 
 
 
@@ -2579,7 +2578,8 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             self._ace_engine = None
 
     def _show_startup_error(self, message: str):
-        """Show a startup-failure dialog and exit. Runs on the UI thread."""
+        from samsara.setup_model_download import keep_download_retry_available
+        if keep_download_retry_available(self): return
         self._close_splash_post_load()
         from PySide6.QtWidgets import QMessageBox
         QMessageBox.critical(

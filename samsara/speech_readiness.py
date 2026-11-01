@@ -4,12 +4,16 @@ from __future__ import annotations
 
 LOADING = "Loading the speech model"  # PLACEHOLDER COPY (918)
 DOWNLOADING = "Getting ready - downloading the speech model"  # PLACEHOLDER COPY (918)
-FAILED = "Speech model unavailable - restart Samsara to try again"  # PLACEHOLDER COPY (918)
+FAILED = "Speech model unavailable - check your connection, then choose Retry"  # PLACEHOLDER COPY (1007)
 
 
 def status(app):
     if getattr(app, 'model_loaded', True):
         return ""
+    value = getattr(app, '_speech_model_progress', None)
+    if getattr(app, '_speech_model_phase', '') == 'downloading' and value and value.total:
+        from samsara.setup_model_download import byte_text
+        return f'{DOWNLOADING} — {byte_text(value)}'
     return {'downloading': DOWNLOADING, 'failed': FAILED}.get(
         getattr(app, '_speech_model_phase', ''), LOADING)
 

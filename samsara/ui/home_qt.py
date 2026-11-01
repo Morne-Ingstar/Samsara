@@ -618,8 +618,8 @@ def state_view(app) -> tuple:
     STATE_TABLE the page shows."""
     state = listening_state_id(app)
     if state == 'getting_ready':
-        from samsara.speech_readiness import status
-        return state, status(app), 'Getting ready', 'none'
+        from samsara.ui.speech_download_views import state_view
+        return state_view(app)
     headline, label, action = STATE_TABLE[state]
     return state, headline.format(phrase=quoted(wake_phrase(_cfg(app)))), label, action
 
@@ -724,8 +724,8 @@ def listening_badge_view(app) -> tuple:
     if state == 'waiting':
         label = label.format(phrase=quoted(wake_phrase(_cfg(app))))
     if state == 'getting_ready':
-        from samsara.speech_readiness import status
-        return label, theme.TEXT_SECONDARY, status(app), action
+        from samsara.ui.speech_download_views import badge_view
+        return badge_view(app)
     # PLACEHOLDER COPY (824)
     click = {'pause': 'Click to pause listening.', 'stop': 'Click to stop listening.',  # PLACEHOLDER COPY (824)
              'resume': 'Click to resume listening.', 'none': 'Choose a microphone in Settings.'}[action]  # PLACEHOLDER COPY (824)

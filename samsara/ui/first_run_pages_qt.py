@@ -513,11 +513,13 @@ class Decisions(QObject):
         downloads = getattr(app, '_setup_model_download', None)
         preparing = downloads is not None and not getattr(app, 'model_loaded', False)
         self.owner._download_status.setVisible(preparing)
+        self.owner._download_retry.setVisible(
+            preparing and downloads.snapshot(self.owner._config['model_size']) == 'failed')
         self.readiness.setVisible(not preparing)
         if preparing:
             from samsara.setup_model_download import progress_text
             model = self.owner._config['model_size']
-            text = progress_text(model, downloads.snapshot(model))
+            text = progress_text(model, downloads.details(model))
             self.owner._download_status.setText(text)
             self.owner._download_status.show()
         elif app is None or not hasattr(app, 'model_loaded'):
@@ -533,6 +535,11 @@ class Decisions(QObject):
         else:
             text = 'The current speech model is loaded. A changed model applies after startup.'
         self.readiness.setText(text)  # PLACEHOLDER COPY (935)
+
+    def retry_model_download(self):
+        downloads = self.owner._samsara_app._setup_model_download
+        downloads.request(self.owner._config['model_size'], retry=True)
+        self.refresh_readiness()
 
     def prepare_model_download(self):
         downloads = getattr(self.owner._samsara_app, '_setup_model_download', None)

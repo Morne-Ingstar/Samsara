@@ -645,6 +645,11 @@ class _WizardWindow(QMainWindow):
         self._download_status.setStyleSheet(f'color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;')
         self._download_status.hide()
         tbl.addWidget(self._download_status)
+        self._download_retry = QPushButton('Retry')  # PLACEHOLDER COPY (1007)
+        self._download_retry.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        self._download_retry.hide()
+        self._download_retry.clicked.connect(lambda: self._decisions.retry_model_download())
+        tbl.addWidget(self._download_retry, alignment=Qt.AlignmentFlag.AlignLeft)
 
         # ---- Page stack ---------------------------------------------------
         self._stack = QWidget()
