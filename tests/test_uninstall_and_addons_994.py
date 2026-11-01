@@ -153,9 +153,10 @@ def test_uninstall_checks_exact_install_and_retains_retry_on_failure():
     assert "RestartApplications=no" in ISS
     assert single_instance.UNINSTALL_QUIT_MESSAGE in ISS
     assert "QueryFullProcessImageName(Handle, 0, Name, Size)" in ISS and "ExpandConstant('{app}\\{#AppExeName}')" in ISS
-    assert "if UninstallSilent() then Abort" in ISS
+    # 994b: retain verified handles and suppress error dialogs on explicit cancellation.
+    assert "if UninstallSilent() then begin UninstallCloseCancelled := True; Abort; end;" in ISS
     stop = ISS.split("procedure EnsureInstallStopped();", 1)[1].split("function CleanPayload", 1)[0]
-    assert stop.index("RequestInstallQuit();") < stop.index("WaitForInstallExit()") < stop.index("TerminateProcess(Handle, 0)")
+    assert stop.index("RequestInstallQuit(Processes);") < stop.index("WaitForInstallExit(Processes, WaitForm, Status)") < stop.index("TerminateProcess(Handle, 0)")
     handler = ISS.split("procedure CurUninstallStepChanged", 1)[1].split("end;", 1)[0]
     assert "usAppMutexCheck" in handler and "usUninstall" in handler
     assert handler.index("EnsureInstallStopped();") < handler.index("CleanPayload")

@@ -177,6 +177,7 @@ var
   GpuDetected: Integer;        { 1 = NVIDIA present, 0 = none, -1 = detection failed }
   FetchOutcome: Integer;       { -1 = not run, else the fetcher's exit code }
   FetchRequested: String;
+  UninstallCloseCancelled: Boolean;
 
 { Inno component name -> manifest component id (docs/RELEASE_MANIFEST.md). }
 function ManifestId(const Name: String): String;
@@ -312,33 +313,93 @@ function OpenProcess(Access: Cardinal; Inherit: Boolean; Pid: Cardinal): THandle
 function QueryFullProcessImageName(Process: THandle; Flags: Cardinal;
   Name: String; var Size: Cardinal): Boolean;
   external 'QueryFullProcessImageNameW@kernel32.dll stdcall';
+function GetModuleFileNameEx(Process: THandle; Module: THandle;
+  Name: String; Size: Cardinal): Cardinal;
+  external 'K32GetModuleFileNameExW@kernel32.dll stdcall';
 function WaitForSingleObject(Handle: THandle; Milliseconds: Cardinal): Cardinal;
   external 'WaitForSingleObject@kernel32.dll stdcall';
 function TerminateProcess(Process: THandle; ExitCode: Cardinal): Boolean;
   external 'TerminateProcess@kernel32.dll stdcall';
 
-function OpenInstallProcess(Pid: Cardinal; Force: Boolean): THandle;
+type
+  TInstallProcess = record
+    Pid: Cardinal;
+    Handle: THandle;
+  end;
+  TInstallProcesses = array of TInstallProcess;
+  TFileIdentity = record
+    Attributes, CreatedLow, CreatedHigh, AccessedLow, AccessedHigh: Cardinal;
+    WrittenLow, WrittenHigh, Volume, SizeHigh, SizeLow, Links: Cardinal;
+    IndexHigh, IndexLow: Cardinal;
+  end;
+
+function GetFileInformationByHandle(Handle: THandle; var Info: TFileIdentity): Boolean;
+  external 'GetFileInformationByHandle@kernel32.dll stdcall';
+
+{ 994b: compare file identities as well as spelling (case, 8.3, long paths).
+  Neither fallback ever treats an executable name alone as install identity. }
+function IsInstallImage(const Name: String): Boolean;
+var
+  Expected: String;
+  ActualFile, InstallFile: THandle;
+  ActualInfo, InstallInfo: TFileIdentity;
+begin
+  Expected := ExpandConstant('{app}\{#AppExeName}');
+  Result := CompareText(Name, Expected) = 0;
+  if Result then exit;
+  ActualFile := OpenPayloadFile(Name, 0, 7, 0, 3, 0, 0);
+  if ActualFile = THandle(-1) then exit;
+  try
+    InstallFile := OpenPayloadFile(Expected, 0, 7, 0, 3, 0, 0);
+    if InstallFile = THandle(-1) then exit;
+    try
+      if GetFileInformationByHandle(ActualFile, ActualInfo) and
+        GetFileInformationByHandle(InstallFile, InstallInfo) then
+        Result := (ActualInfo.Volume = InstallInfo.Volume) and
+          (ActualInfo.IndexHigh = InstallInfo.IndexHigh) and
+          (ActualInfo.IndexLow = InstallInfo.IndexLow);
+    finally
+      ClosePayloadHandle(InstallFile);
+    end;
+  finally
+    ClosePayloadHandle(ActualFile);
+  end;
+end;
+
+function OpenInstallProcess(Pid: Cardinal): THandle;
 var
   Handle: THandle;
-  Access, Size: Cardinal;
+  Size: Cardinal;
   Name: String;
+  Matches: Boolean;
 begin
   Result := 0;
-  Access := $101000; { QUERY_LIMITED_INFORMATION | SYNCHRONIZE }
-  if Force then Access := Access or 1; { PROCESS_TERMINATE, only after timeout }
-  Handle := OpenProcess(Access, False, Pid);
+  Handle := OpenProcess($101000, False, Pid); { QUERY_LIMITED_INFORMATION | SYNCHRONIZE }
   if Handle = 0 then begin
     if DLLGetLastError() = 87 then exit; { exited since snapshot }
-    RaiseException('Cannot verify a running Samsara process. Close Samsara and retry.');
+    RaiseException('Windows did not allow Samsara to be closed. Uninstall cancelled; no files were removed.');
   end;
   try
     if WaitForSingleObject(Handle, 0) = 0 then exit;
     Size := 32768;
     Name := StringOfChar(#0, Size);
-    if not QueryFullProcessImageName(Handle, 0, Name, Size) then
-      RaiseException('Cannot verify the Samsara executable path. Close Samsara and retry.');
-    SetLength(Name, Size);
-    if CompareText(Name, ExpandConstant('{app}\{#AppExeName}')) = 0 then begin
+    if QueryFullProcessImageName(Handle, 0, Name, Size) then begin
+      SetLength(Name, Size);
+      Matches := IsInstallImage(Name);
+    end else begin
+      if WaitForSingleObject(Handle, 0) = 0 then exit;
+      Size := GetModuleFileNameEx(Handle, 0, Name, 32768);
+      if (Size > 0) and (Size < 32768) then begin
+        SetLength(Name, Size);
+        Matches := IsInstallImage(Name);
+      end else begin
+        if WaitForSingleObject(Handle, 0) = 0 then exit;
+        RaiseException('Windows did not allow the running application to be identified. Uninstall cancelled; no files were removed.');
+      end;
+    end;
+    { A process that exited during ANY identity check is already closed. }
+    if WaitForSingleObject(Handle, 0) = 0 then exit;
+    if Matches then begin
       Result := Handle;
       Handle := 0;
     end;
@@ -347,7 +408,7 @@ begin
   end;
 end;
 
-function InstallProcessIds(): TArrayOfInteger;
+function InstallProcesses(): TInstallProcesses;
 var
   Snapshot, Handle: THandle;
   Entry: TProcessEntry;
@@ -370,94 +431,169 @@ begin
         Name := Name + Entry.ExeFile[I];
       end;
       if CompareText(Name, '{#AppExeName}') = 0 then begin
-        Handle := OpenInstallProcess(Entry.Pid, False);
+        Handle := OpenInstallProcess(Entry.Pid);
         if Handle <> 0 then begin
-          ClosePayloadHandle(Handle);
           Count := GetArrayLength(Result);
           SetArrayLength(Result, Count + 1);
-          Result[Count] := Entry.Pid;
+          Result[Count].Pid := Entry.Pid;
+          Result[Count].Handle := Handle;
         end;
       end;
       More := Process32Next(Snapshot, Entry);
     end;
     if DLLGetLastError() <> 18 then RaiseException('Could not finish checking running applications.');
-  finally
+  except
+    for I := 0 to GetArrayLength(Result) - 1 do ClosePayloadHandle(Result[I].Handle);
     ClosePayloadHandle(Snapshot);
+    RaiseException(GetExceptionMessage());
   end;
+  ClosePayloadHandle(Snapshot);
 end;
 
-function InstallIsRunning(): Boolean;
+procedure CloseInstallProcesses(var Processes: TInstallProcesses);
 var
-  Pids: TArrayOfInteger;
+  I: Integer;
 begin
-  Pids := InstallProcessIds();
-  Result := GetArrayLength(Pids) <> 0;
+  for I := 0 to GetArrayLength(Processes) - 1 do
+    ClosePayloadHandle(Processes[I].Handle);
+  SetArrayLength(Processes, 0);
 end;
 
-procedure RequestInstallQuit();
+function InstallIsRunning(const Processes: TInstallProcesses): Boolean;
 var
-  Pids: TArrayOfInteger;
-  Handle: THandle;
+  I: Integer;
+begin
+  Result := False;
+  for I := 0 to GetArrayLength(Processes) - 1 do
+    if WaitForSingleObject(Processes[I].Handle, 0) <> 0 then begin
+      Result := True;
+      exit;
+    end;
+end;
+
+procedure RequestInstallQuit(const Processes: TInstallProcesses);
+var
   I: Integer;
   Window: HWND;
   Pid, QuitMessage: Cardinal;
 begin
   QuitMessage := RegisterWindowMessage('Samsara.QuitForUninstall');
-  if QuitMessage = 0 then RaiseException('Could not request Samsara shutdown.');
-  Pids := InstallProcessIds();
-  for I := 0 to GetArrayLength(Pids) - 1 do begin
-    Handle := OpenInstallProcess(Pids[I], False);
-    if Handle <> 0 then try
-      Window := FindWindowEx(0, 0, '', '');
-      while Window <> 0 do begin
-        GetWindowThreadProcessId(Window, Pid);
-        if Pid = Cardinal(Pids[I]) then PostMessage(Window, QuitMessage, 0, 0);
-        Window := FindWindowEx(0, Window, '', '');
-      end;
-    finally
-      ClosePayloadHandle(Handle);
+  { A failed graceful request still gets the bounded wait and force fallback. }
+  if QuitMessage = 0 then exit;
+  for I := 0 to GetArrayLength(Processes) - 1 do begin
+    if WaitForSingleObject(Processes[I].Handle, 0) = 0 then continue;
+    Window := FindWindowEx(0, 0, '', '');
+    while Window <> 0 do begin
+      GetWindowThreadProcessId(Window, Pid);
+      { Check liveness AFTER reading the window PID: prevent PID reuse. }
+      if (Pid = Processes[I].Pid) and
+        (WaitForSingleObject(Processes[I].Handle, 0) <> 0) then
+        PostMessage(Window, QuitMessage, 0, 0);
+      Window := FindWindowEx(0, Window, '', '');
     end;
   end;
 end;
 
-function WaitForInstallExit(): Boolean;
+type
+  TShutdownMessage = record
+    Window: HWND;
+    Msg, WParam, LParam, Time: Cardinal;
+    X, Y: Integer;
+    Reserved: Cardinal;
+  end;
+
+function PeekShutdownMessage(var Msg: TShutdownMessage;
+  Window: HWND; First, Last, Remove: Cardinal): Boolean;
+  external 'PeekMessageW@user32.dll stdcall';
+function TranslateShutdownMessage(var Msg: TShutdownMessage): Boolean;
+  external 'TranslateMessage@user32.dll stdcall';
+function DispatchShutdownMessage(var Msg: TShutdownMessage): Integer;
+  external 'DispatchMessageW@user32.dll stdcall';
+
+function WaitForInstallExit(const Processes: TInstallProcesses;
+  WaitForm: TSetupForm; Status: TNewStaticText): Boolean;
 var
   I: Integer;
+  Msg: TShutdownMessage;
 begin
   Result := False;
-  for I := 1 to 40 do begin
-    if not InstallIsRunning() then begin Result := True; exit; end;
+  for I := 0 to 39 do begin
+    if not InstallIsRunning(Processes) then begin Result := True; exit; end;
+    { PLACEHOLDER COPY (994b). Keep the native wait window responsive;
+      retained handles, not repeated path queries, determine completion. }
+    Status.Caption :=
+      Format('Closing Samsara... %d seconds remaining', [10 - I div 4]);
+    WaitForm.Refresh();
+    while PeekShutdownMessage(Msg, 0, 0, 0, 1) do begin { PM_REMOVE }
+      if Msg.Msg = $12 then begin { WM_QUIT: cancel before payload removal }
+        UninstallCloseCancelled := True;
+        Abort;
+      end;
+      TranslateShutdownMessage(Msg);
+      DispatchShutdownMessage(Msg);
+    end;
     Sleep(250);
   end;
-  Result := not InstallIsRunning();
+  Result := not InstallIsRunning(Processes);
 end;
 
 procedure EnsureInstallStopped();
 var
-  Pids: TArrayOfInteger;
+  Processes: TInstallProcesses;
   Handle: THandle;
   I: Integer;
+  WaitForm: TSetupForm;
+  Status: TNewStaticText;
 begin
-  if not InstallIsRunning() then exit;
-  { PLACEHOLDER COPY (994). Silent uninstall cancels instead of killing. }
-  if UninstallSilent() then Abort;
-  if SuppressibleTaskDialogMsgBox('Close Samsara before uninstalling',
-    'Samsara will be asked to exit. If it is still running after 10 seconds, it will be force-closed. Save your work first.',
-    mbConfirmation, MB_OKCANCEL, ['Close Samsara', 'Cancel'], 0, IDCANCEL) <> IDOK then Abort;
-  RequestInstallQuit();
-  if WaitForInstallExit() then exit;
-  Pids := InstallProcessIds();
-  for I := 0 to GetArrayLength(Pids) - 1 do begin
-    Handle := OpenInstallProcess(Pids[I], True);
-    if Handle <> 0 then try
-      if not TerminateProcess(Handle, 0) then
-        RaiseException('Samsara could not be closed. Uninstall cancelled; close it and retry.');
+  UninstallCloseCancelled := False;
+  Processes := InstallProcesses();
+  try
+    if GetArrayLength(Processes) = 0 then exit;
+    { PLACEHOLDER COPY (994b). Silent uninstall cancels without signals. }
+    if UninstallSilent() then begin UninstallCloseCancelled := True; Abort; end;
+    if SuppressibleTaskDialogMsgBox('Samsara is running. Close it and continue?',
+      'Samsara will be asked to exit. If it is still running after 10 seconds, it will be force-closed. Save your work first.',
+      mbConfirmation, MB_OKCANCEL, ['Close Samsara', 'Cancel'], 0, IDCANCEL) <> IDOK then begin UninstallCloseCancelled := True; Abort; end;
+    { The uninstaller's progress form does not exist at usAppMutexCheck. }
+    WaitForm := CreateCustomForm(ScaleX(380), ScaleY(76), False, False);
+    try
+      WaitForm.Caption := 'Uninstall Samsara';
+      WaitForm.BorderIcons := [];
+      Status := TNewStaticText.Create(WaitForm);
+      Status.Parent := WaitForm;
+      Status.Left := ScaleX(16);
+      Status.Top := ScaleY(24);
+      Status.Width := WaitForm.ClientWidth - ScaleX(32);
+      WaitForm.FlipAndCenterIfNeeded(True, nil, False);
+      WaitForm.Show();
+      RequestInstallQuit(Processes);
+      if WaitForInstallExit(Processes, WaitForm, Status) then exit;
+      Status.Caption := 'Force-closing Samsara...';
+      WaitForm.Refresh();
+      for I := 0 to GetArrayLength(Processes) - 1 do begin
+        if WaitForSingleObject(Processes[I].Handle, 0) = 0 then continue;
+        Handle := OpenProcess($100001, False, Processes[I].Pid); { SYNCHRONIZE | TERMINATE }
+        try
+          { Recheck the retained handle AFTER reopening: a reused PID must
+            never inherit the old process's verified install identity. }
+          if WaitForSingleObject(Processes[I].Handle, 0) = 0 then continue;
+          if Handle = 0 then
+            RaiseException('Windows did not allow Samsara to be closed. Uninstall cancelled; no files were removed.');
+          if not TerminateProcess(Handle, 0) then
+            if WaitForSingleObject(Processes[I].Handle, 0) <> 0 then
+              RaiseException('Windows did not allow Samsara to be closed. Uninstall cancelled; no files were removed.');
+        finally
+          if Handle <> 0 then ClosePayloadHandle(Handle);
+        end;
+      end;
+      if not WaitForInstallExit(Processes, WaitForm, Status) then
+        RaiseException('Samsara is still running. Uninstall cancelled; no files were removed.');
     finally
-      ClosePayloadHandle(Handle);
+      WaitForm.Free();
     end;
+  finally
+    CloseInstallProcesses(Processes);
   end;
-  if not WaitForInstallExit() then
-    RaiseException('Samsara is still running. Uninstall cancelled.');
 end;
 
 { Check every payload file before deleting any, then remove it ourselves.
@@ -534,7 +670,8 @@ begin
       if not CleanPayload(ExpandConstant('{app}'), True, True) then
         RaiseException('Some files could not be removed. Samsara remains in Apps so you can retry uninstall.');
     except
-      SuppressibleMsgBox(GetExceptionMessage(), mbError, MB_OK, IDOK);
+      if not UninstallCloseCancelled then
+        SuppressibleMsgBox(GetExceptionMessage(), mbError, MB_OK, IDOK);
       Abort;
     end;
   end;
