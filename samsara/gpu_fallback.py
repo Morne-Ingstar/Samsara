@@ -101,6 +101,7 @@ class ResilientSpeechModel:
             return result
 
     def transcribe(self, *args, **kwargs):
+        from samsara.audio_level import observe_decode; observe_decode(self, args, kwargs)
         def decode(model, retry_cpu):
             effective = kwargs
             if retry_cpu or (self._device == 'cpu' and self._fallback_attempted):
