@@ -62,6 +62,10 @@ id = "private-vocabulary"
 description = "Personal vocabulary JSON exports"
 path = '''(?i)(?:^|/)[^/]*vocabulary[^/]*\.json$'''
 regex = '''(?s).+'''
+[[rules.allowlists]]
+# 2026-10-31: the shipped built-in word list (801) is product data, not a personal export; 947's push was flagged by filename alone.
+description = "shipped built-in vocabulary"
+paths = ['''^samsara/data/builtin_vocabulary\.json$''']
 
 [[rules]]
 id = "private-config"
