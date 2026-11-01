@@ -501,6 +501,7 @@ class Decisions(QObject):
         if current not in [value for value, _, _ in rows]:
             self.owner._model_group.buttonClicked.connect(lambda _: current_label.hide())
         self.owner._model_group.buttonClicked.connect(lambda _: setattr(self, 'model_picked', True))
+        self.owner._model_group.buttonClicked.connect(lambda _: self.prepare_model_download())
         language = (self.owner._existing_config.get('language') if 'language' in self.owner._existing_config
                     else recommend_language(QLocale.system().name(), [code for _, code in LANGUAGES]))
         self.language = self.combo(layout, COPY['recognition.language'], LANGUAGES, language)
@@ -508,10 +509,18 @@ class Decisions(QObject):
         return w
 
     def refresh_readiness(self):
-        # Setup precedes model initialization on first launch. Never infer ready
-        # from a missing field, nor download/load a model inside this wizard.
         app = self.owner._samsara_app
-        if app is None or not hasattr(app, 'model_loaded'):
+        downloads = getattr(app, '_setup_model_download', None)
+        preparing = downloads is not None and not getattr(app, 'model_loaded', False)
+        self.owner._download_status.setVisible(preparing)
+        self.readiness.setVisible(not preparing)
+        if preparing:
+            from samsara.setup_model_download import progress_text
+            model = self.owner._config['model_size']
+            text = progress_text(model, downloads.snapshot(model))
+            self.owner._download_status.setText(text)
+            self.owner._download_status.show()
+        elif app is None or not hasattr(app, 'model_loaded'):
             text = ('The speech model downloads, if needed, and loads after setup. '
                     'Wait for Samsara to finish getting ready before talking. '
                     'If a download fails, reconnect and restart Samsara to retry.')
@@ -525,6 +534,15 @@ class Decisions(QObject):
             text = 'The current speech model is loaded. A changed model applies after startup.'
         self.readiness.setText(text)  # PLACEHOLDER COPY (935)
 
+    def prepare_model_download(self):
+        downloads = getattr(self.owner._samsara_app, '_setup_model_download', None)
+        if downloads is not None and not getattr(self.owner._samsara_app, 'model_loaded', False):
+            selected = self.selected(self.owner._model_group)
+            if selected is not None:
+                self.owner._config['model_size'] = selected
+                downloads.request(selected)
+            self.refresh_readiness()
+
     def refresh_recognition(self):
         if 'model_size' in self.owner._existing_config:
             self.reason.hide()
@@ -537,6 +555,7 @@ class Decisions(QObject):
             for button in self.owner._model_group.buttons():
                 button.setChecked(button.property('_value') == size)
             self.owner._config['model_size'] = size
+        self.prepare_model_download()
 
     def _hold_key(self, layout, action, title):
         # 373 owns this page: setup asks only the record and hands-free keys.

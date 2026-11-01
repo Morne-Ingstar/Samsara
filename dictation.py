@@ -3682,14 +3682,14 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             logger.info(f"[CONFIG] Model: {self.config['model_size']}, Device: {device}, Compute: {compute_type}")
             
             from samsara.gpu_fallback import load_resilient_model
+            from samsara.setup_model_download import wait_for_setup_download
+            wait_for_setup_download(self, self.config['model_size'])
             self.model, load_time, device, compute_type = load_resilient_model(
                 self, self.update_splash, _create_whisper_model, self.config['model_size'], device, compute_type
             )
-            
             # Store device info for logging
             self.device_type = device
             self.compute_type = compute_type
-            
             self.model_loaded = True
             self.loading_model = False
             logger.info(f"[OK] Model loaded in {load_time:.1f}s ({device}, {compute_type})")

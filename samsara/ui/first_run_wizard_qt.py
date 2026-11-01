@@ -569,6 +569,11 @@ class _WizardWindow(QMainWindow):
         self._step = 0
         self._optional_step = None
         self._config, self._existing_config = initial_config(_DEFAULTS, config_path)
+        if samsara_app is not None and not getattr(samsara_app, 'model_loaded', False):
+            from samsara.setup_model_download import SetupModelDownload
+            if getattr(samsara_app, '_setup_model_download', None) is None:
+                samsara_app._setup_model_download = SetupModelDownload()
+            samsara_app._setup_model_download.request(self._config['model_size'])
         if self._config.get('ui', {}).get('listening_display') not in listening_display.VALUES:
             # 935: cancelled first-run defaults are not an established preference.
             # Resolve once, before building the display page/Ready summary, so
@@ -633,6 +638,13 @@ class _WizardWindow(QMainWindow):
         )
         tbl.addWidget(self._title_lbl)
         root.addWidget(title_bar)
+
+        # 935i: transfer status stays visible on every stage, including Ready.
+        self._download_status = QLabel()
+        self._download_status.setWordWrap(True)
+        self._download_status.setStyleSheet(f'color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;')
+        self._download_status.hide()
+        tbl.addWidget(self._download_status)
 
         # ---- Page stack ---------------------------------------------------
         self._stack = QWidget()
