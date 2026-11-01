@@ -117,8 +117,9 @@ def test_reconnect_preserves_master_automatic_return_then_disconnect_falls_back(
     combo, menu = QComboBox(), tray_menu(app)
     try:
         _populate_microphone_combo(combo, app.available_mics, app.config)
-        assert combo.currentText() == microphone_name(app) == HEADSET
-        assert [a.text() for a in menu.actions() if a.isChecked()] == [HEADSET]
+        # 993b: preferred entries carry a display-only star; Home keeps the raw name.
+        assert combo.currentText() == '★ ' + microphone_name(app) == '★ ' + HEADSET
+        assert [a.text() for a in menu.actions() if a.isChecked()] == ['★ ' + HEADSET]
     finally:
         combo.deleteLater()
         menu.deleteLater()
@@ -172,7 +173,7 @@ def test_settings_refresh_retains_preference_and_returns_on_reconnect(qapp):
         assert _microphone_updates(combo) == {}
         app.available_mics.append({'id': 3, 'name': HEADSET})
         refresh.click()
-        assert combo.currentText() == HEADSET
+        assert combo.currentText() == '★ ' + HEADSET  # 993b: preferred label.
         assert _microphone_updates(combo) == {'microphone': 3, 'microphone_name': HEADSET}
         app.available_mics.pop()
         refresh.click()

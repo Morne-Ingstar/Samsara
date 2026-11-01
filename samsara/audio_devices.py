@@ -62,6 +62,21 @@ def microphone_choice(devices, config):
     return next((d for d in devices if d['id'] == index), None)
 
 
+def preferred_microphone_name(devices, config):
+    """Keep the saved name as the preference, including while disconnected."""
+    name = config.get('microphone_name')
+    if name in ('System default', 'Default'):
+        return None
+    match = microphone_choice(devices, config)
+    return name or (match['name'] if match else None)
+
+
+def microphone_label(name, preferred, *, connected=True):
+    """Decorate display text only; callers retain the unmodified identity."""
+    starred = preferred and name.strip().casefold() == preferred.strip().casefold()
+    return f"{'★ ' if starred else ''}{name}{'' if connected else ' (not connected)'}"
+
+
 def _ensure_com_initialized() -> bool:
     """Ensure COM is initialized before PortAudio-side WASAPI enumeration.
 

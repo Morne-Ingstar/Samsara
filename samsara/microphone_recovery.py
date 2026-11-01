@@ -80,6 +80,21 @@ def selection_name(app):
     return name or app.get_current_microphone_name() or 'System default'
 
 
+def select_microphone(app, mic_id, switch=None):
+    """A named tray choice wins even when its ID used to belong to another mic."""
+    entry = next((mic for mic in app.available_mics if mic['id'] == mic_id), None)
+    if entry is None:
+        return
+    if (app.config.get('microphone') == mic_id
+            and app.config.get('microphone_name') != entry['name']):
+        with getattr(app, '_config_lock', None) or nullcontext():
+            app.config['microphone_name'] = entry['name']
+        app.persist_config()
+        app.refresh_audio_devices()  # Existing idle admission queues a busy capture.
+    else:
+        (switch or app.switch_microphone)(mic_id)
+
+
 def select_system_default(app, switch=None):
     """Use the existing selection service, including its same-null-ID recovery."""
     old_id = app.config.get('microphone')

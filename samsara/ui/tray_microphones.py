@@ -3,7 +3,9 @@ import logging
 
 from PySide6.QtWidgets import QMenu
 
-from samsara.microphone_recovery import selection_name, select_system_default
+from samsara.audio_devices import microphone_choice, microphone_label, preferred_microphone_name
+from samsara.microphone_recovery import selection_name, select_microphone, select_system_default
+from samsara.ui import theme
 
 log = logging.getLogger(__name__)
 
@@ -16,14 +18,19 @@ def build_microphone_menu(app, add):
         except Exception as exc:
             log.debug('Microphone menu refresh: %s', exc)
     menu = QMenu(f'[MIC]  {selection_name(app)}')
+    menu.setStyleSheet(f'QMenu::item:disabled {{ color: {theme.TEXT_DISABLED}; }}')
     current_name = selection_name(app)
+    preferred = preferred_microphone_name(app.available_mics, app.config)
     default_selected = current_name == 'System default'
     add(menu, 'System default',
         lambda _checked: select_system_default(app, app.switch_microphone_and_refresh),
         checked=default_selected, report_as='Switch microphone')
     for mic in app.available_mics:
         selected = mic['name'] == current_name
-        add(menu, mic['name'],
-            lambda _checked, mid=mic['id']: app.switch_microphone_and_refresh(mid),
+        add(menu, microphone_label(mic['name'], preferred),
+            lambda _checked, mid=mic['id']: select_microphone(app, mid, app.switch_microphone_and_refresh),
             checked=not default_selected and selected, report_as='Switch microphone')
+    if preferred and microphone_choice(app.available_mics, app.config) is None:
+        missing = menu.addAction(microphone_label(preferred, preferred, connected=False))
+        missing.setEnabled(False)
     return menu

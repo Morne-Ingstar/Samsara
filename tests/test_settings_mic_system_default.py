@@ -90,7 +90,7 @@ class TestRestore:
 
         win = _SettingsWindow(_mic_stub(microphone=2))
         combo = win._widgets["mic_combo"]
-        assert combo.currentText() == "Mic Two"
+        assert combo.currentText() == "★ Mic Two"  # 993b: preferred label.
         assert combo.currentData() == 2
 
     def test_unknown_microphone_id_falls_back_to_system_default(self, qapp):
@@ -219,5 +219,5 @@ class TestRefreshPreservesSelection:
         refresh_btn = win.findChild(QPushButton, "microphoneRefreshButton")
         refresh_btn.click()
 
-        assert combo.currentText() == "Mic Two"
+        assert combo.currentText() == "★ Mic Two"  # 993b: preferred label.
         assert combo.currentData() == 2

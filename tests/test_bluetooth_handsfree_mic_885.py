@@ -142,9 +142,9 @@ def test_settings_combo_keeps_same_filtered_bluetooth_input(qapp, devices, name)
     try:
         _populate_microphone_combo(combo, audio_devices.list_microphones(), config)
         assert [combo.itemText(i) for i in range(combo.count())] == [
-            "System default", name,
+            "System default", '★ ' + name,  # 993b: saved Bluetooth input is preferred.
         ]
-        assert combo.currentText() == name
+        assert combo.currentText() == '★ ' + name  # 993b: display-only star.
         assert _microphone_updates(combo) == config
     finally:
         combo.deleteLater()

@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 from datetime import datetime
 
 from samsara import autostart
-from samsara.audio_devices import microphone_choice
+from samsara.audio_devices import microphone_choice, microphone_label, preferred_microphone_name
 from samsara.microphone_recovery import FALLBACK_MESSAGE
 from samsara.config_transfer import (
     ConfigTransferError,
@@ -78,15 +78,33 @@ def _populate_microphone_combo(combo, devices, config):
     default = saved_name in ('System default', 'Default') or (
         not saved_name and saved_id is None)
     match = microphone_choice(devices, config)
+    preferred = preferred_microphone_name(devices, config)
+    combo.view().setStyleSheet(f'QListView::item:disabled {{ color: {theme.TEXT_DISABLED}; }}')
     if not combo.property('_mic_choice_connected'):
-        def choose_default(index):
-            if index == 0:
+        def choose_microphone(index):
+            if index < 0:
+                return
+            choice = combo.itemData(index, _MIC_CHOICE_ROLE) or {}
+            if index and choice.get('_missing'):
+                return
+            # A deliberate reselect of the active fallback clears the preference too.
+            blocked = combo.blockSignals(True)
+            try:
                 combo.setItemData(0, {'microphone': None, 'microphone_name': 'System default'},
                                   _MIC_CHOICE_ROLE)
+                chosen = choice.get('microphone_name') if index else None
+                for row in reversed(range(1, combo.count())):
+                    entry = combo.itemData(row, _MIC_CHOICE_ROLE) or {}
+                    if entry.get('_missing'):
+                        combo.removeItem(row)
+                    else:
+                        combo.setItemText(row, microphone_label(entry['microphone_name'], chosen))
                 combo.setToolTip('')
                 combo.setItemData(0, None, Qt.ItemDataRole.ToolTipRole)
-        combo.currentIndexChanged.connect(choose_default)
-        combo.activated.connect(choose_default)  # A deliberate reselect of the fallback wins.
+            finally:
+                combo.blockSignals(blocked)
+        combo.currentIndexChanged.connect(choose_microphone)
+        combo.activated.connect(choose_microphone)
         combo.setProperty('_mic_choice_connected', True)
     blocked = combo.blockSignals(True)
     try:
@@ -96,7 +114,7 @@ def _populate_microphone_combo(combo, devices, config):
                           _MIC_CHOICE_ROLE)
         selected = 0
         for device in devices:
-            combo.addItem(device['name'], userData=device['id'])
+            combo.addItem(microphone_label(device['name'], preferred), userData=device['id'])
             index = combo.count() - 1
             combo.setItemData(index, {'microphone': device['id'],
                                      'microphone_name': device['name']}, _MIC_CHOICE_ROLE)
@@ -104,6 +122,12 @@ def _populate_microphone_combo(combo, devices, config):
                 selected = index
         missing = not default and match is None
         if missing:
+            if preferred:
+                combo.addItem(microphone_label(preferred, preferred, connected=False), userData=saved_id)
+                index = combo.count() - 1
+                combo.setItemData(index, {'microphone': saved_id, 'microphone_name': preferred,
+                                          '_missing': True}, _MIC_CHOICE_ROLE)
+                combo.model().item(index).setEnabled(False)
             combo.setItemData(0, {'microphone': saved_id, 'microphone_name': saved_name,
                                   '_missing': True}, _MIC_CHOICE_ROLE)
             combo.setItemData(0, FALLBACK_MESSAGE, Qt.ItemDataRole.ToolTipRole)
@@ -231,6 +255,8 @@ class GeneralPage:
 
         mics = list(getattr(self.app, 'available_mics', None) or [])
         mic_combo = QComboBox()
+        mic_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        mic_combo.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         # "System default" mirrors output_combo's pattern (~line 1211):
         # index 0, userData=None, so config['microphone']=None round-trips
         # through currentData() at save time instead of being unselectable
@@ -256,7 +282,7 @@ class GeneralPage:
         mic_row_layout = QHBoxLayout(mic_row_widget)
         mic_row_layout.setContentsMargins(0, 0, 0, 0)
         mic_row_layout.setSpacing(6)
-        mic_row_layout.addWidget(mic_combo, stretch=1)
+        mic_row_layout.addWidget(mic_combo)
         mic_refresh_btn = QPushButton("Refresh")
         mic_refresh_btn.setObjectName("microphoneRefreshButton")
         mic_refresh_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
@@ -269,6 +295,7 @@ class GeneralPage:
         # 95, so 104 still wins).
         mic_refresh_btn.setMinimumWidth(104)  # Includes inherited 24px side padding.
         mic_row_layout.addWidget(mic_refresh_btn)
+        mic_row_layout.addStretch()
 
         mic_refresh_hint = QLabel("Stop dictation to refresh devices.")
         mic_refresh_hint.setStyleSheet(f"color: {theme.WARNING}; font-size: {theme.TYPE_BODY}px;")

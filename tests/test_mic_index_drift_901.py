@@ -273,7 +273,7 @@ def test_settings_already_matches_name_and_lists_default_first(qapp):
     _populate_microphone_combo(combo, [{'id': 24, 'name': MIC}],
                                {'microphone': 27, 'microphone_name': MIC})
     assert combo.itemText(0) == 'System default'
-    assert combo.currentText() == MIC
+    assert combo.currentText() == '★ ' + MIC  # 993b: preferred label.
     assert _microphone_updates(combo) == {'microphone': 24, 'microphone_name': MIC}
     combo.setCurrentIndex(0)
     assert _microphone_updates(combo) == {'microphone': None, 'microphone_name': 'System default'}
@@ -301,7 +301,8 @@ def test_real_tray_menu_refreshes_before_label_and_default_action_works(qapp, mo
     mic = next(a.menu() for a in tray._menu.actions() if a.text().startswith('[MIC]'))
     assert mic.title() == '[MIC]  ' + ('System default' if default else MIC)
     actions = mic.actions()
-    assert [a.text() for a in actions] == ['System default', MIC]
+    # 993b: a specific saved choice is preferred; System default has no star.
+    assert [a.text() for a in actions] == ['System default', MIC if default else '★ ' + MIC]
     assert [a.isChecked() for a in actions] == [default, not default]
     actions[0].trigger()
     chosen.assert_called_once_with(app, app.switch_microphone_and_refresh)
