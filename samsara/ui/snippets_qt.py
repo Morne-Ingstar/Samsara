@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
 from samsara import snippets
 from samsara.log import get_logger
 from samsara.ui import theme
+from samsara.ui.hub_window_fit import scroll_page
 
 logger = get_logger(__name__)
 
@@ -66,7 +67,7 @@ GRID = 12
 #: default, with the editor open. Measured with the editor open.
 _LIST_MIN_H = 150
 #: The editor is bounded so it cannot starve the list. A longer snippet
-#: scrolls inside the box; the PAGE still never scrolls.
+#: scrolls inside the box; short windows also scroll the page (997c).
 _TEXT_MIN_H = theme.HIT_TARGET_MIN + GRID * 2
 _TEXT_MAX_H = theme.HIT_TARGET_MIN * 3
 MIDDLE_DOT = chr(0xB7)
@@ -91,6 +92,7 @@ class SnippetsPage(QWidget):
         self._editing_id: Optional[str] = None
         self._build()
         self.reload()
+        scroll_page(self)
 
     # ---- Construction ----------------------------------------------------
 
@@ -143,9 +145,7 @@ class SnippetsPage(QWidget):
         # Rows wrap; they never scroll sideways. A horizontal scrollbar in a
         # list of sentences is a way to hide half of one.
         self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        # The list is the page: it takes the slack, and it is the only thing
-        # here allowed to scroll. Three rows fit at the 900x650 default even
-        # with the editor open, so the page never has to.
+        # Keep usable list rows; the page scrolls when list + editor won't fit.
         self._list.setMinimumHeight(_LIST_MIN_H)
         self._list.currentRowChanged.connect(self._on_selection)
         self._list.itemActivated.connect(lambda _item: self.start_edit())

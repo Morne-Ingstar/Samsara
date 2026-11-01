@@ -24,13 +24,14 @@ from contextlib import nullcontext
 from PySide6.QtCore import Qt, Signal, Slot, QObject, QSettings, QItemSelectionModel
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QFileDialog, QFrame, QHBoxLayout, QHeaderView,
-    QLabel, QLineEdit, QListWidget, QMenu, QMessageBox, QPushButton,
+    QLabel, QLayout, QLineEdit, QListWidget, QMenu, QMessageBox, QPushButton,
     QScrollArea, QSizePolicy, QTableWidget, QTableWidgetItem, QTabWidget,
     QToolButton, QVBoxLayout, QWidget,
 )
 
 from samsara.runtime import thread_registry
 from samsara.ui import theme
+from samsara.ui.hub_window_fit import FitContent
 
 logger = logging.getLogger(__name__)
 
@@ -295,8 +296,11 @@ class DictionaryPanelQt(QWidget):
     # ------------------------------------------------------------------
 
     def _build_vocab_tab(self, title: str) -> QWidget:
-        page = QWidget()
+        page = FitContent()
         lay  = QVBoxLayout(page)
+        # 997c: disclosures change the tab's minimum after its first show.
+        # Propagate that change to the scroll host instead of squeezing rows.
+        lay.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         lay.setContentsMargins(14, 14, 14, 16)
         lay.setSpacing(5)  # 900: fit five rows while preserving the hub's bottom margin.
 

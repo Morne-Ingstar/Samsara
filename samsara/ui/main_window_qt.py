@@ -37,6 +37,7 @@ from samsara.ui.tray_qt import MarkFrame, idle_brand_icon_path, paint_mark
 from samsara.ui.command_marquee import build_example_strip, example_phrases, example_text
 from samsara.ui.dictionary_panel_qt import DictionaryPanelQt
 from samsara.ui.history_view import HistoryView
+from samsara.ui.hub_window_fit import HubSizeGrip, scroll_page
 from samsara.ui.home_qt import (
     MEMOS, VOICE_HELP, AvaHeaderControl, HomePage, catalog_records, glyph_icon, open_settings_tab,
     listening_badge_view, pause_hands_free, resume_hands_free, stop_capture, talk_instructions,
@@ -568,6 +569,8 @@ class _MainWindow(QMainWindow):
         original.deleteLater()
         row_layout.addWidget(self._example_strip, 1)
         sb.addWidget(row, 1)
+        self._resize_grip = HubSizeGrip(sb)
+        sb.addPermanentWidget(self._resize_grip)
         sb.layout().setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
 
     @staticmethod
@@ -624,6 +627,8 @@ class _MainWindow(QMainWindow):
             panel = self._make_panel(name)
             if panel is None:
                 return
+            if name in ("History", MEMOS):
+                scroll_page(panel)
             self._panel_cache[name] = panel
             self._stack.addWidget(panel)
 
@@ -806,16 +811,18 @@ class _MainWindow(QMainWindow):
 
     def _restore_geometry(self):
         cfg = getattr(self._app, 'config', {}) or {}
+        screens, primary = self._geometry_screens()
+        margins = self._frame_margins()
+        default = window_geometry.default_geometry(primary, None, margins)
         stored = None
         try:
             stored = (int(cfg['window_x']), int(cfg['window_y']),
-                      max(MIN_WIDTH, int(cfg.get('window_width') or DEFAULT_WIDTH)),
-                      max(MIN_HEIGHT, int(cfg.get('window_height') or DEFAULT_HEIGHT)))
+                      max(MIN_WIDTH, int(cfg.get('window_width') or default[2])),
+                      max(MIN_HEIGHT, int(cfg.get('window_height') or default[3])))
         except (KeyError, TypeError, ValueError, OverflowError):
             pass
-        screens, primary = self._geometry_screens()
         rect = window_geometry.restore_geometry(
-            stored, screens, primary, (DEFAULT_WIDTH, DEFAULT_HEIGHT), self._frame_margins())
+            stored, screens, primary, None, margins)
         if stored is not None and rect != stored:
             logger.info("[MAIN] saved geometry %s does not fit a current monitor; reset to %s", stored, rect)
         self._place_geometry(rect)
@@ -825,7 +832,7 @@ class _MainWindow(QMainWindow):
         current_frame = self.frameGeometry().getRect()
         self.showNormal()
         rect = window_geometry.reset_geometry(
-            current_frame, screens, primary, (DEFAULT_WIDTH, DEFAULT_HEIGHT), self._frame_margins())
+            current_frame, screens, primary, None, self._frame_margins())
         self._place_geometry(rect)
         self._geom_timer.stop()
         self._save_geometry()
@@ -1065,7 +1072,7 @@ def placement_on_screens(x, y, w, h, screens, primary, default_size=None):
     """QRect adapter for the pure containment rule.
 
     Legacy callers use their supplied size as fallback; the hub startup
-    explicitly uses its 900x650 defaults via window_geometry.
+    uses the current screen's work area via window_geometry.
     """
     return window_geometry.restore_geometry(
         (x, y, w, h), [s.getRect() for s in screens], primary.getRect(),

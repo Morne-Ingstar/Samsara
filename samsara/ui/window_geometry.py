@@ -22,11 +22,18 @@ def contains(screen: Rect, rect: Rect) -> bool:
             and x + w <= sx + sw and y + h <= sy + sh)
 
 
-def default_geometry(screen: Rect, default_size: tuple[int, int],
+def default_geometry(screen: Rect, default_size: tuple[int, int] | None = None,
                      margins: Margins = (0, 0, 0, 0)) -> Rect:
-    """Centre the default client size, capped so its whole frame fits."""
+    """Centre a size that fits; the hub defaults to 70% of the work area.
+
+    Clamp the client to 700x500 .. 1600x1000 logical pixels before the
+    screen/frame cap. Explicit sizes retain the legacy placement API.
+    """
     sx, sy, sw, sh = screen
     left, top, right, bottom = margins
+    if default_size is None:
+        default_size = (max(700, min(1600, round(sw * .7))),
+                        max(500, min(1000, round(sh * .7))))
     w = max(1, min(default_size[0], sw - left - right))
     h = max(1, min(default_size[1], sh - top - bottom))
     return (sx + (sw - w - left - right) // 2 + left,
@@ -34,7 +41,7 @@ def default_geometry(screen: Rect, default_size: tuple[int, int],
 
 
 def restore_geometry(stored: Rect | None, screens: list[Rect], primary: Rect,
-                     default_size: tuple[int, int],
+                     default_size: tuple[int, int] | None = None,
                      margins: Margins = (0, 0, 0, 0)) -> Rect:
     """Keep a saved window only when its entire frame fits on one screen.
 
@@ -48,7 +55,7 @@ def restore_geometry(stored: Rect | None, screens: list[Rect], primary: Rect,
 
 
 def reset_geometry(current_frame: Rect, screens: list[Rect], primary: Rect,
-                   default_size: tuple[int, int],
+                   default_size: tuple[int, int] | None = None,
                    margins: Margins = (0, 0, 0, 0)) -> Rect:
     """Reset on the screen with most window area; primary wins ties/no overlap."""
     x, y, w, h = current_frame

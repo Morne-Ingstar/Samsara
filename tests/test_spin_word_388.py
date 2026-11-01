@@ -186,7 +186,8 @@ def test_shown_status_and_links_geometry(qapp, monkeypatch):
             assert abs(s.mapTo(win, QPoint()).y()+8 - (shown[i][0].mapTo(win, QPoint()).y()+shown[i][0].height()/2)) <= 1
         control = win._example_strip._next_btn
         painted_right = x(control)+control.width()/2+3+2+.875
-        assert abs(win.width()-painted_right-16) <= 2
+        # 997c: reserve the resize grip plus Qt's 6px permanent-item spacing.
+        assert abs(x(win._resize_grip)-painted_right-22) <= 2
         assert control.width() == control.height() == 44
         assert sb.height() == 49
         p = win._panel_cache["Home"]

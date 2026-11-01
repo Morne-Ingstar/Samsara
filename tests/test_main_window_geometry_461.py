@@ -107,7 +107,7 @@ def make_window(qapp, monkeypatch, tmp_path):
 ])
 def test_startup_uses_rule_with_fake_screen_rectangles(make_window, config):
     window, app = make_window(**config)
-    assert window.geometry().getRect() == (510, 195, 900, 650)
+    assert window.geometry().getRect() == default_geometry(PRIMARY)  # 997c: screen-sized default
     assert app.saved == []
 
 
@@ -150,7 +150,7 @@ def test_button_resets_window_and_saves_only_to_fake_app(make_window, qapp, stat
     window._reset_btn.click()
     qapp.processEvents()
     assert not window.isMaximized()
-    assert window.geometry().getRect() == default_geometry(target, DEFAULT)
+    assert window.geometry().getRect() == default_geometry(target)  # 997c: screen-sized reset
     expected = dict(zip(('window_x', 'window_y', 'window_width', 'window_height'),
                         window.geometry().getRect()))
     assert app.saved[-1] == expected
@@ -169,4 +169,4 @@ def test_maximised_size_is_not_saved_as_the_normal_size(make_window):
 def test_widget_uses_native_margins_when_placing_default(make_window, monkeypatch):
     monkeypatch.setattr(hub._MainWindow, '_frame_margins', lambda self: (8, 32, 8, 8))
     window, _ = make_window()
-    assert window.geometry().getRect() == default_geometry(PRIMARY, DEFAULT, (8, 32, 8, 8))
+    assert window.geometry().getRect() == default_geometry(PRIMARY, None, (8, 32, 8, 8))  # 997c
