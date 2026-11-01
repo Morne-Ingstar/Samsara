@@ -1,5 +1,63 @@
 # Releasing Samsara
 
+## Asset layout from 0.40.4 (1003)
+
+The version release contains exactly `SamsaraSetup-<version>.exe`,
+`Samsara-Windows-v<version>.zip`, `SamsaraSetup-<version>.exe.sha256`, and
+`Samsara-Windows-v<version>.zip.sha256`. The two sidecars keep automatic updates
+working for 0.40.3 and older clients. Upload all optional packs, their `.sha256`
+files, and `manifest-<version>.json` / `manifest-latest.json` to one fixed
+release tagged `addons`, titled **Samsara add-ons**, normal release and never
+Latest. Do not remove or rename any asset on 0.40.3 or older releases.
+The layout below supersedes the historical 0.40.3 asset list in this document.
+1002 owns the CI upload guards; tag-triggered CI must not replace signed local
+assets. Its deliberate CI upload path must follow this two-place allowlist
+before being used for 0.40.4+; this task does not change workflows.
+
+1. Create `addons` once, explicitly excluding it from Latest:
+   `gh release create addons --title "Samsara add-ons" --notes "Optional component downloads." --latest=false`.
+   Keep existing version releases untouched. Copy previously verified packs
+   to `addons` once, under their original filenames, with their checksum files.
+2. Build and sign the app and installer; assemble the final portable ZIP.
+   Keep all final files in one artifacts directory. Generate the catalog
+   **after** signing; installer bytes must not change after their hash is taken.
+   A provisional local `manifest.json` can supply installer component sizes
+   before signing. Re-run the generator afterward for publication.
+3. Run the following, substituting the final directory, version and commit.
+   Omit `--reuse-manifest` on the first build with entirely new packs.
+   A prior manifest explicitly approves its available optional packs for reuse;
+   verify runtime compatibility before supplying it. Absent CUDA stays unavailable
+   unless a local matching CUDA ZIP exists or the approved manifest supplies it.
+
+   ```powershell
+   python tools/gen_release_manifest.py --artifacts-dir release/final --tag v0.40.4 --app-version 0.40.4 --git-sha <full-commit> --reuse-manifest release/previous-manifest.json --output release/final/manifest.json --publish-plan release/final/upload-plan.json
+   ```
+
+4. Read `upload-plan.json`. Upload only missing pack/checksum names from
+   `addons_release.files` to `addons`. Compare existing names by size/hash;
+   never overwrite an immutable pack with different bytes. Changed packs get
+   a new versioned filename. The generator writes sidecars for local packs;
+   reused remote packs retain their already-uploaded sidecars. Stage and verify
+   all referenced packs before uploading `manifest-0.40.4.json`. Refresh
+   `manifest-latest.json` only after that catalog is complete. Only the latest
+   alias is routinely replaced; keep versioned catalogs stable.
+5. Upload exactly the four `version_release.files` to the version draft:
+   installer, portable ZIP, and their two generated `.sha256` sidecars. Do not
+   upload manifests, `upload-plan.json`, pack ZIPs or pack sidecars there.
+   Verify the resulting list matches the plan exactly.
+6. Verify a fresh download of each app artifact against its manifest `sha256`
+   and `size_bytes`, plus Components downloads from `addons`, before publication.
+   Keep the existing explicit pre-release/Latest promotion decisions below.
+
+No upload is performed by the generator. The release runner follows the plan.
+The generator writes both app sidecars from the same final hashes recorded in
+the manifest. At tag v0.40.3, `samsara/updater.py` requests the asset selected by
+`samsara/update_installer.py:asset_name` plus `.sha256`: the `.exe.sha256` for a
+per-user installed copy, or `.zip.sha256` for a portable copy. Older clients can
+therefore keep updating automatically. Clients from 0.40.4 verify the manifest
+hash without fetching sidecars. Historical component downloads remain valid
+because their release assets are preserved.
+
 ## CPU build: signed locally, verified by CI
 
 Release files are built and code-signed locally. CI must not touch GitHub
@@ -78,7 +136,7 @@ workflow) to sanity-check a build without cutting a tag. Leave
 - Tag pushes: build outputs stay in the Actions workflow artifacts; no Release
   asset is created or modified.
 
-For v0.40.3, the draft asset list is `SamsaraSetup-0.40.3.exe`,
+Historically, for v0.40.3, the draft asset list was `SamsaraSetup-0.40.3.exe`,
 `Samsara-Windows-v0.40.3.zip`, `Samsara-GestureControl-v0.40.3.zip`,
 `Samsara-WakeWord-Models-v0.40.3.zip`, their matching `.sha256` sidecars,
 and `manifest.json`. See [installation](Docs/INSTALL.md) for the newcomer path.
@@ -92,18 +150,19 @@ v0.22.1 onward may install a later release in-app; source launches and explicit
 
 Before publishing every updater-compatible release:
 
-1. For portable copies, produce the exact `Samsara-Windows-<tag>.zip` name and its mandatory
-   `.zip.sha256` sidecar from the final CI archive. Verify a fresh download
-   against that sidecar before publishing.
-   Installed per-user copies require `SamsaraSetup-<version>.exe` and its own
-   `.exe.sha256` sidecar instead; never replace an installed folder with the
+1. Produce `Samsara-Windows-<tag>.zip` and `SamsaraSetup-<version>.exe`, then
+   record their final sizes and SHA-256 in the add-ons manifest (core component
+   and `release_assets`, respectively). Verify fresh downloads against those
+   fields and the matching `.sha256` sidecars generated for legacy clients.
+   Installed per-user copies use the installer; never replace an installed folder with the
    portable ZIP. All-users installs require a manual installer update.
 2. Prove the release is **in-place compatible** with the current portable-folder
-   updater. The exact ZIP plus sidecar names are the updater's compatibility
+   updater. The exact app/sidecar names and bound manifest are the updater's compatibility
    signal. If a release requires a clean install, change the update protocol
    and asset naming before publishing it; never expose an incompatible archive
    under the names the existing updater accepts.
-3. Exercise the update from the oldest supported updater build, including
+3. Exercise updates from 0.40.3 and the oldest supported updater build, as well
+   as 0.40.4+ clients, using the applicable sidecar or manifest verification, including
    clean shutdown, replacement at the same installation path, relaunch, and
    rollback after a forced startup failure.
 4. Confirm the per-user profile/configuration is unchanged, custom commands and
@@ -113,37 +172,27 @@ Before publishing every updater-compatible release:
    request. When enabled, checks go directly to GitHub Releases and disclose
    only ordinary request metadata; no Samsara profile content is uploaded.
 
-The SHA-256 sidecar detects a damaged or mismatched archive. It is not code
+The manifest SHA-256 detects a damaged or mismatched archive. It is not code
 signing and does not protect against compromise of the release-publishing
 account. Do not describe it as providing either guarantee.
 
 ## CUDA add-on
 
-The application release remains the reproducible CI-built CPU zip. The CUDA
-pack is the same ten DLLs (ctranslate2 4.7.1) re-attached to every release
-under that release's own name, `Samsara-CUDA-Pack-<tag>.zip`, because the
-manifest guard (917) refuses a pack whose name or URL is not the release's own.
-Its SHA-256 is
+The application release remains the CPU ZIP. CUDA packs live on `addons`.
+Approve a compatible prior pack with `--reuse-manifest` rather than copying
+1 GB to each version release. New built packs retain a versioned filename;
+the generator checks app/tag identity before enabling a new CUDA pack.
+The previously verified ten-DLL pack (ctranslate2 4.7.1) has SHA-256
 `5dc752c89ca4e6ad777b545907a7e654471ce3dfe10a3d96bbfc705386db335d`
 (1,128,045,243 bytes). Installation and verification steps live in
 `Docs/CUDA.md`.
 
-### Release checklist step: attach the CUDA pack (mandatory, every release)
+### Release checklist step: verify the CUDA catalog entry
 
-The generator emits `cuda-pack` as `available: false` until this is done, so a
-release that skips it ships with no GPU add-on. Check it before announcing:
-
-    gh release download v0.20.0 -p Samsara-CUDA-Pack-v0.20.0.zip     # once; keep the copy
-    # verify sha256 == 5dc752c8...db335d, then copy to Samsara-CUDA-Pack-<tag>.zip
-    gh release upload <tag> Samsara-CUDA-Pack-<tag>.zip
-    # then replace manifest.json: cuda-pack available true, url = this release's
-    # copy, size_bytes 1128045243, sha256 as above, min_disk_bytes 2x size
-    # (tools/gen_release_manifest.py verify_cuda_identity must pass)
-    gh release download <tag> -p manifest.json   # confirm available is true
-    curl -sIL -r 0-0 <pack url>                  # must be 200 or 206
-
-Not yet automated in release.yml (it would need a 1 GB copy on every run); this
-checklist step is the guard until a pack-carry job is added.
+Before announcing, confirm `cuda-pack.available` is true in the versioned
+add-ons manifest and its URL points to the verified pack on `addons`. Check
+size/hash and a clean extraction before approving a reused pack. If no pack is
+verified for this runtime, leave it unavailable; do not hand-edit availability.
 
 Do not copy or package an installed Samsara directory: a user's extracted CUDA
 archive or other local files may be nested inside it. `build_release.bat` is a

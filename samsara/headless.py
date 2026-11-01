@@ -252,10 +252,13 @@ def main(argv=None):
         return 2
     with tempfile.TemporaryDirectory(prefix='samsara-headless-') as temporary:
         profile = str(Path(temporary) / 'profile')
-        env = {key: profile for key in ('HOME', 'USERPROFILE', 'SAMSARA_HOME_DIR',
-                                       'APPDATA', 'LOCALAPPDATA', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME')}
+        env = dict(os.environ)
+        env.update({key: profile for key in ('HOME', 'USERPROFILE', 'SAMSARA_HOME_DIR',
+                                           'APPDATA', 'LOCALAPPDATA', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME')})
         env.update(HF_HUB_OFFLINE='1', HF_HUB_DISABLE_TELEMETRY='1', TRANSFORMERS_OFFLINE='1')
-        with patch.dict(os.environ, env), patch.object(logging.getLogger(), 'handlers', [logging.NullHandler()]), deny_effects() as attempts:
+        # patch.dict clears the real process environment on exit, including TMP.
+        # Swap a private mapping instead; never write or clear the parent's keys.
+        with patch.object(os, 'environ', env), patch.object(logging.getLogger(), 'handlers', [logging.NullHandler()]), deny_effects() as attempts:
             # Existing production discovery prints counts/timings. Keep JSON stdout finite.
             with contextlib.redirect_stdout(io.StringIO()):
                 result = check()

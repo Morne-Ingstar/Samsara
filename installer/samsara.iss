@@ -41,7 +41,7 @@
   #define OutputDir "..\dist"
 #endif
 #ifndef ManifestUrl
-  #define ManifestUrl "https://github.com/Morne-Ingstar/Samsara/releases/download/v" + AppVersion + "/manifest.json"
+  #define ManifestUrl "https://github.com/Morne-Ingstar/Samsara/releases/download/addons/manifest-" + AppVersion + ".json"
 #endif
 
 ; Component sizes and availability, generated from manifest.json by

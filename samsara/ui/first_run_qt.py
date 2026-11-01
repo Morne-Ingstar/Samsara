@@ -72,7 +72,6 @@ CLOSE_JOIN_S = 1.0
 #: What each component enables, in one line, for the wizard page. Unknown
 #: ids fall back to the manifest description.
 COMPONENT_BENEFITS = {
-    "core": "The application itself.",
     "cuda-pack": "Faster transcription on an NVIDIA GPU.",
     "wake-word-models": "Hands-free control: say the wake word instead of pressing a key.",
     "command-model": "A local model for the hands-free command lane.",
@@ -104,8 +103,7 @@ def default_app_root() -> Path:
 
 
 def default_manifest_url(version: str, repo: str = DEFAULT_REPO) -> str:
-    tag = version if version.startswith("v") else f"v{version}"
-    return f"https://github.com/{repo}/releases/download/{tag}/manifest.json"
+    return components.release_manifest_url(version, repo)
 
 
 def format_size(size_bytes) -> str:
@@ -176,10 +174,16 @@ def component_installed(component: dict, app_root, downloads_dir) -> bool:
     return False
 
 
+def _optional_component(component: dict) -> bool:
+    """Only optional pack kinds belong in setup and Settings (1003)."""
+    return (component.get("id") != "core"
+            and component.get("kind") in {"acceleration", "model", "voice", "feature"})
+
+
 def missing_components(manifest: dict, app_root, downloads_dir) -> list:
     """Published optional components that are not installed, sorted by id."""
     rows = [c for c in manifest["components"]
-            if c.get("available") and c.get("id") != "core"
+            if c.get("available") and _optional_component(c)
             and not component_installed(c, app_root, downloads_dir)]
     return sorted(rows, key=lambda c: c["id"])
 
@@ -389,7 +393,14 @@ def fetch_components_main(argv=None, *, fetch=None, opener=None, cancel=None,
         return EXIT_BAD_ARGS
 
     try:
-        manifest = components.load_manifest(args.manifest, fetch=fetch)
+        # Installer URLs use the same missing-version fallback as Settings (1003).
+        prefix = f"https://github.com/{DEFAULT_REPO}/releases/download/addons/manifest-"
+        if args.manifest.startswith(prefix) and args.manifest.endswith(".json"):
+            version = args.manifest[len(prefix):-5]
+            manifest = (components.load_manifest(args.manifest, fetch=fetch) if version == "latest"
+                        else components.load_release_manifest(version, fetch=fetch))
+        else:
+            manifest = components.load_manifest(args.manifest, fetch=fetch)
     except components.ManifestError as exc:
         print(f"[FAIL] manifest: {exc}", file=out)
         return EXIT_BAD_ARGS
@@ -526,12 +537,14 @@ def _make_progress_window(count: int):
 def _load_manifest_default() -> dict:
     """The wizard's default manifest source: a manifest cached beside the
     downloads (written by the installer's fetch), else the release URL."""
-    cached = default_downloads_dir() / "manifest.json"
-    if cached.is_file():
-        return components.load_manifest(cached)
     from samsara import __version__  # noqa: PLC0415
 
-    return components.load_manifest(default_manifest_url(__version__))
+    cached = default_downloads_dir() / "manifest.json"
+    if cached.is_file():
+        manifest = components.load_manifest(cached)
+        if manifest["app_version"] == __version__:
+            return manifest
+    return components.load_release_manifest(__version__)
 
 
 def _qt_widget_is_valid(widget) -> bool:
@@ -618,11 +631,12 @@ class ComponentsPage:
         self._check_btn.setMinimumHeight(MIN_TARGET)
         self._check_btn.setMinimumWidth(MIN_TARGET)
         self._check_btn.clicked.connect(self.refresh_async)
-        lay.addWidget(self._check_btn)
+        lay.addWidget(self._check_btn, alignment=Qt.AlignmentFlag.AlignLeft)
         self._status = QLabel("")
         self._status.setWordWrap(True)
         self._status.setAccessibleName("Components status")
         self._status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
+        self._status.hide()
         lay.addWidget(self._status)
         self._rows_host = QWidget()
         self._rows_layout = QVBoxLayout(self._rows_host)
@@ -668,6 +682,7 @@ class ComponentsPage:
             self._check_btn.setEnabled(False)
             self._check_btn.setText("Checking…")
         self._status.setText("Loading component list…")
+        self._status.show()
 
         def _load():
             try:
@@ -715,12 +730,14 @@ class ComponentsPage:
                 item.widget().deleteLater()
         self._rows = {}
         self._listed = []
+        self._status.show()
         if self._manifest is None:
             self._status.setText(self._error or "")
             return
         gpu = None
         self._listed = (
-            [c for c in self._manifest["components"] if c.get("available")]
+            [c for c in self._manifest["components"]
+             if c.get("available") and _optional_component(c)]
             if self._include_installed else
             missing_components(self._manifest, self._app_root, self._downloads)
         )
@@ -730,6 +747,7 @@ class ComponentsPage:
             self._status.setText("Everything is installed.")
             return
         self._status.setText("")
+        self._status.hide()
         for component in self._listed:
             card = QWidget()
             theme.style_card(card)

@@ -28,6 +28,7 @@ import tempfile
 from pathlib import Path
 from typing import Callable, Optional
 from urllib.parse import urlparse
+from urllib.error import HTTPError
 
 SCHEMA_VERSION = 1
 KINDS = ("core", "acceleration", "model", "voice", "feature")
@@ -53,6 +54,26 @@ COMPONENT_FIELDS = (
 PART_SUFFIX = ".part"
 SIDECAR_SUFFIX = ".sha256"
 DEFAULT_CHUNK = 1 << 20
+DEFAULT_REPO = "Morne-Ingstar/Samsara"
+ADDONS_TAG = "addons"
+
+
+def release_manifest_url(version: str, repo: str = DEFAULT_REPO) -> str:
+    version = version.removeprefix("v")
+    if not re.fullmatch(r"[0-9][0-9A-Za-z.+-]*", version):
+        raise ManifestError(["invalid manifest version"])
+    return f"https://github.com/{repo}/releases/download/{ADDONS_TAG}/manifest-{version}.json"
+
+
+def load_release_manifest(version: str, *, repo: str = DEFAULT_REPO, fetch=None) -> dict:
+    """Prefer this version's catalog; only a missing asset falls back to latest."""
+    url = release_manifest_url(version, repo)
+    try:
+        return load_manifest(url, fetch=fetch)
+    except HTTPError as exc:
+        if exc.code != 404:
+            raise
+    return load_manifest(url.rsplit("/", 1)[0] + "/manifest-latest.json", fetch=fetch)
 
 
 class ManifestError(ValueError):
@@ -361,6 +382,28 @@ def validate_manifest(doc) -> list:
             problems.append(f"manifest: {field} must be a non-empty string")
     if not isinstance(doc["git_sha"], str) or not _GIT_SHA_RE.match(doc["git_sha"]):
         problems.append("manifest: git_sha must be a 40-hex commit")
+    assets = doc.get("release_assets", [])
+    if not isinstance(assets, list):
+        problems.append("manifest: release_assets must be an array")
+    else:
+        names = set()
+        for asset in assets:
+            if not isinstance(asset, dict):
+                problems.append("manifest: release_assets entry must be an object")
+                continue
+            name, url = asset.get("filename"), asset.get("url")
+            if not isinstance(name, str) or not _FILENAME_RE.fullmatch(name):
+                problems.append("manifest: release_assets filename must be a plain file name")
+            elif name in names:
+                problems.append("manifest: duplicate release_assets filename")
+            else:
+                names.add(name)
+            if not isinstance(url, str) or urlparse(url).scheme != "https" or not urlparse(url).netloc:
+                problems.append("manifest: release_assets url must be https")
+            if not _is_int(asset.get("size_bytes")) or asset["size_bytes"] <= 0:
+                problems.append("manifest: release_assets size_bytes must be positive")
+            if not isinstance(asset.get("sha256"), str) or not _SHA_RE.fullmatch(asset["sha256"]):
+                problems.append("manifest: release_assets sha256 must be 64 lowercase hex characters")
     components = doc["components"]
     if not isinstance(components, list) or not components:
         return problems + ["manifest: components must be a non-empty array"]

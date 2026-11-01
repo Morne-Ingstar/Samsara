@@ -210,7 +210,6 @@ def prepare(release, install_dir, progress_callback, *, opener,timeout,disk_usag
     validate_installer_customizations(folder)
     name = f'SamsaraSetup-{release.version}.exe'
     updater._validate_release_asset_url(release.asset_url,release.tag,name)
-    updater._validate_release_asset_url(release.checksum_url,release.tag,name+'.sha256')
     installer_arguments(folder,info.components)
     if getattr(folder.lstat(),'st_file_attributes',0)&stat.FILE_ATTRIBUTE_REPARSE_POINT:
         raise updater.UpdateError('Installer backup paths may not be reparse points.')
@@ -231,9 +230,7 @@ def prepare(release, install_dir, progress_callback, *, opener,timeout,disk_usag
         folder.parent/f'.{folder.name}-rollback-{suffix}',workspace,updates/'last_update.json',
         updates/f'install-{suffix}.ps1',installer_path=workspace/name,components=info.components,registry_view=info.view)
     try:
-        checksum = updater._download_bytes(release.checksum_url,tag=release.tag,filename=name+'.sha256',
-            opener=opener,timeout=timeout,limit=min(updater.MAX_CHECKSUM_BYTES,release.checksum_size))
-        expected = updater._expected_checksum(checksum,name)
+        expected = updater._release_checksum(release,name,opener,timeout)
         download(release,prepared.installer_path,expected,opener,timeout,progress_callback)
         shutil.copytree(folder,prepared.staged_dir)
         from dataclasses import replace

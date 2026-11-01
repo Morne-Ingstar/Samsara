@@ -9,7 +9,7 @@ from pathlib import Path
 import socket
 import sys
 import threading
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 
 import pytest
 
@@ -203,6 +203,38 @@ def test_main_returns_nonzero_for_composition_failure(monkeypatch, capsys):
     assert result['ok'] is False
     assert 'ImportError' in result['services']['command_registry']['reason']
     assert headless.main(['--headless-check', '--fetch-components']) == 2
+
+
+@pytest.mark.parametrize('outcome', ['success', 'failure', 'exception'])
+def test_main_preserves_read_only_parent_environment(monkeypatch, capsys, tmp_path, outcome):
+    # 1003: restoring patch.dict cleared TMP and every other parent key.
+    snapshot = dict(os.environ, TMP=str(tmp_path / 'temp'), TEMP=str(tmp_path / 'temp'))
+    parent = MappingProxyType(snapshot)
+
+    def check():
+        private_mapping = os.environ is not parent
+        assert private_mapping
+        assert os.environ['TMP'] == snapshot['TMP']
+        assert os.environ['TEMP'] == snapshot['TEMP']
+        assert os.environ['SAMSARA_HOME_DIR'] != snapshot['SAMSARA_HOME_DIR']
+        assert os.environ['HF_HUB_OFFLINE'] == '1'
+        if outcome == 'exception':
+            raise RuntimeError('synthetic composition exception')
+        return {'ok': outcome == 'success'}
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(os, 'environ', parent)
+        scoped.setattr(headless, 'check', check)
+        if outcome == 'exception':
+            with pytest.raises(RuntimeError, match='synthetic composition exception'):
+                headless.main(['--headless-check'])
+        else:
+            assert headless.main(['--headless-check']) == (0 if outcome == 'success' else 1)
+            assert json.loads(capsys.readouterr().out)['ok'] == (outcome == 'success')
+        restored = os.environ is parent
+        unchanged = dict(parent) == snapshot
+        assert restored
+        assert unchanged
 
 
 def test_entry_dispatch_and_shared_composition_are_early_source_seams():

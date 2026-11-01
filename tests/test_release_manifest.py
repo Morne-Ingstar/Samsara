@@ -187,7 +187,8 @@ class TestGenerator:
                 artifact = build / entry["filename"]
                 assert entry["size_bytes"] == artifact.stat().st_size
                 assert entry["sha256"] == _sha(artifact.read_bytes())
-                assert entry["url"] == gen.asset_url("o/r", TAG, artifact.name)
+                # 1003: optional packs live on the fixed add-ons release.
+                assert entry["url"] == gen.asset_url("o/r", TAG if entry["id"] == "core" else "addons", artifact.name)
                 assert entry["min_disk_bytes"] >= entry["size_bytes"]
         assert by_id["cuda-pack"]["available"] is False
         assert by_id["cuda-pack"]["filename"] == f"Samsara-CUDA-Pack-{TAG}.zip"

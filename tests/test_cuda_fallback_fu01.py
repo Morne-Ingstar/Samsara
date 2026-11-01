@@ -241,7 +241,8 @@ def test_manifest_rejects_cuda_app_version_mismatch(tmp_path, changes):
 def test_same_release_pack_identity_can_pass_after_verification(tmp_path):
     doc = cuda_manifest(tmp_path)
     assert doc['components'][0]['available'] is True
-    assert '/v0.40.0/Samsara-CUDA-Pack-v0.40.0.zip' in doc['components'][0]['url']
+    # 1003: verified packs are hosted on the fixed add-ons release.
+    assert '/addons/Samsara-CUDA-Pack-v0.40.0.zip' in doc['components'][0]['url']
 
 
 def test_pinned_legacy_pack_cannot_bypass_identity_check(tmp_path):

@@ -22,6 +22,8 @@ from typing import BinaryIO, Callable
 from urllib.parse import urlparse
 
 from samsara import __version__
+from samsara import components
+from samsara.addons_release import _manifest_checksum, _manifest_release_info, _release_checksum
 from samsara.paths import samsara_home_dir
 from samsara.runtime_manifest import OWW_MODEL_FILENAMES
 from samsara.update_customizations import migrate_update_customizations
@@ -101,8 +103,9 @@ class ReleaseInfo:
     tag: str
     asset_size: int
     asset_url: str
-    checksum_url: str
-    checksum_size: int
+    checksum_url: str = ""
+    checksum_size: int = 0
+    sha256: str = ""
 
 
 @dataclass(frozen=True)
@@ -354,7 +357,8 @@ def check_for_update(
             if name in by_name:
                 raise ReleaseMetadataError(f"The release contains duplicate asset {name!r}.")
             by_name[name] = asset
-    if zip_name not in by_name or checksum_name not in by_name:
+    manifest_checksums = _parse_version(tag) >= _parse_version("0.40.4-0")
+    if zip_name not in by_name or (not manifest_checksums and checksum_name not in by_name):
         if offer := missing_installer_offer(tag): return offer
         raise ReleaseMetadataError(
             f"Release {tag} is missing {zip_name} or its required .sha256 file. "
@@ -362,6 +366,8 @@ def check_for_update(
         )
 
     archive = by_name[zip_name]
+    if manifest_checksums:
+        return _manifest_release_info(tag, archive, zip_name, opener, timeout)
     checksum = by_name[checksum_name]
     try:
         asset_size = int(archive["size"])
@@ -759,15 +765,7 @@ def prepare_update(
         helper_path=updates_dir / f"install-{release.tag}-{uuid.uuid4().hex[:10]}.ps1",
     )
     try:
-        checksum_bytes = _download_bytes(
-            release.checksum_url,
-            tag=release.tag,
-            filename=f"{zip_name}.sha256",
-            opener=opener,
-            timeout=timeout,
-            limit=min(MAX_CHECKSUM_BYTES, max(release.checksum_size, 1)),
-        )
-        expected = _expected_checksum(checksum_bytes, zip_name)
+        expected = _release_checksum(release, zip_name, opener, timeout)
         _download_archive(
             release,
             archive,

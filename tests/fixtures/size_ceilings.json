@@ -13,7 +13,7 @@
     "samsara/ui/history_view.py": 1792,
     "samsara/ui/home_qt.py": 2549,
     "samsara/ui/mic_setup_wizard_qt.py": 1551,
-    "samsara/updater.py": 1624
+    "samsara/updater.py": 1622
   },
   "slack": 25,
   "threshold": 1500

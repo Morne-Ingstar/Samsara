@@ -5,7 +5,8 @@ release artifacts.
         --repo Morne-Ingstar/Samsara --git-sha <40-hex> --output manifest.json
 
 Every `built` component's file must exist in --artifacts-dir; its size and
-SHA-256 come from the file, its URL from the tag's Release assets. A missing
+SHA-256 come from the file; app assets use the version release and packs use
+the fixed addons release. A missing
 file is a hard failure naming it. A `pinned` component (an asset from an
 earlier release that this build does not produce) carries a full pin here;
 a local copy, when present, must match the pin. Nothing is ever emitted with
@@ -31,7 +32,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from samsara.components import SCHEMA_VERSION, validate_manifest  # noqa: E402
+from samsara.components import ADDONS_TAG, SCHEMA_VERSION, load_manifest, validate_manifest  # noqa: E402
 from tools.release_preflight import OWW_MODELS, _sha256  # noqa: E402
 
 DEFAULT_REPO = "Morne-Ingstar/Samsara"
@@ -125,13 +126,20 @@ def asset_url(repo: str, tag: str, filename: str) -> str:
     return f"https://github.com/{repo}/releases/download/{tag}/{filename}"
 
 
+def version_release_filenames(tag: str) -> list[str]:
+    """The complete public version-release upload allowlist (1003)."""
+    app_files = [f"SamsaraSetup-{tag.removeprefix('v')}.exe", f"Samsara-Windows-{tag}.zip"]
+    # v0.40.3 and older updaters fetch <selected app asset>.sha256.
+    return app_files + [name + ".sha256" for name in app_files]
+
+
 def verify_cuda_identity(entry: dict, tag: str, app_version: str, repo: str) -> None:
     """An enabled CUDA pack must belong to this exact application release (917)."""
     if entry["id"] != "cuda-pack" or not entry["available"]:
         return
     expected = f"Samsara-CUDA-Pack-{tag}.zip"
     if (tag != f"v{app_version}" or entry["filename"] != expected
-            or entry["url"] != asset_url(repo, tag, expected)):
+            or entry["url"] not in (asset_url(repo, tag, expected), asset_url(repo, ADDONS_TAG, expected))):
         raise ManifestGenerationError(
             "cuda-pack version does not match app/release version; "
             "build and verify a matching pack before enabling it")
@@ -179,14 +187,40 @@ def git_commit_date(git_sha: str, project_root: Path = PROJECT_ROOT) -> str:
 
 def build_manifest(*, artifacts_dir, tag: str, repo: str, git_sha: str, build_date: str,
                    app_version: str, specs=None, pins=None, hasher=_sha256,
-                   verify_models=verify_wake_word_archive) -> dict:
+                   verify_models=verify_wake_word_archive, reuse_manifest=None) -> dict:
     """The manifest document. Raises ManifestGenerationError rather than
     emit a missing artifact or a placeholder hash."""
     artifacts_dir = Path(artifacts_dir)
     pins = PINNED_ASSETS if pins is None else pins
+    reused = {}
+    if reuse_manifest is not None:
+        problems = validate_manifest(reuse_manifest)
+        if problems:
+            raise ManifestGenerationError("reuse manifest is invalid: " + "; ".join(problems))
+        reused = {c["id"]: c for c in reuse_manifest["components"]
+                  if c["available"] and c["id"] != "core"}
     components = []
     for spec in (component_specs(tag) if specs is None else specs):
         entry = dict(spec)
+        if (entry["id"] in reused and
+                (not (artifacts_dir / entry["filename"]).is_file()
+                 or entry["filename"] == reused[entry["id"]]["filename"])):
+            pin = reused[entry["id"]]
+            if any(entry[key] != pin[key] for key in ("kind", "install_dir", "requires")):
+                raise ManifestGenerationError(f"reused {entry['id']} has incompatible installation metadata")
+            # Reuse is explicit compatibility approval by the release producer.
+            # Rehome a legacy asset once, preserving its immutable filename/hash.
+            entry.update({key: pin[key] for key in ("filename", "size_bytes", "sha256", "min_disk_bytes")})
+            entry.update(source="pinned", available=True,
+                         url=asset_url(repo, ADDONS_TAG, entry["filename"]))
+            local = artifacts_dir / entry["filename"]
+            if local.is_file() and (local.stat().st_size, hasher(local)) != (entry["size_bytes"], entry["sha256"]):
+                raise ManifestGenerationError(f"local {local.name} does not match its pin")
+            components.append(entry)
+            continue
+        if specs is None and entry["id"] == "cuda-pack" and (artifacts_dir / entry["filename"]).is_file():
+            entry["available"] = True
+            entry["description"] = "Faster transcription on an NVIDIA GPU."
         if not entry["available"]:
             entry.update(url=None, size_bytes=None, sha256=None, min_disk_bytes=None)
             components.append(entry)
@@ -200,7 +234,8 @@ def build_manifest(*, artifacts_dir, tag: str, repo: str, git_sha: str, build_da
                 verify_models(path)
             size = path.stat().st_size
             digest = hasher(path)
-            entry.update(url=asset_url(repo, tag, entry["filename"]), size_bytes=size, sha256=digest)
+            asset_tag = tag if entry["id"] == "core" else ADDONS_TAG
+            entry.update(url=asset_url(repo, asset_tag, entry["filename"]), size_bytes=size, sha256=digest)
         else:
             pin = pins.get(entry["id"])
             if not pin or not re.fullmatch(r"[0-9a-f]{64}", str(pin.get("sha256", ""))):
@@ -227,6 +262,11 @@ def build_manifest(*, artifacts_dir, tag: str, repo: str, git_sha: str, build_da
         "git_sha": git_sha,
         "components": sorted(components, key=lambda c: c["id"]),
     }
+    installer_name = version_release_filenames(tag)[0]
+    installer = artifacts_dir / installer_name
+    if installer.is_file():
+        doc["release_assets"] = [dict(filename=installer_name, url=asset_url(repo, tag, installer_name),
+                                      size_bytes=installer.stat().st_size, sha256=hasher(installer))]
     problems = validate_manifest(doc)
     if problems:
         raise ManifestGenerationError("generated manifest is invalid: " + "; ".join(problems))
@@ -311,7 +351,9 @@ def main(argv=None) -> int:
     parser.add_argument("--build-date", default=None,
                         help="ISO 8601 UTC; default: the committer date of --git-sha")
     parser.add_argument("--app-version", default=None, help="default: samsara.__version__")
-    parser.add_argument("--output", default="manifest.json")
+    parser.add_argument("--output", default="manifest.json", help="local build manifest (not a version Release asset)")
+    parser.add_argument("--reuse-manifest", help="local prior manifest; explicitly approve its available packs for reuse")
+    parser.add_argument("--publish-plan", help="write exact two-release upload lists; requires the final signed installer")
     parser.add_argument("--overlap-audit", help="write a per-file core/add-on hash audit (local ZIPs only)")
     args = parser.parse_args(argv)
     try:
@@ -319,11 +361,34 @@ def main(argv=None) -> int:
             artifacts_dir=args.artifacts_dir, tag=args.tag, repo=args.repo, git_sha=args.git_sha,
             build_date=args.build_date or git_commit_date(args.git_sha),
             app_version=args.app_version or read_app_version(),
+            reuse_manifest=load_manifest(Path(args.reuse_manifest).resolve()) if args.reuse_manifest else None,
         )
+        if args.publish_plan:
+            if args.tag != f"v{doc['app_version']}":
+                raise ManifestGenerationError("publish plan app version and release tag must match")
+            if not doc.get("release_assets"):
+                raise ManifestGenerationError("publish plan requires the final signed installer")
+            versioned = f"manifest-{doc['app_version']}.json"
+            output_dir = Path(args.output).parent
+            (output_dir / versioned).write_text(dumps(doc), encoding="utf-8", newline="\n")
+            (output_dir / "manifest-latest.json").write_text(dumps(doc), encoding="utf-8", newline="\n")
+            addons = [c["filename"] for c in doc["components"] if c["available"] and c["id"] != "core"]
+            for component in doc["components"]:
+                if component["filename"] in addons and (Path(args.artifacts_dir) / component["filename"]).is_file():
+                    (Path(args.artifacts_dir) / (component["filename"] + ".sha256")).write_text(
+                        f"{component['sha256']}  {component['filename']}\n", encoding="ascii")
+            app_assets = [c for c in doc["components"] if c["id"] == "core"] + doc["release_assets"]
+            for asset in app_assets:
+                (Path(args.artifacts_dir) / (asset["filename"] + ".sha256")).write_text(
+                    f"{asset['sha256']}  {asset['filename']}\n", encoding="ascii", newline="\n")
+            plan = {"version_release": {"tag": args.tag, "files": version_release_filenames(args.tag)},
+                    "addons_release": {"tag": ADDONS_TAG, "files": sorted(addons + [n + ".sha256" for n in addons]
+                                                                   + [versioned, "manifest-latest.json"])}}
+            Path(args.publish_plan).write_text(dumps(plan), encoding="utf-8", newline="\n")
         if args.overlap_audit:
             Path(args.overlap_audit).write_text(
                 dumps(audit_addon_overlaps(doc, args.artifacts_dir)), encoding="utf-8")
-    except ManifestGenerationError as exc:
+    except (ManifestGenerationError, ValueError, OSError) as exc:
         print(f"[FAIL] manifest: {exc}")
         return 1
     Path(args.output).write_text(dumps(doc), encoding="utf-8", newline="\n")

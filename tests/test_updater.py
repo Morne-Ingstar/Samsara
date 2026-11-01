@@ -165,9 +165,19 @@ def test_check_for_update_compares_numeric_versions(
 ):
     monkeypatch.setattr(updater, "_require_update_eligible", lambda: None)
     payload = _release_payload(tag)
-    opener = _opener_for(
-        {updater.GITHUB_RELEASES_API: json.dumps(payload).encode("utf-8")}
-    )
+    mapping = {updater.GITHUB_RELEASES_API: json.dumps(payload).encode("utf-8")}
+    if tag == "v1.0.0":
+        # 1003: future releases use manifest checksums; retain numeric precedence coverage.
+        archive = payload["assets"][0]
+        manifest = {"schema_version": 1, "app_version": "1.0.0", "release_tag": tag,
+                    "build_date": "2026-11-01", "git_sha": "a" * 40,
+                    "components": [{"id": "core", "name": "Samsara", "description": "The app.",
+                        "kind": "core", "source": "built", "available": True,
+                        "filename": archive["name"], "url": archive["browser_download_url"],
+                        "size_bytes": archive["size"], "sha256": "a" * 64,
+                        "min_disk_bytes": 246, "install_dir": ".", "requires": [], "default": True}]}
+        mapping[updater.components.release_manifest_url(tag)] = json.dumps(manifest).encode()
+    opener = _opener_for(mapping)
     result = updater.check_for_update(current, opener=opener)
     assert (result is not None) is has_update
     if result:
