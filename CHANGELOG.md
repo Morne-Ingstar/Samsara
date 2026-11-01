@@ -6,6 +6,17 @@ All notable changes to Samsara are documented here.
 
 - **Hands-free by voice** - Say the wake word and "hands free" (or "start hands free", "dictate mode") to start hands-free dictation without touching a key; "hands free" also works as a command. Needs the hands-free key set to Toggle.
 
+## [0.40.1] - 2026-10-31
+
+Recording is easier to stop, Stremio understands more voice commands, and Mic score helps you compare microphones.
+
+### Fixes and improvements
+
+- A held record button could get stuck recording after a quick release and re-press. The mouse button can always stop its own recording.
+- Stremio voice control understands common mishearings of "Stremio" and takes priority for pause, resume and play when its window is in front. Say "forward 30 seconds" or "back a minute" to skip by an amount; skip forward and back default to 10 seconds. "Next episode" advances to the next episode. Saying pause twice no longer resumes playback; "toggle stremio" always toggles it.
+- Mic score lets you read short sentences to compare your microphones' word accuracy, with separate everyday estimates for recognition and command matching.
+- Every "not a command" now appears in History.
+
 ## [0.40.0] - 2026-10-25
 
 This release moves Samsara to version 0.40.0.

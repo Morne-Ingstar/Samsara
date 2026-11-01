@@ -15,7 +15,7 @@ Pushing a version tag (`v*`) triggers `.github/workflows/release-build.yml` on a
    EXE and requires the explicit startup-complete marker with no unexplained crash. See
    "Why the smoke check is trimmed" below.
 4. `dist\Samsara\*` is zipped as `Samsara-Windows-<tag>.zip`, for example
-   `Samsara-Windows-v0.40.0.zip`.
+   `Samsara-Windows-v0.40.1.zip`.
 5. A matching `Samsara-Windows-<version>.zip.sha256` sidecar is generated from
    the final archive. The ZIP and sidecar are uploaded as workflow artifacts
    and, on a tag push, attached to a draft GitHub Release alongside the
@@ -31,9 +31,12 @@ repo's source at this commit, not from a laptop.
 
 ### Triggering a release
 
+Publish v0.40.1 as a GitHub pre-release. Keep Latest on v0.30.0-beta.10
+until the owner decides otherwise.
+
 ```
-git tag v0.40.0
-git push origin v0.40.0
+git tag v0.40.1
+git push origin v0.40.1
 ```
 
 Or run the workflow manually (Actions tab -> Release Build (CPU, SignPath-ready) -> Run
@@ -49,9 +52,9 @@ the artifact but does not create a GitHub Release.
 - Tag pushes only: the ZIP and mandatory SHA-256 sidecar are also attached to
   the draft GitHub Release for that tag.
 
-For v0.40.0, the draft asset list is `SamsaraSetup-0.40.0.exe`,
-`Samsara-Windows-v0.40.0.zip`, `Samsara-GestureControl-v0.40.0.zip`,
-`Samsara-WakeWord-Models-v0.40.0.zip`, their matching `.sha256` sidecars,
+For v0.40.1, the draft asset list is `SamsaraSetup-0.40.1.exe`,
+`Samsara-Windows-v0.40.1.zip`, `Samsara-GestureControl-v0.40.1.zip`,
+`Samsara-WakeWord-Models-v0.40.1.zip`, their matching `.sha256` sidecars,
 and `manifest.json`. See [installation](Docs/INSTALL.md) for the newcomer path.
 
 ## Updater release gate
