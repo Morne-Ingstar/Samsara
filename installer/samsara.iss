@@ -69,6 +69,8 @@
 #define AppURL "https://github.com/Morne-Ingstar/Samsara"
 #define AppExeName "Samsara.exe"
 
+; ISCC /DSignedBuild=1 /Ssamsara=... turns signing on (see [Setup]).
+
 [Setup]
 AppId={{7C0E4D2B-5A57-4F5E-9C7E-6B1B3F2D8A34}
 AppName={#AppName}
@@ -106,6 +108,14 @@ UninstallDisplayIcon={app}\{#AppExeName}
 LicenseFile=..\LICENSE
 SetupLogging=yes
 ShowComponentSizes=yes
+; Authenticode signing, only when the build defines a sign tool:
+;   ISCC /Ssamsara="powershell -NoProfile -File <repo>\scripts\sign.ps1 $f" ...
+; (tools\build_installer.cmd passes it when SAMSARA_SIGN=1). Without the
+; /S definition the installer builds unsigned exactly as before.
+#ifdef SignedBuild
+SignTool=samsara
+SignedUninstaller=yes
+#endif
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

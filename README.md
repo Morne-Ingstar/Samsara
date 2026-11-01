@@ -56,8 +56,8 @@ or **“double click 7.”**
 | --- | --- |
 | [**Latest published release**](https://github.com/Morne-Ingstar/Samsara/releases/latest) | Install the published Windows build. |
 
-v0.40.1 is prepared as a pre-release. Its planned download filenames are
-listed in the [install guide](Docs/INSTALL.md); open its [release page](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.40.1)
+v0.40.2 is prepared as a pre-release. Its planned download filenames are
+listed in the [install guide](Docs/INSTALL.md); open its [release page](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.40.2)
 to see its assets once published. The link above opens GitHub's latest release, which can be
 a different version.
 

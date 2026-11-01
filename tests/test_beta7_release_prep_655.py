@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_release_stamps_and_derived_consumers_agree():
     from tools.check_release_version import check_versions
-    version = check_versions(ROOT, 'v0.40.1')
+    version = check_versions(ROOT, 'v0.40.2')
     batch = (ROOT / 'build_release.bat').read_text(encoding='utf-8')
     # 875b: the selected interpreter reads the canonical version before naming outputs.
     assert "_string_assignment(Path('samsara/__init__.py'), '__version__')" in batch
@@ -42,8 +42,8 @@ def test_beta7_release_note_is_first_and_home_uses_its_lead():
     lead = section.splitlines()[2]
     assert lead and not lead.startswith(('#', '-', '<'))
     assert lead.endswith('.') and 'Stand-in' not in lead
-    current_lead = changelog.split('## [0.40.1]', 1)[1].splitlines()[2]
-    assert changelog_summary(ROOT / 'CHANGELOG.md') == ('0.40.1', current_lead)
+    current_lead = changelog.split('## [0.40.2]', 1)[1].splitlines()[2]
+    assert changelog_summary(ROOT / 'CHANGELOG.md') == ('0.40.2', current_lead)
     for title in ('Updates', 'Setup and help', 'Ava and selected text', 'Listening display'):
         assert f'### {title}\n\n-' in section
 

@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_beta10_version_everywhere():
     from tools.check_release_version import check_versions
-    assert check_versions(ROOT, 'v0.40.1') == '0.40.1'
+    assert check_versions(ROOT, 'v0.40.2') == '0.40.2'
 
 
 def test_beta10_pins_the_edge_tts_that_signs_in_the_new_way():
@@ -26,7 +26,7 @@ def test_beta10_release_note_is_first_and_home_uses_its_lead():
     section = changelog.split('## [0.30.0-beta.10]', 1)[1].split('## [0.30.0-beta.9]', 1)[0]
     lead = section.splitlines()[2]
     assert lead and not lead.startswith(('#', '-', '<')) and lead.endswith('.')
-    assert headings[0] == ('0.40.1', '2026-10-31')
-    current_lead = changelog.split('## [0.40.1]', 1)[1].splitlines()[2]
-    assert changelog_summary(ROOT / 'CHANGELOG.md') == ('0.40.1', current_lead)
+    assert headings[0] == ('0.40.2', '2026-11-01')
+    current_lead = changelog.split('## [0.40.2]', 1)[1].splitlines()[2]
+    assert changelog_summary(ROOT / 'CHANGELOG.md') == ('0.40.2', current_lead)
     assert '### Fixes\n\n-' in section
