@@ -1,5 +1,6 @@
 """Setup choice rows: real widgets, synthetic config, no app bootstrap."""
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from PySide6.QtCore import QRectF, Qt
@@ -26,6 +27,7 @@ class RowHost(QWidget):
         self._existing_config = {}
         self._stack = self
         self._hotkey_btns = {}
+        self._calibrate_wake = Mock()  # The row harness never opens calibration.
         self._step_indicator = QWidget(self)
         self._step_indicator.hide()
         self._model_group = QButtonGroup(self)
