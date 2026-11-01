@@ -1933,7 +1933,7 @@ class HomePage(QWidget):
             glay.addWidget(btn)
             self._guide_btns[label] = btn
         self._guides_row.setVisible(False)
-        guide_slot = QWidget()
+        guide_slot = QWidget(box)  # 1008: hidden guides must share Home's focus window at construction.
         guide_grid = QHBoxLayout(guide_slot)
         guide_grid.setContentsMargins(0, 0, 0, 0)
         guide_grid.addWidget(self._guides_row, stretch=1)

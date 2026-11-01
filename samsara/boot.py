@@ -283,13 +283,27 @@ def install_qt_message_handler(log=None):
         QtMsgType.QtCriticalMsg: logging.ERROR,
         QtMsgType.QtFatalMsg: logging.CRITICAL,
     }
+    seen_opentype_fonts = set()
+    opentype_lock = threading.Lock()
 
     def _handler(msg_type, context, message):
         try:
+            level = levels.get(msg_type, logging.WARNING)
+            # Missing shaping tables are a font fallback diagnostic, not an
+            # application failure. Keep one debug record per font, regardless
+            # of how many scripts Qt tries. Critical/fatal messages stay loud.
+            if (msg_type in (QtMsgType.QtDebugMsg, QtMsgType.QtInfoMsg, QtMsgType.QtWarningMsg)
+                    and message.startswith('OpenType support missing for "')):
+                font = message.split('"', 2)[1]
+                with opentype_lock:
+                    if font in seen_opentype_fonts:
+                        return
+                    seen_opentype_fonts.add(font)
+                level = logging.DEBUG
             where = ""
             if context is not None and getattr(context, "file", None):
                 where = f" ({context.file}:{context.line})"
-            log.log(levels.get(msg_type, logging.WARNING), f"[QT] {message}{where}")
+            log.log(level, f"[QT] {message}{where}")
         except Exception:
             pass
         finally:

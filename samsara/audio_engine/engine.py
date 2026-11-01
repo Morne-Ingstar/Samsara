@@ -56,9 +56,8 @@ easily start (and produce its first callback) WHILE torch is still
 mid-import in the background thread. Do not "fix" this by re-introducing
 a lazy/delayed import anywhere in the ACE startup path -- fix the actual
 hazard, which is calling anything array-API-probing from the RT callback
-thread at all. firwin (used below, at stream-open only, never per block)
-does NOT trigger this probing -- verified empirically; see
-_design_polyphase_filter's docstring.
+thread at all. The filter design below is also NumPy-only, so opening a
+stream never imports scipy.signal or probes torch either.
 
 == Consumer lifecycle ==
 
@@ -93,9 +92,8 @@ def _gcd(a: int, b: int) -> int:
 
 # ── Polyphase filter cache ────────────────────────────────────────────────────
 # The filter for a given (up, down) is fully deterministic, but designing it
-# costs the scipy.signal import plus firwin (0.75-0.9 s warm, and 12-13 s on
-# cold boots when the model thread starves this GIL-bound work -- see
-# perf_artifacts/boot_profile.md section 3). Cache it twice: a module-level
+# formerly paid for the scipy.signal import on fresh installs (8 s on the
+# Dell). The NumPy-only design now takes milliseconds. Cache it twice: a module-level
 # dict (recovery re-opens in the same process never redesign) and an .npz
 # under <samsara home>/cache/ keyed on (up, down) plus _FILTER_DESIGN_VERSION
 # (bump it whenever the design below changes, so a stale file is never read).
@@ -180,26 +178,25 @@ def _get_polyphase_filter(up: int, down: int) -> tuple[np.ndarray, int, int]:
 def _design_polyphase_filter(up: int, down: int) -> tuple[np.ndarray, int, int]:
     """Precompute (h_padded, taps_per_phase, n_pre_remove) for a given
     up/down ratio (already GCD-reduced, coprime). Replicates scipy.signal.
-    resample_poly's own default filter design exactly (firwin, window=
+    resample_poly's own default filter design within float64 rounding (firwin, window=
     ('kaiser', 5.0), padtype='constant'/cval=0 boundary) -- see
     _polyphase_resample for how these three values are used, and
     tests/audio_engine/test_resample_equivalence.py for the numerical
     verification against the real resample_poly.
 
-    Safe to call while another thread has torch mid-import: firwin does
-    NOT go through scipy's array-API-compat probing the way resample_poly
-    does (verified empirically -- calling firwin with a broken/partially-
-    initialized torch module already present in sys.modules does not
-    raise, where calling resample_poly the same way does). Still, this is
-    only ever called from _open_stream(), once per stream open -- never
-    from the RT callback.
+    The single lowpass case of firwin is a sinc times a symmetric Kaiser
+    window, normalized at DC. Compute it directly with NumPy: importing
+    scipy.signal dominated fresh-install startup and is unnecessary here.
+    This also avoids all array-API/torch probing. Only stream-open calls
+    this function; the realtime callback uses the resulting read-only taps.
     """
-    from scipy.signal import firwin  # noqa: PLC0415 -- stream-open only, see docstring
-
     max_rate = max(up, down)
     f_c = 1.0 / max_rate
     half_len = 10 * max_rate
-    h = firwin(2 * half_len + 1, f_c, window=('kaiser', 5.0)).astype(np.float64)
+    offsets = np.arange(2 * half_len + 1, dtype=np.float64) - half_len
+    h = f_c * np.sinc(f_c * offsets)
+    h *= np.kaiser(len(h), 5.0)
+    h /= h.sum()
     h = h * up
 
     n_pre_pad = down - (half_len % down)

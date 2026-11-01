@@ -19,7 +19,6 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QApplication, QStyle, QWidget
 
-from samsara.runtime import thread_registry
 from samsara.model_load_feedback import is_model_loading_status
 from samsara.ui import qt_runtime, theme
 from samsara.ui.tray_qt import paint_mark
@@ -392,11 +391,12 @@ class SplashScreenQt:
     def close(self):
         """Dismiss the splash after its minimum display period, without blocking."""
         def _do_close():
-            remaining = _MIN_DISPLAY_S - (time.time() - self._start_time)
-            if remaining > 0:
-                time.sleep(remaining)
+            # Resolve the widget and schedule its close only on its owning Qt
+            # thread. A worker emitting the close signal could enter Windows
+            # accessibility/COM from the wrong apartment during splash teardown.
             widget = self._widget
             if widget is not None:
-                widget._close_sig.emit()
+                remaining = _MIN_DISPLAY_S - (time.time() - self._start_time)
+                QTimer.singleShot(max(0, int(remaining * 1000) + 1), widget, widget._begin_close)
 
-        thread_registry.spawn("splash-close", _do_close, daemon=True)
+        qt_runtime.post(_do_close)

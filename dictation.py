@@ -1489,7 +1489,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             # No splash after wizard - user already saw UI
             # Auto-launch tutorial after wizard (first run only)
             self._launch_tutorial_after_wizard = True
-
+        _boot.begin_thread(); _bdiag_tp[0] = time.perf_counter()  # 1008: exclude setup from config timing.
         logger.info("[INIT] Loading config...")
         self.update_splash(
             "Loading configuration...", 8,
