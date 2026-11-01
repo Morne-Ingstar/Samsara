@@ -25,6 +25,7 @@ class Question:
     duration: float = None
     label: str = ""
     reprompted: bool = False
+    answer_guidance_given: bool = False
 
 
 def reply_seconds(app):
@@ -282,6 +283,12 @@ def consume(app, text, *, capture_path=None):
         if q.kind == "yes_no":
             reply = policy.classify_reply(text)
             if reply not in {policy.REPLY_YES, policy.REPLY_NO}:
+                if answer and not q.answer_guidance_given:
+                    q.answer_guidance_given = True
+                    # PLACEHOLDER COPY (977)
+                    guidance = "Say yes or no. To change the request, say cancel and ask again."
+                    _feedback(app, guidance, q)
+                    ava.speak(app, guidance, category="confirmation")
                 return True
             _clear(app, q, "Ava question cancelled." if reply == policy.REPLY_NO else "Ava question answered.")
             if reply == policy.REPLY_YES:
@@ -301,3 +308,12 @@ def consume(app, text, *, capture_path=None):
         ava.handle_ask_ava(app, remainder=q.runner.utterance + "\nFollow-up answer: " + text,
                            generation=q.runner.generation)
         return True
+
+
+def consume_before_dispatch(app, remainder, generation, on_done):
+    """Pending questions precede ticket recall and all other Ava dispatch."""
+    if remainder and consume(app, remainder):
+        on_done()
+        return True
+    from samsara import ava_tickets
+    return ava_tickets.consume(app, remainder, generation, on_done)

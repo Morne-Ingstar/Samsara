@@ -903,7 +903,7 @@ def speak_as(app, text, source):
 
 def speak(app, text, category="ava_response", on_done=None):
     if not ava_turn_queue.can_deliver(app): return False
-    if isinstance(text, str):
+    if isinstance(text, str) and not getattr(_turn_local, "literal_answer", False):
         text = _strip_tags(text)
     max_len = get_max_response_length(app)
     if max_len and isinstance(text, str) and len(text) > max_len:
@@ -3183,9 +3183,7 @@ def handle_ask_ava(app, remainder="", on_done=None, generation=None, **kwargs):
     # used to say "Ava <check>" whatever happened.
     _set_turn_outcome(app, None)
 
-    if remainder and ava_pending.consume(app, remainder):
-        _done()
-        return
+    if ava_pending.consume_before_dispatch(app, remainder, generation, _done): return
     # 818: local Dictionary teaching is checked before menus and AI capability.
     if remainder and _check_dictionary_teaching(app, remainder):
         _done()
