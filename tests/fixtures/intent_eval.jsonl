@@ -16636,7 +16636,7 @@
 {"accept": ["health_tracker.health_summary"], "id": "health_tracker.health_summary", "kind": "alias", "polarity": "positive", "text": "how was my day"}
 {"accept": ["health_tracker.health_summary"], "id": "health_tracker.health_summary", "kind": "determiner", "polarity": "positive", "text": "how the am i feeling buy milk"}
 {"id": "health_tracker.health_summary", "kind": "sentence", "polarity": "negative", "reject": "health_tracker.health_summary", "text": "during the lecture she explained how to health report without breaking anything"}
-{"id": "health_tracker.health_summary", "kind": "other_command", "polarity": "negative", "reject": "health_tracker.health_summary", "text": "my pain is"}
+{"id": "health_tracker.health_summary", "kind": "other_command", "polarity": "negative", "reject": "health_tracker.health_summary", "text": "how is my mic doing"}
 {"id": "health_tracker.health_summary", "kind": "nonsense", "polarity": "negative", "reject": "health_tracker.health_summary", "text": "wobble saxophone health noodle quartz"}
 {"accept": ["health_tracker.pain_level"], "id": "health_tracker.pain_level", "kind": "alias", "polarity": "positive", "text": "pain is"}
 {"accept": ["health_tracker.pain_level"], "id": "health_tracker.pain_level", "kind": "determiner", "polarity": "positive", "text": "pain the level check the oven"}
@@ -18398,6 +18398,86 @@
 {"id": "message_claude.whats_in_it", "kind": "sentence", "polarity": "negative", "reject": "message_claude.whats_in_it", "text": "our manager keeps asking whether anyone remembered to whats in it last week"}
 {"id": "message_claude.whats_in_it", "kind": "other_command", "polarity": "negative", "reject": "message_claude.whats_in_it", "text": "do it"}
 {"id": "message_claude.whats_in_it", "kind": "nonsense", "polarity": "negative", "reject": "message_claude.whats_in_it", "text": "marmalade purple whats pickle wobble"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "alias", "polarity": "positive", "text": "how is my mic doing"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "determiner", "polarity": "positive", "text": "how the is my mic doing"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "hows my mic doing thanks"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "punct", "polarity": "positive", "text": "How is my mic doing."}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "alias", "polarity": "positive", "text": "hows my mic doing"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "uh hows my mic doing"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "punct", "polarity": "positive", "text": "Hows, my mic doing?"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "how is my mic doing now"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "punct", "polarity": "positive", "text": "Hows my mic doing."}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "so how is my mic doing"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "punct", "polarity": "positive", "text": "How, is my mic doing?"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "i need you to how is my mic doing"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "how is my mic doing thanks"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "could you hows my mic doing"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "hows my mic doing right now"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "would you please hows my mic doing"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "hey how is my mic doing"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "would you please how is my mic doing"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "please how is my mic doing"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "hows my mic doing for me"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "could you just hows my mic doing"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "could you how is my mic doing"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "hey hows my mic doing"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "how is my mic doing for me"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "can you please how is my mic doing"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "hows my mic doing now"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "hows my mic doing for me please"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "hows my mic doing please"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "uh how is my mic doing"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "can you hows my mic doing"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "okay hows my mic doing"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "can you please hows my mic doing"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "go ahead and how is my mic doing"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "i need you to hows my mic doing"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "um how is my mic doing"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "please hows my mic doing"}
+{"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "how is my mic doing right now"}
+{"id": "mic_score_voice.hows_my_mic_doing", "kind": "sentence", "polarity": "negative", "reject": "mic_score_voice.hows_my_mic_doing", "text": "yesterday i told my sister we should how is my mic doing before dinner"}
+{"id": "mic_score_voice.hows_my_mic_doing", "kind": "other_command", "polarity": "negative", "reject": "mic_score_voice.hows_my_mic_doing", "text": "how is my pain"}
+{"id": "mic_score_voice.hows_my_mic_doing", "kind": "nonsense", "polarity": "negative", "reject": "mic_score_voice.hows_my_mic_doing", "text": "pickle saxophone doing lantern glimmer"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "alias", "polarity": "positive", "text": "mic score"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "determiner", "polarity": "positive", "text": "which the mic is best"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "go ahead and which mic is best"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "punct", "polarity": "positive", "text": "Mic score."}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "reorder", "polarity": "positive", "text": "score mic"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "alias", "polarity": "positive", "text": "which mic is best"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "determiner", "polarity": "positive", "text": "mic the score"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "okay mic score"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "punct", "polarity": "positive", "text": "Which, mic is best?"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "alias", "polarity": "positive", "text": "test my mic"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "mic score now"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "punct", "polarity": "positive", "text": "Which mic is best."}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "which mic is best for me"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "punct", "polarity": "positive", "text": "Mic, score?"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "so test my mic"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "punct", "polarity": "positive", "text": "Test, my mic?"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "i need you to mic score"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "punct", "polarity": "positive", "text": "Test my mic."}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "test my mic for me"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "please mic score"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "uh test my mic"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "can you which mic is best"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "um which mic is best"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "which mic is best for me please"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "so mic score"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "which mic is best please"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "would you please mic score"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "can you please which mic is best"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "okay test my mic"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "could you just which mic is best"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "could you just mic score"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "please which mic is best"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "would you please test my mic"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "could you just test my mic"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "test my mic for me please"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "okay which mic is best"}
+{"accept": ["mic_score_voice.test_my_mic"], "id": "mic_score_voice.test_my_mic", "kind": "filler", "polarity": "positive", "text": "which mic is best right now"}
+{"id": "mic_score_voice.test_my_mic", "kind": "sentence", "polarity": "negative", "reject": "mic_score_voice.test_my_mic", "text": "last night he wrote in the notes that you can mic score whenever it feels right"}
+{"id": "mic_score_voice.test_my_mic", "kind": "other_command", "polarity": "negative", "reject": "mic_score_voice.test_my_mic", "text": "how is my mic doing"}
+{"id": "mic_score_voice.test_my_mic", "kind": "nonsense", "polarity": "negative", "reject": "mic_score_voice.test_my_mic", "text": "sideways cobalt score banana zeppelin"}
 {"accept": ["music.import_my_spotify_playlists"], "id": "music.import_my_spotify_playlists", "kind": "alias", "polarity": "positive", "text": "import my spotify playlists"}
 {"accept": ["music.import_my_spotify_playlists"], "id": "music.import_my_spotify_playlists", "kind": "determiner", "polarity": "positive", "text": "import the spotify playlists"}
 {"accept": ["music.import_my_spotify_playlists"], "id": "music.import_my_spotify_playlists", "kind": "filler", "polarity": "positive", "text": "import spotify playlists for me please"}
@@ -22758,6 +22838,46 @@
 {"id": "stremio.mute_stremio", "kind": "sentence", "polarity": "negative", "reject": "stremio.mute_stremio", "text": "honestly the whole point of the meeting was to mute stremio and nobody did"}
 {"id": "stremio.mute_stremio", "kind": "other_command", "polarity": "negative", "reject": "stremio.mute_stremio", "text": "mute"}
 {"id": "stremio.mute_stremio", "kind": "nonsense", "polarity": "negative", "reject": "stremio.mute_stremio", "text": "sideways saxophone stremio octopus zeppelin"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "alias", "polarity": "positive", "text": "play the next episode"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "determiner", "polarity": "positive", "text": "next the episode"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "filler", "polarity": "positive", "text": "next episode thanks"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "punct", "polarity": "positive", "text": "Play, the next episode?"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "reorder", "polarity": "positive", "text": "video next"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "alias", "polarity": "positive", "text": "skip episode"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "determiner", "polarity": "positive", "text": "next the video"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "filler", "polarity": "positive", "text": "could you skip episode"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "punct", "polarity": "positive", "text": "Skip, episode?"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "reorder", "polarity": "positive", "text": "episode skip"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "alias", "polarity": "positive", "text": "next episode"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "determiner", "polarity": "positive", "text": "skip the episode"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "filler", "polarity": "positive", "text": "skip episode now"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "punct", "polarity": "positive", "text": "Skip episode."}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "reorder", "polarity": "positive", "text": "episode next"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "alias", "polarity": "positive", "text": "next video"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "filler", "polarity": "positive", "text": "would you please skip episode"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "punct", "polarity": "positive", "text": "Next, video?"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "filler", "polarity": "positive", "text": "could you just next video"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "punct", "polarity": "positive", "text": "Next episode."}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "filler", "polarity": "positive", "text": "so next episode"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "punct", "polarity": "positive", "text": "Play the next episode."}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "filler", "polarity": "positive", "text": "can you next video"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "punct", "polarity": "positive", "text": "Next video."}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "filler", "polarity": "positive", "text": "can you please play the next episode"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "punct", "polarity": "positive", "text": "Next, episode?"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "filler", "polarity": "positive", "text": "next video for me please"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "filler", "polarity": "positive", "text": "so play the next episode"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "filler", "polarity": "positive", "text": "skip episode for me please"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "filler", "polarity": "positive", "text": "can you please skip episode"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "filler", "polarity": "positive", "text": "next episode please"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "filler", "polarity": "positive", "text": "um next video"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "filler", "polarity": "positive", "text": "would you please play the next episode"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "filler", "polarity": "positive", "text": "next video please"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "filler", "polarity": "positive", "text": "skip episode thanks"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "filler", "polarity": "positive", "text": "okay next video"}
+{"accept": ["stremio.next_episode"], "id": "stremio.next_episode", "kind": "filler", "polarity": "positive", "text": "next video thanks"}
+{"id": "stremio.next_episode", "kind": "sentence", "polarity": "negative", "reject": "stremio.next_episode", "text": "my grandmother never understood why people would next episode on a sunday"}
+{"id": "stremio.next_episode", "kind": "other_command", "polarity": "negative", "reject": "stremio.next_episode", "text": "skip the track"}
+{"id": "stremio.next_episode", "kind": "nonsense", "polarity": "negative", "reject": "stremio.next_episode", "text": "cobalt pickle episode marmalade sideways"}
 {"accept": ["stremio.open_stremio"], "id": "stremio.open_stremio", "kind": "alias", "polarity": "positive", "text": "bring up stremio"}
 {"accept": ["stremio.open_stremio"], "id": "stremio.open_stremio", "kind": "determiner", "polarity": "positive", "text": "start the stremio"}
 {"accept": ["stremio.open_stremio"], "id": "stremio.open_stremio", "kind": "filler", "polarity": "positive", "text": "open stremio please"}
@@ -22878,86 +22998,126 @@
 {"id": "stremio.resume_stremio", "kind": "sentence", "polarity": "negative", "reject": "stremio.resume_stremio", "text": "my grandmother never understood why people would continue playing on a sunday"}
 {"id": "stremio.resume_stremio", "kind": "other_command", "polarity": "negative", "reject": "stremio.resume_stremio", "text": "keep it open"}
 {"id": "stremio.resume_stremio", "kind": "nonsense", "polarity": "negative", "reject": "stremio.resume_stremio", "text": "glimmer noodle continue purple pickle"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "alias", "polarity": "positive", "text": "rewind"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "determiner", "polarity": "positive", "text": "skip the back"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "filler", "polarity": "positive", "text": "can you please skip back"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "punct", "polarity": "positive", "text": "Rewind."}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "alias", "polarity": "positive", "text": "back up"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "determiner", "polarity": "positive", "text": "skip the back call mom at five"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "filler", "polarity": "positive", "text": "back up call mom at five thanks"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "numeral", "polarity": "positive", "text": "back up call mom at 5"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "punct", "polarity": "positive", "text": "Go, backwards the build is green?"}
 {"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "reorder", "polarity": "positive", "text": "back skip"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "slot", "polarity": "positive", "text": "go backwards the build is green"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "synonym", "polarity": "positive", "text": "head backwards the build is green"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "alias", "polarity": "positive", "text": "skip back"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "determiner", "polarity": "positive", "text": "skip the backward water the plants"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "filler", "polarity": "positive", "text": "skip back please"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "numeral", "polarity": "positive", "text": "skip back call mom at 5"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "punct", "polarity": "positive", "text": "Back up call mom at five."}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "reorder", "polarity": "positive", "text": "up back"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "slot", "polarity": "positive", "text": "skip back call mom at five"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "synonym", "polarity": "positive", "text": "head backwards"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "alias", "polarity": "positive", "text": "rewind"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "determiner", "polarity": "positive", "text": "go the backwards the build is green"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "filler", "polarity": "positive", "text": "okay skip back"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "punct", "polarity": "positive", "text": "Go, backwards?"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "reorder", "polarity": "positive", "text": "backward skip"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "slot", "polarity": "positive", "text": "rewind water the plants"}
 {"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "synonym", "polarity": "positive", "text": "navigate backwards"}
 {"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "alias", "polarity": "positive", "text": "go backwards"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "determiner", "polarity": "positive", "text": "go the backwards"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "filler", "polarity": "positive", "text": "back up for me"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "punct", "polarity": "positive", "text": "Skip backward."}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "determiner", "polarity": "positive", "text": "skip the back"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "filler", "polarity": "positive", "text": "could you just skip backward"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "punct", "polarity": "positive", "text": "Skip backward water the plants."}
 {"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "reorder", "polarity": "positive", "text": "backwards go"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "synonym", "polarity": "positive", "text": "head backwards"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "alias", "polarity": "positive", "text": "skip back"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "determiner", "polarity": "positive", "text": "back the up"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "filler", "polarity": "positive", "text": "rewind now"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "punct", "polarity": "positive", "text": "Skip, backward?"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "reorder", "polarity": "positive", "text": "up back"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "slot", "polarity": "positive", "text": "skip backward water the plants"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "synonym", "polarity": "positive", "text": "navigate backwards the build is green"}
 {"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "alias", "polarity": "positive", "text": "skip backward"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "determiner", "polarity": "positive", "text": "skip the backward"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "filler", "polarity": "positive", "text": "skip back thanks"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "punct", "polarity": "positive", "text": "Go backwards."}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "reorder", "polarity": "positive", "text": "backward skip"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "alias", "polarity": "positive", "text": "back up"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "filler", "polarity": "positive", "text": "rewind right now"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "punct", "polarity": "positive", "text": "Skip back."}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "filler", "polarity": "positive", "text": "back up right now"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "punct", "polarity": "positive", "text": "Back up."}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "filler", "polarity": "positive", "text": "skip backward for me please"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "punct", "polarity": "positive", "text": "Back, up?"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "filler", "polarity": "positive", "text": "hey skip back"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "punct", "polarity": "positive", "text": "Go, backwards?"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "filler", "polarity": "positive", "text": "could you skip backward"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "punct", "polarity": "positive", "text": "Skip, back?"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "filler", "polarity": "positive", "text": "rewind for me please"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "filler", "polarity": "positive", "text": "skip back now"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "filler", "polarity": "positive", "text": "hey skip backward"}
-{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "filler", "polarity": "positive", "text": "go backwards for me"}
-{"id": "stremio.skip_back", "kind": "sentence", "polarity": "negative", "reject": "stremio.skip_back", "text": "yesterday i told my sister we should back up before dinner"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "determiner", "polarity": "positive", "text": "go the backwards"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "filler", "polarity": "positive", "text": "rewind water the plants right now"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "punct", "polarity": "positive", "text": "Skip, backward water the plants?"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "slot", "polarity": "positive", "text": "back up call mom at five"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "determiner", "polarity": "positive", "text": "rewind the water the plants"}
+{"accept": ["stremio.skip_back"], "id": "stremio.skip_back", "kind": "filler", "polarity": "positive", "text": "i need you to skip back call mom at five"}
+{"id": "stremio.skip_back", "kind": "sentence", "polarity": "negative", "reject": "stremio.skip_back", "text": "last night he wrote in the notes that you can back up whenever it feels right"}
 {"id": "stremio.skip_back", "kind": "other_command", "polarity": "negative", "reject": "stremio.skip_back", "text": "go back"}
-{"id": "stremio.skip_back", "kind": "nonsense", "polarity": "negative", "reject": "stremio.skip_back", "text": "glimmer thunderous back cobalt quartz"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "alias", "polarity": "positive", "text": "forward"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "determiner", "polarity": "positive", "text": "fast the forward"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "filler", "polarity": "positive", "text": "can you forward"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "punct", "polarity": "positive", "text": "Fast, forward?"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "reorder", "polarity": "positive", "text": "forward fast"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "alias", "polarity": "positive", "text": "fast forward"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "determiner", "polarity": "positive", "text": "skip the ahead"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "filler", "polarity": "positive", "text": "can you please next bit"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "punct", "polarity": "positive", "text": "Skip, forward?"}
+{"id": "stremio.skip_back", "kind": "nonsense", "polarity": "negative", "reject": "stremio.skip_back", "text": "sideways thunderous back glimmer cobalt"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "alias", "polarity": "positive", "text": "jump ahead"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "determiner", "polarity": "positive", "text": "jump the ahead"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "filler", "polarity": "positive", "text": "forward thanks"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "numeral", "polarity": "positive", "text": "jump ahead call mom at 5"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "punct", "polarity": "positive", "text": "Forward buy milk."}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "reorder", "polarity": "positive", "text": "ahead jump"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "slot", "polarity": "positive", "text": "fast forward the build is green"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "alias", "polarity": "positive", "text": "next bit"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "determiner", "polarity": "positive", "text": "skip the forward call mom at five"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "filler", "polarity": "positive", "text": "skip ahead the build is green thanks"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "numeral", "polarity": "positive", "text": "skip forward call mom at 5"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "punct", "polarity": "positive", "text": "Skip, ahead?"}
 {"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "reorder", "polarity": "positive", "text": "forward skip"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "slot", "polarity": "positive", "text": "next bit the build is green"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "alias", "polarity": "positive", "text": "fast forward"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "determiner", "polarity": "positive", "text": "fast the forward"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "filler", "polarity": "positive", "text": "forward please"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "punct", "polarity": "positive", "text": "Jump ahead call mom at five."}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "reorder", "polarity": "positive", "text": "forward fast"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "slot", "polarity": "positive", "text": "jump ahead call mom at five"}
 {"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "alias", "polarity": "positive", "text": "skip forward"}
 {"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "determiner", "polarity": "positive", "text": "next the bit"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "filler", "polarity": "positive", "text": "can you next bit"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "punct", "polarity": "positive", "text": "Next, bit?"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "reorder", "polarity": "positive", "text": "bit next"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "alias", "polarity": "positive", "text": "skip ahead"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "determiner", "polarity": "positive", "text": "skip the forward"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "filler", "polarity": "positive", "text": "can you please skip ahead"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "punct", "polarity": "positive", "text": "Skip forward."}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "filler", "polarity": "positive", "text": "could you just skip ahead the build is green"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "punct", "polarity": "positive", "text": "Skip forward call mom at five."}
 {"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "reorder", "polarity": "positive", "text": "ahead skip"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "alias", "polarity": "positive", "text": "next bit"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "filler", "polarity": "positive", "text": "would you please skip forward"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "punct", "polarity": "positive", "text": "Skip ahead."}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "filler", "polarity": "positive", "text": "fast forward for me"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "punct", "polarity": "positive", "text": "Forward."}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "filler", "polarity": "positive", "text": "could you just skip forward"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "punct", "polarity": "positive", "text": "Skip, ahead?"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "filler", "polarity": "positive", "text": "next bit right now"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "punct", "polarity": "positive", "text": "Next bit."}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "filler", "polarity": "positive", "text": "go ahead and forward"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "punct", "polarity": "positive", "text": "Fast forward."}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "filler", "polarity": "positive", "text": "can you please forward"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "filler", "polarity": "positive", "text": "go ahead and fast forward"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "filler", "polarity": "positive", "text": "forward for me please"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "filler", "polarity": "positive", "text": "skip ahead now"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "filler", "polarity": "positive", "text": "next bit please"}
-{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "filler", "polarity": "positive", "text": "could you just forward"}
-{"id": "stremio.skip_forward", "kind": "sentence", "polarity": "negative", "reject": "stremio.skip_forward", "text": "my grandmother never understood why people would fast forward on a sunday"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "slot", "polarity": "positive", "text": "skip ahead the build is green"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "alias", "polarity": "positive", "text": "forward"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "determiner", "polarity": "positive", "text": "next the bit the build is green"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "filler", "polarity": "positive", "text": "fast forward thanks"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "punct", "polarity": "positive", "text": "Fast, forward the build is green?"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "reorder", "polarity": "positive", "text": "bit next"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "slot", "polarity": "positive", "text": "forward buy milk"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "alias", "polarity": "positive", "text": "skip ahead"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "determiner", "polarity": "positive", "text": "fast the forward the build is green"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "filler", "polarity": "positive", "text": "could you just skip forward call mom at five"}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "punct", "polarity": "positive", "text": "Skip ahead the build is green."}
+{"accept": ["stremio.skip_forward"], "id": "stremio.skip_forward", "kind": "slot", "polarity": "positive", "text": "skip forward call mom at five"}
+{"id": "stremio.skip_forward", "kind": "sentence", "polarity": "negative", "reject": "stremio.skip_forward", "text": "our manager keeps asking whether anyone remembered to fast forward last week"}
 {"id": "stremio.skip_forward", "kind": "other_command", "polarity": "negative", "reject": "stremio.skip_forward", "text": "next"}
-{"id": "stremio.skip_forward", "kind": "nonsense", "polarity": "negative", "reject": "stremio.skip_forward", "text": "thunderous wobble forward velvet pickle"}
+{"id": "stremio.skip_forward", "kind": "nonsense", "polarity": "negative", "reject": "stremio.skip_forward", "text": "quartz glimmer forward zeppelin sideways"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "alias", "polarity": "positive", "text": "play pause stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "determiner", "polarity": "positive", "text": "toggle the stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "play pause stremio thanks"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "mishear", "polarity": "positive", "text": "play paws stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "punct", "polarity": "positive", "text": "Toggle stremio."}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "reorder", "polarity": "positive", "text": "stremio toggle"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "synonym", "polarity": "positive", "text": "flip stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "alias", "polarity": "positive", "text": "toggle stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "determiner", "polarity": "positive", "text": "play the pause stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "can you play pause stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "punct", "polarity": "positive", "text": "Play, pause stremio?"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "could you play pause stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "punct", "polarity": "positive", "text": "Play pause stremio."}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "so toggle stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "punct", "polarity": "positive", "text": "Toggle, stremio?"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "could you just toggle stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "okay toggle stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "could you toggle stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "toggle stremio for me"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "play pause stremio for me please"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "go ahead and play pause stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "hey play pause stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "toggle stremio right now"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "um toggle stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "please play pause stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "play pause stremio right now"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "so play pause stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "toggle stremio now"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "um play pause stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "play pause stremio please"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "could you just play pause stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "can you please toggle stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "i need you to toggle stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "uh play pause stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "hey toggle stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "would you please play pause stremio"}
+{"accept": ["stremio.toggle_stremio"], "id": "stremio.toggle_stremio", "kind": "filler", "polarity": "positive", "text": "play pause stremio now"}
+{"id": "stremio.toggle_stremio", "kind": "sentence", "polarity": "negative", "reject": "stremio.toggle_stremio", "text": "our manager keeps asking whether anyone remembered to play pause stremio last week"}
+{"id": "stremio.toggle_stremio", "kind": "other_command", "polarity": "negative", "reject": "stremio.toggle_stremio", "text": "play pause"}
+{"id": "stremio.toggle_stremio", "kind": "nonsense", "polarity": "negative", "reject": "stremio.toggle_stremio", "text": "saxophone cobalt stremio pickle wobble"}
 {"accept": ["tab_finder.find_tab"], "id": "tab_finder.find_tab", "kind": "alias", "polarity": "positive", "text": "find my"}
 {"accept": ["tab_finder.find_tab"], "id": "tab_finder.find_tab", "kind": "determiner", "polarity": "positive", "text": "where the is"}
 {"accept": ["tab_finder.find_tab"], "id": "tab_finder.find_tab", "kind": "filler", "polarity": "positive", "text": "can you find my"}

@@ -11,17 +11,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# psutil is a real installed dependency -- never stub it (see
-# test_window_manager.py's own note on this).
-_win32_mocks = {}
-for _mod in ('win32api', 'win32con', 'win32gui', 'win32process'):
-    if _mod not in sys.modules:
-        _win32_mocks[_mod] = MagicMock()
-        sys.modules[_mod] = _win32_mocks[_mod]
-
-import importlib
+# Keep native imports intact during collection. Each test patches its own
+# enumeration/effect boundary; global Win32 fakes poison later test files.
 import plugins.commands.app_verbs as av
-importlib.reload(av)
 
 
 def _fake_process(name):

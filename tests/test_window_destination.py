@@ -3,23 +3,16 @@
 right"). Monitors and window enumeration are mocked -- no real desktop."""
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# Same headless preamble as tests/test_window_manager.py.
-for _mod in ('win32api', 'win32con', 'win32gui', 'win32process'):
-    if _mod not in sys.modules:
-        sys.modules[_mod] = MagicMock()
-sys.modules['win32con'].SW_RESTORE = 9
-sys.modules['win32con'].GWL_EXSTYLE = -20
-
-import importlib  # noqa: E402
+# Native modules remain shared and unmodified; desktop effects are patched
+# within the owning tests and fixtures below.
 import plugins.commands.windows as wm  # noqa: E402
-importlib.reload(wm)
 
 from samsara.command_registry import DispatchState  # noqa: E402
 

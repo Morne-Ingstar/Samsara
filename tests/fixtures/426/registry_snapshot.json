@@ -9797,6 +9797,47 @@
     "precondition": ""
   },
   {
+    "canonical_id": "mic_score_voice.hows_my_mic_doing",
+    "plugin": "mic_score_voice",
+    "phrase": "hows my mic doing",
+    "verb": "hows",
+    "object": "my_mic_doing",
+    "aliases": [
+      "how is my mic doing",
+      "hows my mic doing"
+    ],
+    "args": [],
+    "description": "Reports microphone accuracy, recognition estimates and command matching results.",
+    "risk": "ui",
+    "whole_utterance": false,
+    "pack": "core",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
+    "canonical_id": "mic_score_voice.test_my_mic",
+    "plugin": "mic_score_voice",
+    "phrase": "test my mic",
+    "verb": "test",
+    "object": "my_mic",
+    "aliases": [
+      "mic score",
+      "test my mic",
+      "which mic is best"
+    ],
+    "args": [],
+    "description": "Opens a five-sentence microphone comparison.",
+    "risk": "ui",
+    "whole_utterance": false,
+    "pack": "core",
+    "kind": "plugin",
+    "scope": null,
+    "examples": [],
+    "precondition": ""
+  },
+  {
     "canonical_id": "music.import_my_spotify_playlists",
     "plugin": "music",
     "phrase": "import my spotify playlists",
@@ -12887,6 +12928,33 @@
     "precondition": ""
   },
   {
+    "canonical_id": "stremio.next_episode",
+    "plugin": "stremio",
+    "phrase": "next episode",
+    "verb": "next",
+    "object": "episode",
+    "aliases": [
+      "next episode",
+      "next video",
+      "play the next episode",
+      "skip episode"
+    ],
+    "args": [],
+    "description": "Requests the next episode using Stremio's verified Shift+N shortcut.",
+    "risk": "ui",
+    "whole_utterance": false,
+    "pack": "stremio",
+    "kind": "plugin",
+    "scope": {
+      "apps": [
+        "stremio-shell-ng.exe",
+        "stremio.exe"
+      ]
+    },
+    "examples": [],
+    "precondition": ""
+  },
+  {
     "canonical_id": "stremio.open_stremio",
     "plugin": "stremio",
     "phrase": "open stremio",
@@ -12977,15 +13045,28 @@
       "skip back",
       "skip backward"
     ],
-    "args": [],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": false
+      }
+    ],
     "description": "Jumps back in what is playing in Stremio.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "stremio",
     "kind": "plugin",
-    "scope": null,
-    "examples": [],
-    "precondition": ""
+    "scope": {
+      "apps": [
+        "stremio-shell-ng.exe",
+        "stremio.exe"
+      ]
+    },
+    "examples": [
+      "back a minute"
+    ],
+    "precondition": "Enable the Stremio pack and focus Stremio with a video playing."
   },
   {
     "canonical_id": "stremio.skip_forward",
@@ -12996,12 +13077,46 @@
     "aliases": [
       "fast forward",
       "forward",
+      "jump ahead",
       "next bit",
       "skip ahead",
       "skip forward"
     ],
-    "args": [],
+    "args": [
+      {
+        "name": "remainder",
+        "type": "text",
+        "required": false
+      }
+    ],
     "description": "Jumps forward in what is playing in Stremio.",
+    "risk": "ui",
+    "whole_utterance": false,
+    "pack": "stremio",
+    "kind": "plugin",
+    "scope": {
+      "apps": [
+        "stremio-shell-ng.exe",
+        "stremio.exe"
+      ]
+    },
+    "examples": [
+      "forward 30 seconds"
+    ],
+    "precondition": "Enable the Stremio pack and focus Stremio with a video playing."
+  },
+  {
+    "canonical_id": "stremio.toggle_stremio",
+    "plugin": "stremio",
+    "phrase": "toggle stremio",
+    "verb": "toggle",
+    "object": "stremio",
+    "aliases": [
+      "play pause stremio",
+      "toggle stremio"
+    ],
+    "args": [],
+    "description": "Switches Stremio between playing and paused.",
     "risk": "ui",
     "whole_utterance": false,
     "pack": "stremio",

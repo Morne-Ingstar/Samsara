@@ -303,17 +303,14 @@ def test_setup_finishes_with_explicit_beta_choice_without_enabling_automatic_che
 
 def _squeezed_or_overlapping(dialog):
     from PySide6.QtCore import QRect
-    from PySide6.QtGui import QTextDocument
     from PySide6.QtWidgets import QLabel
     labels = [w for w in dialog.findChildren(QLabel) if w.isVisibleTo(dialog) and w.text()]
     problems = []
     for label in labels:
-        document = QTextDocument()
-        document.setDocumentMargin(0)
-        document.setDefaultFont(label.font())
-        document.setPlainText(label.text())
-        document.setTextWidth(label.width())
-        if label.height() + 1 < document.size().height():
+        # QLabel's plain-text layout uses font metrics, whereas QTextDocument
+        # can add a different line-box descent (3 px with Segoe UI on Windows).
+        needed = label.heightForWidth(label.width()) if label.hasHeightForWidth() else label.sizeHint().height()
+        if label.height() < needed:
             problems.append(('squeezed', label.text()[:30]))
         label_rect = QRect(label.mapToGlobal(label.rect().topLeft()), label.size())
         for other in labels:
@@ -321,6 +318,20 @@ def _squeezed_or_overlapping(dialog):
             if other is not label and label_rect.intersects(other_rect):
                 problems.append(('overlap', label.text()[:30], other.text()[:30]))
     return problems
+
+
+def test_layout_check_detects_squeezed_and_overlapping_labels(qapp):
+    from PySide6.QtWidgets import QLabel, QWidget
+    host = QWidget()
+    first = QLabel('A wrapped label with several words', host)
+    first.setWordWrap(True)
+    first.setGeometry(0, 0, 80, 1)
+    second = QLabel('Another label', host)
+    second.setGeometry(0, 0, 80, 30)
+    problems = _squeezed_or_overlapping(host)
+    assert any(problem[0] == 'squeezed' for problem in problems)
+    assert any(problem[0] == 'overlap' for problem in problems)
+    host.deleteLater()
 
 
 def _states(update_qt, state):
@@ -355,9 +366,12 @@ def test_updates_window_opens_tall_enough_for_all_its_text(qapp, monkeypatch, st
         _show_on_screen_of_height(dialog, 900, monkeypatch)
         if state in ('ticked', 'cannot_save'):
             dialog._beta_choice.setChecked(True)
-            qapp.processEvents()
-            qapp.processEvents()
+            # The new status queues a grow-to-fit pass and a scroll-layout
+            # pass; wait for the same settling used when showing the dialog.
+            for _ in range(20):
+                qapp.processEvents()
         assert _squeezed_or_overlapping(dialog) == []
+        assert dialog._body.width() <= dialog._scroll.viewport().width()
         assert dialog._scroll.verticalScrollBar().maximum() == 0
     finally:
         dialog.close()
@@ -372,10 +386,11 @@ def test_updates_window_scrolls_instead_of_clipping_on_a_small_screen(qapp, monk
         _show_on_screen_of_height(dialog, 320, monkeypatch)
         if state in ('ticked', 'cannot_save'):
             dialog._beta_choice.setChecked(True)
-            qapp.processEvents()
-            qapp.processEvents()
+            for _ in range(20):
+                qapp.processEvents()
         assert dialog.height() <= 320
         assert _squeezed_or_overlapping(dialog) == []
+        assert dialog._body.width() <= dialog._scroll.viewport().width()
         assert dialog._scroll.verticalScrollBar().maximum() > 0       # the rest is a scroll away
         assert dialog._primary.isVisibleTo(dialog)                    # the buttons stay put
     finally:

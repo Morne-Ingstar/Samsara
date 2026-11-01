@@ -16,6 +16,12 @@ from unittest.mock import Mock, MagicMock, patch
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Offscreen Qt does not discover Windows fonts automatically. Configure it
+# before collection imports Qt, so a focused file has the same metrics as CI
+# without depending on a Settings test module being collected first.
+if sys.platform == 'win32':
+    os.environ.setdefault('QT_QPA_FONTDIR', str(Path(os.environ.get('SystemRoot', 'C:/Windows')) / 'Fonts'))
+
 
 _HARD_WATCHDOG_700 = pytest.StashKey()
 _PROCESS_WATCHDOG_705 = pytest.StashKey()

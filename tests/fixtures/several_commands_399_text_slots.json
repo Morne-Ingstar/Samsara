@@ -1000,6 +1000,20 @@
     "state": "completed",
     "text": "save snippet alpha and volume down"
   },
+  "stremio.skip_back": {
+    "calls": [],
+    "detail": {},
+    "generated_by": "890",
+    "state": "miss",
+    "text": "skip back alpha and volume down"
+  },
+  "stremio.skip_forward": {
+    "calls": [],
+    "detail": {},
+    "generated_by": "890",
+    "state": "miss",
+    "text": "skip forward alpha and volume down"
+  },
   "tab_finder.find_tab": {
     "calls": [
       [

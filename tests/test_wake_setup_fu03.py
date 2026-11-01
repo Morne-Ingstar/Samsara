@@ -208,6 +208,7 @@ def test_home_button_opens_direct_wake_step_and_success_hides_notice(isolated, m
     monkeypatch.setattr(home_signals, '_diag_records', lambda app, limit: [])
     monkeypatch.setattr(home_signals, 'generic_hints', lambda app: [])
     app = _app()
+    app.config['wake_word_config']['audio'].pop('measured_noise_floor')
     app.get_available_microphones = lambda: app.available_mics
     app.update_config = lambda updates, save=True: app.config.update(updates)
     home = home_qt.HomePage(app)

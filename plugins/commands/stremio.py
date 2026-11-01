@@ -85,7 +85,7 @@ def _handle_playback(app, paused):
 
 @command("toggle stremio", aliases=["play pause stremio"], pack="stremio")
 def handle_toggle_stremio(app, remainder):
-    """Explicitly switches Stremio between playing and paused."""
+    """Switches Stremio between playing and paused."""
     if not stremio_control.pause_play():
         message = "Stremio playback control unavailable"
         _seek_feedback(app, message, failed=True)
@@ -207,7 +207,8 @@ def repair_couch_command(text, context):
     The caller checks the resulting command's pack and scope before accepting it.
     """
     words = " ".join(text.lower().strip().rstrip(".!?,;:").split())
-    foreground = context.resolved and not context.own_window and context.exe in STREMIO_EXES
+    foreground = (context is not None and context.resolved
+                  and not context.own_window and context.exe in STREMIO_EXES)
     if words in {"postremia", "pazdremium"}:
         return "pause stremio"
     # Known phonetic app spellings, including split and possessive forms.

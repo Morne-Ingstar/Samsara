@@ -580,7 +580,7 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | examples | before you say it | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|---|---|
-| `mic_score_voice.hows_my_mic_doing` | `how is my mic doing`, `hows my mic doing` | - | - | - | ui | yes |  | Keep measured accuracy, recognition estimates and router outcomes separate. | `plugins/commands/mic_score_voice.py:14` |
+| `mic_score_voice.hows_my_mic_doing` | `how is my mic doing`, `hows my mic doing` | - | - | - | ui | yes |  | Reports microphone accuracy, recognition estimates and command matching results. | `plugins/commands/mic_score_voice.py:14` |
 | `mic_score_voice.test_my_mic` | `mic score`, `test my mic`, `which mic is best` | - | - | - | ui | yes |  | Opens a five-sentence microphone comparison. | `plugins/commands/mic_score_voice.py:5` |
 
 ## music (15)
@@ -757,7 +757,7 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 | `stremio.resume_stremio` | `continue playing`, `keep playing`, `play stremio`, `resume it`, `resume stremio`, `resume the movie`, `resume the show`, `resume the stream`, `resume the video`, `unpause`, `unpause stremio` | - | - | - | ui | yes |  | Resumes what was playing in Stremio. | `plugins/commands/stremio.py:67` |
 | `stremio.skip_back` | `back up`, `go backwards`, `rewind`, `skip back`, `skip backward` | remainder:text | `back a minute` | Enable the Stremio pack and focus Stremio with a video playing. | ui | yes |  | Jumps back in what is playing in Stremio. *(Live only in stremio-shell-ng.exe, stremio.exe.)* | `plugins/commands/stremio.py:134` |
 | `stremio.skip_forward` | `fast forward`, `forward`, `jump ahead`, `next bit`, `skip ahead`, `skip forward` | remainder:text | `forward 30 seconds` | Enable the Stremio pack and focus Stremio with a video playing. | ui | yes |  | Jumps forward in what is playing in Stremio. *(Live only in stremio-shell-ng.exe, stremio.exe.)* | `plugins/commands/stremio.py:126` |
-| `stremio.toggle_stremio` | `play pause stremio`, `toggle stremio` | - | - | - | ui | yes |  | Explicitly switches Stremio between playing and paused. | `plugins/commands/stremio.py:86` |
+| `stremio.toggle_stremio` | `play pause stremio`, `toggle stremio` | - | - | - | ui | yes |  | Switches Stremio between playing and paused. | `plugins/commands/stremio.py:86` |
 
 ## tab_finder (3)
 

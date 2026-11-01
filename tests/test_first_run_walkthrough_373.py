@@ -136,16 +136,26 @@ def test_rerun_preselects_and_preserves_nested_answers(make_window):
     assert d.selected(d.mode) == 'toggle'
     assert d.hands_free.combo == 'mouse5'
     assert d.selected(d.wake) is True
-    assert d.phrase.currentText() == 'computer'
+    assert d.phrase.currentText() == 'Jarvis'
+    assert d.phrase.currentData() == 'jarvis'
     assert d.selected(d.music_group) == 'pause'
     assert d.selected(d.level) == 'full' and d.selected(d.engine) == 'edge'
     assert d.launch.isChecked()
+    # Migrating an unsupported word requires fresh calibration. Supply the
+    # synthetic result here; the calibration workflow has its own 919 tests.
+    from samsara.wake_setup import calibration_needed
+    assert calibration_needed(window._config)
+    window._config['wake_word_config']['audio'].update(
+        measured_noise_floor=0.004, calibrated_microphone=7)
     result = finish(window)
     for key in existing:
         if isinstance(existing[key], dict):
             for subkey, value in existing[key].items():
                 if key == 'wake_word_config' and subkey == 'audio':
                     assert result[key][subkey]['extra'] == 17
+                elif key == 'wake_word_config' and subkey == 'phrase':
+                    assert result[key][subkey] == 'jarvis'
+                    assert result[key]['phrase_fallback_pending'] is True
                 else:
                     assert result[key][subkey] == value
         else:
@@ -173,12 +183,12 @@ def test_each_answer_changes_only_its_owned_keys(make_window, monkeypatch):
     choose(d.mode, 'toggle')
     choose(d.wake, True)
     d.hands_free._combo = 'mouse4'
-    d.phrase.setCurrentIndex(d.phrase.findData('computer'))
+    d.phrase.setCurrentIndex(d.phrase.findData('jarvis'))
     window._hotkey_btns['hotkey']._combo = 'f8'
     window._collect_step()
     before.update(mode='toggle', wake_word_enabled=True, hotkey='f8')
     before['command_mode']['button'] = 'mouse4'
-    before['wake_word_config']['phrase'] = 'computer'
+    before['wake_word_config']['phrase'] = 'jarvis'
     assert window._config == before
     visit(window, 'Music')
     choose(d.music_group, 'off')
@@ -507,8 +517,11 @@ def test_wake_phrase_is_compact_and_only_visible_when_on(make_window, qapp):
         assert d.phrase.parentWidget().isHidden() is not enabled
         if enabled:
             assert d.phrase.width() < window.width() / 2
+            # The closed face only displays selectable phrases. The
+            # disabled coming-soon row belongs to the wider popup.
             assert d.phrase.width() >= max(d.phrase.fontMetrics().horizontalAdvance(d.phrase.itemText(i))
-                                          for i in range(d.phrase.count()))
+                                          for i in range(d.phrase.count())
+                                          if d.phrase.model().item(i).isEnabled())
 
 
 def test_segment_keyboard_announces_state_and_consent_rejection(make_window, qapp, monkeypatch):

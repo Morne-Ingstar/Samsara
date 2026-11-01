@@ -14,7 +14,7 @@ def test_my_mic(app, remainder=""):
 @command("how's my mic doing", aliases=["how is my mic doing", "hows my mic doing"],
          pack="core", risk_class="safe", ai_composable=True, side_effects=["audio", "ui"])
 def how_is_my_mic(app, remainder=""):
-    """Keep measured accuracy, recognition estimates and router outcomes separate."""
+    """Reports microphone accuracy, recognition estimates and command matching results."""
     from samsara.mic_score import current_estimate, current_read_aloud
     estimate = current_estimate(app) or {}
     recognition, matching = estimate.get("recognition"), estimate.get("command_matching")

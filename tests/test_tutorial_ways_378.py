@@ -204,14 +204,21 @@ def test_commit_word_matches_accepted_config(build, monkeypatch, word):
 
 
 def test_each_detail_button_accessibility_and_exclusive_shared_copy(build, qapp):
-    window = build({'command_mode': {'enabled': True, 'mode': 'toggle'}})
+    window = build({'wake_word_enabled': True,
+                    'command_mode': {'enabled': True, 'mode': 'toggle'}})
     assert set(MODE_DETAILS) == {'hold', 'tap', 'continuous', 'commands_only', 'wake_word', 'hands_free'}
     for row in tutorial_qt._ways_rows(window._app):
         frame = window._current_page.findChild(QWidget, f'tutorialWay_{row["key"]}')
         from PySide6.QtWidgets import QPushButton
         buttons = frame.findChildren(QPushButton)
-        assert len(buttons) == 1
         button, detail = window._way_details[row['key']]
+        if row['key'] == 'wake':
+            calibrate = frame.findChild(QPushButton, 'tutorialWakeCalibrate')
+            assert set(buttons) == {button, calibrate}
+            assert calibrate.isVisibleTo(frame)
+            assert calibrate.text() == 'Calibrate wake word'
+        else:
+            assert buttons == [button]
         assert button.text() == '?' and button.accessibleName() == f'More about {row["name"]}'
         assert button.width() >= 44 and button.height() >= 44
         assert button.focusPolicy() == Qt.FocusPolicy.StrongFocus
@@ -280,7 +287,11 @@ def test_detail_follows_timing_catalog_ava_and_exit_config(build):
 def test_compact_closed_cards_and_centered_targets(build, qapp):
     from PySide6.QtCore import QPoint
     from PySide6.QtWidgets import QFrame, QPushButton
-    window = build({'wake_word_enabled': True, 'command_mode': {'enabled': True, 'mode': 'toggle'}})
+    # Compact ready-to-listen cards omit the calibration action. The
+    # uncalibrated wake card and its action are checked separately above.
+    window = build({'wake_word_enabled': True,
+                    'wake_word_config': {'audio': {'measured_noise_floor': 0.004}},
+                    'command_mode': {'enabled': True, 'mode': 'toggle'}})
     for _ in range(8):
         qapp.processEvents()
     page = window._current_page
@@ -292,7 +303,8 @@ def test_compact_closed_cards_and_centered_targets(build, qapp):
         assert (button.width(), button.height()) == (44, 44)
         position = button.mapTo(frame, QPoint())
         assert abs(position.y() + button.height()/2 - frame.height()/2) <= 2
-        assert frame.findChildren(QPushButton) == [button]
+        assert [control for control in frame.findChildren(QPushButton)
+                if control.isVisibleTo(frame)] == [button]
         assert frame.layout().contentsMargins().top() == 12
         assert frame.layout().contentsMargins().bottom() == 12
         column = frame.layout().itemAt(0).layout().itemAt(0).layout()

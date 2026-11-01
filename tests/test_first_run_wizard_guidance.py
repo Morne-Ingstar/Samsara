@@ -71,7 +71,9 @@ class TestWakeOptionsAndBuiltins:
         for alt in DEFAULT_WAKE_PHRASE_OPTIONS:
             if alt != DEFAULT_WAKE_PHRASE:
                 assert alt in text
-        assert "coming soon" not in text.lower()
+        from samsara.wake_setup import MORE_WAKE_WORDS
+        assert DEFAULT_WAKE_PHRASE_OPTIONS == [DEFAULT_WAKE_PHRASE]
+        assert text == MORE_WAKE_WORDS
 
     def test_builtin_hotkeys_note_reads_config(self):
         text = frw._builtin_hotkeys_text({"undo_hotkey": "ctrl+alt+u", "memo_hotkey": "ctrl+alt+q"})
