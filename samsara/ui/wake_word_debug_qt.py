@@ -1006,9 +1006,10 @@ class _DebugWindow(QMainWindow):
             audio        = _resample_audio(audio, capture_rate, model_rate)
 
             vt = get_dictionary_store(self._app)
-            initial_prompt = vt.get_initial_prompt() if vt else None
-            segments, _ = self._app.model.transcribe(
-                audio,
+            initial_prompt = vt.get_initial_prompt(include_vocabulary=False) if vt else None
+            from samsara.vocabulary_decode import transcribe_with_vocabulary
+            segments, _ = transcribe_with_vocabulary(
+                self._app, audio, path="wake_debug",
                 language=resolve_transcribe_language(self._app),
                 beam_size=5,
                 vad_filter=True,

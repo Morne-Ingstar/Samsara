@@ -1,5 +1,7 @@
 """Opt-in short-command decoding for finalized session audio."""
 
+from samsara.vocabulary_decode import transcribe_with_vocabulary
+
 import logging
 
 from samsara.stage_timing import current_stage_timing
@@ -25,7 +27,7 @@ class CommandFastPathMixin:
                 from samsara.command_catalog import matches_short_command
                 params = dict(transcribe_params, beam_size=1, best_of=1, temperature=0.0)
                 try:
-                    segments, info = self.model.transcribe(audio, **params)
+                    segments, info = transcribe_with_vocabulary(self, audio, path="command_fast", **params)
                     segments = list(segments)
                     text = ''.join(s.text for s in segments).strip()
                     allow_chain = (self.config.get('commands') or {}).get('grammar_tier', True) is not False
@@ -34,5 +36,5 @@ class CommandFastPathMixin:
                         return segments, info
                 except Exception as exc:
                     logger.debug('[COMMAND-FAST] falling back after %s', type(exc).__name__)
-            segments, info = self.model.transcribe(audio, **transcribe_params)
+            segments, info = transcribe_with_vocabulary(self, audio, path="session", **transcribe_params)
             return list(segments), info

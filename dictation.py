@@ -412,6 +412,7 @@ for _name in ("torio", "torio._extension", "torchaudio",
               "comtypes", "comtypes.client"):
     logging.getLogger(_name).setLevel(logging.WARNING)
 from samsara.dictionary_store import DictionaryStore, get_dictionary_store
+from samsara.vocabulary_decode import transcribe_with_vocabulary, log_vocabulary
 try:
     from samsara.ui.mic_setup_wizard_qt import MicSetupWizardQt as _MicSetupWizardQt
 except Exception as _msw_err:
@@ -3356,7 +3357,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             self.config,
             language=_languages.resolve_transcribe_language(self),
             initial_prompt=get_dictionary_store(self).get_initial_prompt(
-                include_vocabulary=include_vocabulary,
+                include_vocabulary=False,  # 1009: terms travel via bounded hotwords.
             ),
             no_speech_threshold=_NO_SPEECH_THRESHOLD,
             log_prob_threshold=_LOGPROB_THRESHOLD,
@@ -3428,7 +3429,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 if chunk_dur < 0.2:
                     continue
                 with self.model_lock:
-                    segs, chunk_info = self.model.transcribe(chunk, **transcribe_params)
+                    segs, chunk_info = transcribe_with_vocabulary(self, chunk, path="hold_long", **transcribe_params)
                 detected_lang = getattr(chunk_info, 'language', None) or detected_lang
                 decode_infos.append(chunk_info)
                 chunk_segs = list(segs)
@@ -3438,7 +3439,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         else:
             diag_path = "short"
             with self.model_lock:
-                segments, info = self.model.transcribe(audio_faded, **transcribe_params)
+                segments, info = transcribe_with_vocabulary(self, audio_faded, path="hold", **transcribe_params)
             detected_lang = getattr(info, 'language', None)
             decode_infos.append(info)
             seg_list = list(segments)
@@ -4555,7 +4556,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         # 02e00b9: long-lived DICTATE commits must not carry a prompt.
         params["initial_prompt"] = None
         with self.model_lock:
-            segments, info = self.model.transcribe(concatenated_audio, **params)
+            segments, info = transcribe_with_vocabulary(self, concatenated_audio, path="commit_redecode", **params)
         segments = list(segments)
         text = ''.join(getattr(seg, 'text', '') for seg in segments).strip()
         text = get_dictionary_store(self).apply_corrections(text)
@@ -4793,6 +4794,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         latch in place instead of resolving it. Called unlocked, before
         acquiring _command_mode_lock, so exit_ava_command_session's own
         locking/async work never nests under this lock."""
+        log_vocabulary(self)  # 1009: once at session entry, never per utterance.
         with self._command_mode_lock:
             if self.command_mode_active or self.ava_mode_active:
                 return
@@ -5006,6 +5008,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         unlocked, before acquiring _ava_mode_lock, so
         exit_ava_command_session's own locking/async work never nests
         under this lock."""
+        log_vocabulary(self)  # 1009: once at session entry, never per utterance.
         with self._ava_mode_lock:
             if self.ava_mode_active or self.command_mode_active:
                 return
@@ -5302,7 +5305,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             transcribe_params = self.get_transcription_params()
             transcribe_params['vad_filter'] = False
             with self.model_lock:
-                segments, _ = self.model.transcribe(audio, **transcribe_params)
+                segments, _ = transcribe_with_vocabulary(self, audio, path="ava", **transcribe_params)
                 text = ''.join(s.text for s in segments).strip()
             text = get_dictionary_store(self).apply_corrections(text)
             if not text:
@@ -6530,6 +6533,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
     
     def start_continuous_mode(self):
         """Start continuous listening with auto-transcribe on silence."""
+        log_vocabulary(self)  # 1009: once at session entry, never per utterance.
         if not self.model_loaded:
             if self.loading_model:
                 logger.info("Model still loading, please wait...")
@@ -6586,10 +6590,6 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             # (command_executor.process_text) are matched best-effort against
             # that same transcription and simply fall through to dictation
             # output when they don't match (commands remain English-only).
-            # include_vocabulary=False: free-form dictation, decode-matrix-
-            # established (SPARK 2026-07-17/18, N=10/cell) to be destabilized
-            # by vocabulary content in initial_prompt -- see
-            # dictionary_store.get_initial_prompt.
             transcribe_params = self.get_transcription_params(include_vocabulary=False)
             # DISABLE faster-whisper's VAD for hold-to-dictate. The user
             # explicitly pressed the hotkey — all captured audio is intentional
@@ -6608,7 +6608,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             if skip_decode(audio, self, path='continuous'): return
             transcribe_start = time.time()
             with self.model_lock:
-                segments, info = self.model.transcribe(audio, **transcribe_params)
+                segments, info = transcribe_with_vocabulary(self, audio, path="continuous", **transcribe_params)
             
             text = mic_score.transcript_text(self, segments)
             text = self._filter_dictation_language(text, info)
@@ -7321,6 +7321,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
 
     def start_wake_word_mode(self):
         """Start wake word listening — always listening for wake word."""
+        log_vocabulary(self)  # 1009: once at session entry, never per utterance.
         if not self.model_loaded:
             if self.loading_model:
                 logger.info("Model still loading, please wait...")
@@ -8412,10 +8413,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             # cancel/send/end/pause/resume control words checked below are
             # small fixed English word lists, best-effort in non-English
             # (commands/control-words remain English-only by design).
-            # include_vocabulary=False: free-form dictation, decode-matrix-
-            # established (SPARK 2026-07-17/18, N=10/cell) to be destabilized
-            # by vocabulary content in initial_prompt -- see
-            # dictionary_store.get_initial_prompt.
+            # Keep vocabulary out of prose prompts; hotwords are added at decode.
             transcribe_params = self.get_transcription_params(include_vocabulary=False)
             # When Silero is unavailable we relied on RMS to gate speech into
             # the buffer. Whisper's own vad_filter then strips quiet audio a
@@ -8437,7 +8435,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             if short_answer is None and reject_wake(self, audio, stage_timing):
                 return
             with self.model_lock:
-                segments, info = self.model.transcribe(audio, **transcribe_params)
+                segments, info = transcribe_with_vocabulary(self, audio, path="wake", **transcribe_params)
                 # Whisper returns a lazy iterator: decoding runs while it is
                 # consumed, so the cross-lane lock must cover iteration too.
                 _seg_list = list(segments)
@@ -10077,6 +10075,8 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
 
     def start_recording(self, streaming=None, play_earcon=True, *, capture_path='dictation_hold'):
         """Serialize capture startup with release, cancellation and shutdown."""
+        from samsara.vocabulary_decode import log_vocabulary
+        log_vocabulary(self)  # 1009: once at session entry, never per utterance.
         with self._hold_capture_lifecycle_lock:
             if (not self._running or self.recording
                     or getattr(self, '_mic_score_active', False) is True

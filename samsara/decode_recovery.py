@@ -12,6 +12,7 @@ import time
 import numpy as np
 
 from samsara.log import get_logger
+from samsara.vocabulary_decode import transcribe_with_vocabulary
 from samsara.runtime import thread_registry
 
 logger = get_logger(__name__)
@@ -142,7 +143,7 @@ def _params(app, params, audio_s, *, retry=False):
 
 def _transcribe(app, audio, params, deadline, cancel):
     def decode(abandoned):
-        segments, info = app.model.transcribe(audio, **params)
+        segments, info = transcribe_with_vocabulary(app, audio, path="hold_final", **params)
         kept = []
         segments = iter(segments)
         while True:

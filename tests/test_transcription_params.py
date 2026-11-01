@@ -219,8 +219,9 @@ def test_command_hotkey_keeps_all_vocabulary(mode):
     app = _make_app(performance_mode=mode, initial_prompt='some trained prompt',
                      command_mode_recording=True)
     params = dictation.DictationApp._build_hotkey_transcribe_params(app)
-    assert _COMMAND_VOCAB_MARKER in params['initial_prompt']
-    assert _COMMON_TERMS_MARKER in params['initial_prompt']
+    # 1009: vocabulary now reaches the model as bounded hotwords.
+    assert _COMMAND_VOCAB_MARKER not in params['initial_prompt']
+    assert _COMMON_TERMS_MARKER not in params['initial_prompt']
     assert 'some trained prompt' in params['initial_prompt']
 
 
@@ -276,8 +277,9 @@ def test_get_transcription_params_include_vocabulary_true_is_default(mode):
     default_params = dictation.DictationApp.get_transcription_params(app)
     explicit_params = dictation.DictationApp.get_transcription_params(app, include_vocabulary=True)
     assert default_params['initial_prompt'] == explicit_params['initial_prompt']
-    assert _COMMON_TERMS_MARKER in default_params['initial_prompt']
-    assert _COMMAND_VOCAB_MARKER in default_params['initial_prompt']
+    # 1009: both compatibility flag values keep prose prompts vocabulary-free.
+    assert _COMMON_TERMS_MARKER not in default_params['initial_prompt']
+    assert _COMMAND_VOCAB_MARKER not in default_params['initial_prompt']
 
 
 # ============================================================================

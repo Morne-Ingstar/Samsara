@@ -53,6 +53,7 @@ except ImportError:
 
 from samsara import kept_session_draft, listening_display, tutorial_capture, mic_score
 from samsara.cleanup import clean_text
+from samsara.vocabulary_decode import transcribe_with_vocabulary
 from samsara.dictionary_store import get_dictionary_store
 from samsara.hold_decode_params import final_base_params, free_form_prompt
 from samsara.log import describe_text, get_logger
@@ -1659,7 +1660,7 @@ class StreamingWorker(threading.Thread):
             if audio is None or skip_decode(audio, app, final=False, path='streaming', state=self):
                 return None
             params = self._partial_params()
-            segments, _ = app.model.transcribe(audio, **params)
+            segments, _ = transcribe_with_vocabulary(app, audio, path="hold_partial", **params)
             seg_list = list(segments)
             text = "".join(seg.text for seg in seg_list).strip()
             if self._decoder_guard(seg_list, text, params, partial=True):
@@ -3150,7 +3151,7 @@ class DictatePreviewSession:
             if audio is None or skip_decode(audio, app, final=False, path='handsfree_preview'):
                 return None
             params = self._partial_params()
-            segments, info = app.model.transcribe(audio, **params)
+            segments, info = transcribe_with_vocabulary(app, audio, path="handsfree_preview", **params)
             text = "".join(seg.text for seg in segments).strip()
             text = app._filter_dictation_language(text, info, remember=False, feedback=False)
             # A hint only: final decoding and the commit gate remain authoritative.
@@ -3189,8 +3190,7 @@ class DictatePreviewSession:
     def _partial_params(self):
         app = self.app
         try:
-            # include_vocabulary=False: same free-form-prose rule
-            # _handle_command_mode_utterance applies to this lane (see
+            # Free-form initial_prompt; bounded vocabulary uses hotwords (1009).
             # module docstring above). Per-call-site override, NOT a change
             # to get_transcription_params' shared base_params.
             params = dict(app.get_transcription_params(include_vocabulary=False))

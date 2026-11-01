@@ -71,6 +71,11 @@ class DictionaryStore:
         return disconnect
 
     def _notify_changed(self):
+        # 1009: saves/reloads update count-only decoder diagnostics immediately.
+        # During construction the app has not installed this store yet.
+        if get_dictionary_store(self.app) is self:
+            from samsara.vocabulary_decode import log_vocabulary
+            log_vocabulary(self.app, 'change')
         for listener in list(self._change_listeners):
             callback = listener() if isinstance(listener, weakref.WeakMethod) else listener
             if callback is None:
@@ -94,7 +99,10 @@ class DictionaryStore:
     def set_builtin_word_enabled(self, word, enabled):
         if word_key(word) not in {word_key(entry['word']) for entry in self.get_builtin_words()}:
             return False
-        return self._builtin_preferences.set_enabled(word, enabled)
+        saved = self._builtin_preferences.set_enabled(word, enabled)
+        if saved:
+            self._notify_changed()
+        return saved
 
     def load_training_data(self):
         self._loaded_bytes = None
