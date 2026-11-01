@@ -36,6 +36,25 @@ OUTPUT_TOKENS = 16384
 MAX_OUTPUT_CHARS = 200_000
 
 
+def extraction_payload(memos, context):
+    """The same stateless allowlist for runtime extraction and qualification.
+
+    This pure boundary neither discovers a provider nor grants consent. Callers
+    doing qualification must supply their transport explicitly.
+    """
+    sources = [{k: m.get(k) for k in ("memo_id", "text", "captured_at", "capture_timezone", "partial")}
+               for m in memos if m.get("has_transcript")]
+    if not sources:
+        raise ExtractionRefused("Selected memos need transcripts.")
+    records = [{k: r.get(k) for k in ("id", "source_id", "kind", "title", "status", "due_date", "due_time",
+                                     "date", "time", "end_time", "timezone", "writable", "blocked_by")}
+               for r in context["records"]]
+    if len(records) > 200 or len(json.dumps(records, ensure_ascii=False)) > 40_000:
+        raise ExtractionRefused("Candidate context is too large; narrow the batch/context explicitly.")
+    return dict(schema=deepcopy(EXTRACTION_SCHEMA), memos=sources, records=records,
+                local_date=context.get("local_date"), timezone=context.get("timezone"))
+
+
 class ExtractionRefused(ValueError):
     pass
 
@@ -93,23 +112,14 @@ class StructuredRequest:
         self._transport = transport or self._send
 
     def extract(self, memos, context, generation, *, evaluation=False):
+        if evaluation:
+            raise ExtractionRefused("Use the synthetic qualification harness with an explicit transport.")
         config, identity, endpoint = _state(self.app, require_qualification=not evaluation)
         if not execution_policy.is_fresh(self.app, generation):
             raise ExtractionRefused("Extraction cancelled.")
         # Deliberate allowlist. No source_locator, audio/video, history, profile,
         # paths, receipts, UI capability or configuration enters this payload.
-        sources = [{k: m.get(k) for k in ("memo_id", "text", "captured_at", "capture_timezone", "partial")}
-                   for m in memos if m.get("has_transcript")]
-        if not sources:
-            raise ExtractionRefused("Selected memos need transcripts.")
-        records = [{k: r.get(k) for k in ("id", "source_id", "kind", "title", "status", "due_date", "due_time",
-                                         "date", "time", "end_time", "timezone", "writable", "blocked_by")}
-                   for r in context["records"]]
-        candidate_json = json.dumps(records, ensure_ascii=False)
-        if len(records) > 200 or len(candidate_json) > 40_000:
-            raise ExtractionRefused("Candidate context is too large; narrow the batch/context explicitly.")
-        payload = dict(schema=EXTRACTION_SCHEMA, memos=sources, records=records,
-                       local_date=context.get("local_date"), timezone=context.get("timezone"))
+        payload = extraction_payload(memos, context)
         # Consent, chosen model, credential and destination are re-read at the
         # final boundary. Changes while awaiting a reply invalidate it too.
         current, now, address = _state(self.app, require_qualification=not evaluation)
