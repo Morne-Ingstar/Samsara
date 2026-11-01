@@ -112,12 +112,31 @@ account. Do not describe it as providing either guarantee.
 
 ## CUDA add-on
 
-The application release remains the reproducible CI-built CPU zip. v0.22 reuses
-the existing `Samsara-CUDA-Pack-v0.20.0.zip` because its ten DLLs are
-byte-for-byte identical to the current tested CUDA environment. Its published
-SHA-256 is
-`5dc752c89ca4e6ad777b545907a7e654471ce3dfe10a3d96bbfc705386db335d`.
-Installation and verification steps live in `Docs/CUDA.md`.
+The application release remains the reproducible CI-built CPU zip. The CUDA
+pack is the same ten DLLs (ctranslate2 4.7.1) re-attached to every release
+under that release's own name, `Samsara-CUDA-Pack-<tag>.zip`, because the
+manifest guard (917) refuses a pack whose name or URL is not the release's own.
+Its SHA-256 is
+`5dc752c89ca4e6ad777b545907a7e654471ce3dfe10a3d96bbfc705386db335d`
+(1,128,045,243 bytes). Installation and verification steps live in
+`Docs/CUDA.md`.
+
+### Release checklist step: attach the CUDA pack (mandatory, every release)
+
+The generator emits `cuda-pack` as `available: false` until this is done, so a
+release that skips it ships with no GPU add-on. Check it before announcing:
+
+    gh release download v0.20.0 -p Samsara-CUDA-Pack-v0.20.0.zip     # once; keep the copy
+    # verify sha256 == 5dc752c8...db335d, then copy to Samsara-CUDA-Pack-<tag>.zip
+    gh release upload <tag> Samsara-CUDA-Pack-<tag>.zip
+    # then replace manifest.json: cuda-pack available true, url = this release's
+    # copy, size_bytes 1128045243, sha256 as above, min_disk_bytes 2x size
+    # (tools/gen_release_manifest.py verify_cuda_identity must pass)
+    gh release download <tag> -p manifest.json   # confirm available is true
+    curl -sIL -r 0-0 <pack url>                  # must be 200 or 206
+
+Not yet automated in release.yml (it would need a 1 GB copy on every run); this
+checklist step is the guard until a pack-carry job is added.
 
 Do not copy or package an installed Samsara directory: a user's extracted CUDA
 archive or other local files may be nested inside it. `build_release.bat` is a
