@@ -15,7 +15,7 @@ Pushing a version tag (`v*`) triggers `.github/workflows/release-build.yml` on a
    EXE and requires the explicit startup-complete marker with no unexplained crash. See
    "Why the smoke check is trimmed" below.
 4. `dist\Samsara\*` is zipped as `Samsara-Windows-<tag>.zip`, for example
-   `Samsara-Windows-v0.40.1.zip`.
+   `Samsara-Windows-v0.40.3.zip`.
 5. A matching `Samsara-Windows-<version>.zip.sha256` sidecar is generated from
    the final archive. The ZIP and sidecar are uploaded as workflow artifacts
    and, on a tag push, attached to a draft GitHub Release alongside the
@@ -33,11 +33,11 @@ repo's source at this commit, not from a laptop.
 
 ### Triggering a release
 
-Tagging v0.40.1 prepares a draft; it does not publish or select Latest.
+Tagging v0.40.3 prepares a draft; it does not publish or select Latest.
 
 ```
-git tag v0.40.1
-git push origin v0.40.1
+git tag v0.40.3
+git push origin v0.40.3
 ```
 
 After both workflows succeed and the release gates below pass, the runner
@@ -54,7 +54,7 @@ release and select Latest:
 gh release edit <tag> --prerelease=false --latest
 ```
 
-Replace `<tag>` with the release tag (for example, `v0.40.1`). These commands are
+Replace `<tag>` with the release tag (for example, `v0.40.3`). These commands are
 separate manual decisions and must not be added to either automated workflow.
 See the [GitHub CLI release edit reference](https://cli.github.com/manual/gh_release_edit).
 
@@ -71,9 +71,9 @@ the artifact but does not create a GitHub Release.
 - Tag pushes only: the ZIP and mandatory SHA-256 sidecar are also attached to
   the draft GitHub Release for that tag.
 
-For v0.40.1, the draft asset list is `SamsaraSetup-0.40.1.exe`,
-`Samsara-Windows-v0.40.1.zip`, `Samsara-GestureControl-v0.40.1.zip`,
-`Samsara-WakeWord-Models-v0.40.1.zip`, their matching `.sha256` sidecars,
+For v0.40.3, the draft asset list is `SamsaraSetup-0.40.3.exe`,
+`Samsara-Windows-v0.40.3.zip`, `Samsara-GestureControl-v0.40.3.zip`,
+`Samsara-WakeWord-Models-v0.40.3.zip`, their matching `.sha256` sidecars,
 and `manifest.json`. See [installation](Docs/INSTALL.md) for the newcomer path.
 
 ## Updater release gate
