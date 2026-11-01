@@ -126,6 +126,18 @@ class TestGpuAndComingSoon:
 
 
 class TestInstallBehaviour:
+    def test_uninstall_fresh_start_is_explicit_and_silent_safe(self, iss):
+        # 994c: preserve data by default, including unattended uninstall.
+        choose = iss.split("procedure ChooseUninstallData();", 1)[1].split(
+            "function DataPathAttributes", 1
+        )[0]
+        assert "Wipe.Checked := False;" in choose
+        assert "CompareText(ParamStr(I), '/WIPEDATA') = 0" in choose
+        assert choose.index("if UninstallWipeData or UninstallSilent() then exit;") < (
+            choose.index("CreateCustomForm")
+        )
+        assert "Leave unticked to keep your settings, history and downloaded speech models" in choose
+
     def test_per_user_by_default_admin_optional(self, iss):
         setup = _section(iss, "Setup")
         assert "PrivilegesRequired=lowest" in setup

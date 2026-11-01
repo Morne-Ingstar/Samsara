@@ -22,6 +22,8 @@
 ;   /ComponentsDir="D:\folder"   fetch components from a local folder of the
 ;                                release ZIPs instead of the network
 ;   /NoFetch                     skip the post-install fetch entirely
+; Uninstaller only: /WIPEDATA explicitly removes Samsara's user data and
+; Systran faster-whisper downloads, including during silent uninstall.
 ;
 ; Accessibility: Inno Setup's wizard is fully keyboard-driven (Tab/Shift+Tab
 ; through every control, Space toggles a component, Alt+N / Alt+B for
@@ -178,6 +180,7 @@ var
   FetchOutcome: Integer;       { -1 = not run, else the fetcher's exit code }
   FetchRequested: String;
   UninstallCloseCancelled: Boolean;
+  UninstallWipeData: Boolean;
 
 { Inno component name -> manifest component id (docs/RELEASE_MANIFEST.md). }
 function ManifestId(const Name: String): String;
@@ -659,14 +662,218 @@ begin
   end;
 end;
 
+{ 994c: opt in only, after shutdown; silent runs never show this page. }
+procedure ChooseUninstallData();
+var
+  Form: TSetupForm;
+  Wipe: TNewCheckBox;
+  Explanation: TNewStaticText;
+  RemoveButton, CancelButton: TNewButton;
+  I: Integer;
+begin
+  UninstallWipeData := False;
+  for I := 1 to ParamCount do
+    if CompareText(ParamStr(I), '/WIPEDATA') = 0 then UninstallWipeData := True;
+  if UninstallWipeData or UninstallSilent() then exit;
+  Form := CreateCustomForm(ScaleX(720), ScaleY(144), False, False);
+  try
+    { Use the custom form's initialized DPI/font scale for its final bounds. }
+    Form.ClientWidth := ScaleX(720);
+    Form.ClientHeight := ScaleY(144);
+    { PLACEHOLDER COPY (994c) }
+    Form.Caption := 'Uninstall Samsara';
+    Wipe := TNewCheckBox.Create(Form);
+    Wipe.Parent := Form;
+    Wipe.SetBounds(ScaleX(16), ScaleY(20), ScaleX(688), ScaleY(24));
+    Wipe.Caption := 'Also remove my Samsara settings, history and downloaded speech models (start fresh next time)';
+    Wipe.Checked := False;
+    Explanation := TNewStaticText.Create(Form);
+    Explanation.Parent := Form;
+    Explanation.SetBounds(ScaleX(16), ScaleY(54), ScaleX(688), ScaleY(24));
+    Explanation.Caption := 'Leave unticked to keep your settings, history and downloaded speech models for reinstalling.';
+    RemoveButton := TNewButton.Create(Form);
+    RemoveButton.Parent := Form;
+    RemoveButton.SetBounds(ScaleX(512), ScaleY(102), ScaleX(88), ScaleY(26));
+    RemoveButton.Caption := 'Uninstall';
+    RemoveButton.ModalResult := mrOk;
+    RemoveButton.Default := True;
+    CancelButton := TNewButton.Create(Form);
+    CancelButton.Parent := Form;
+    CancelButton.SetBounds(ScaleX(608), ScaleY(102), ScaleX(96), ScaleY(26));
+    CancelButton.Caption := 'Cancel';
+    CancelButton.ModalResult := mrCancel;
+    CancelButton.Cancel := True;
+    Form.ActiveControl := Wipe;
+    Form.FlipAndCenterIfNeeded(True, nil, False);
+    if Form.ShowModal() <> mrOk then begin UninstallCloseCancelled := True; Abort; end;
+    UninstallWipeData := Wipe.Checked;
+  finally
+    Form.Free();
+  end;
+end;
+
+function DataPathAttributes(Name: String): Cardinal;
+  external 'GetFileAttributesW@kernel32.dll stdcall';
+
+function DataPathWithin(const Child, Parent: String): Boolean;
+begin
+  Result := Pos(Uppercase(AddBackslash(Parent)), Uppercase(AddBackslash(Child))) = 1;
+end;
+
+function DataFoundName(const Data: TPayloadFindData): String;
+var
+  I: Integer;
+begin
+  Result := '';
+  for I := 0 to 259 do begin
+    if Data.Name[I] = #0 then break;
+    Result := Result + Data.Name[I];
+  end;
+end;
+
+{ Refuse drive roots, ambiguous relative/UNC paths and redirected ancestors.
+  Do not follow junctions, even when they are inside an explicitly chosen home. }
+procedure CheckDataPath(const Path: String);
+var
+  Current: String;
+  Attributes: Cardinal;
+begin
+  if (Length(Path) < 4) or (Copy(Path, 2, 2) <> ':\') then
+    RaiseException('The Samsara data folder is unsafe to remove. No data was removed.');
+  Current := Path;
+  while Length(Current) > 3 do begin
+    Attributes := DataPathAttributes(Current);
+    if Attributes = $FFFFFFFF then begin
+      if (DLLGetLastError() <> 2) and (DLLGetLastError() <> 3) then
+        RaiseException('The Samsara data folder cannot be checked. No data was removed.');
+    end else if (Attributes and $400) <> 0 then
+      RaiseException('A data folder is a link or junction. Uninstall cancelled to protect other files.');
+    Current := ExtractFileDir(Current);
+  end;
+end;
+
+function UninstallDataTargets(): TArrayOfString;
+var
+  Home, Profile, Hub, Name: String;
+  FindRec: TPayloadFindData;
+  Search: THandle;
+  Count: Integer;
+begin
+  Profile := GetEnv('USERPROFILE');
+  CheckDataPath(Profile);
+  Profile := RemoveBackslashUnlessRoot(ExpandFileName(Profile));
+  Hub := Profile + '\.cache\huggingface\hub';
+  Home := GetEnv('SAMSARA_HOME_DIR');
+  if Home = '' then Home := Profile + '\.samsara';
+  CheckDataPath(Home);
+  Home := RemoveBackslashUnlessRoot(ExpandFileName(Home));
+  CheckDataPath(Home);
+  { An override owns its whole directory, but must never name a broad shared
+    location, the install payload, or the shared cache (in either direction). }
+  if DataPathWithin(Profile, Home) or
+    DataPathWithin(ExpandConstant('{app}'), Home) or
+    DataPathWithin(Home, ExpandConstant('{app}')) or
+    DataPathWithin(ExpandConstant('{win}'), Home) or
+    DataPathWithin(Home, ExpandConstant('{win}')) or
+    DataPathWithin(ExpandConstant('{userdocs}'), Home) or
+    DataPathWithin(ExpandConstant('{localappdata}'), Home) or
+    DataPathWithin(ExpandConstant('{userappdata}'), Home) or
+    DataPathWithin(Hub, Home) or DataPathWithin(Home, Hub) then
+    RaiseException('The Samsara data folder is a shared or protected location. No data was removed.');
+  SetArrayLength(Result, 1);
+  Result[0] := Home;
+  CheckDataPath(Hub);
+  if not DirExists(Hub) then exit;
+  Search := FindFirstPayload(Hub + '\models--Systran--faster-whisper-*', FindRec);
+  if Search = THandle(-1) then begin
+    if DLLGetLastError() <> 2 then
+      RaiseException('The speech model folders cannot be checked. No data was removed.');
+    exit;
+  end;
+  try
+    repeat
+      Name := DataFoundName(FindRec);
+      if ((FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0) and
+        (Length(Name) > Length('models--Systran--faster-whisper-')) then begin
+        Count := GetArrayLength(Result);
+        SetArrayLength(Result, Count + 1);
+        Result[Count] := Hub + '\' + Name;
+        CheckDataPath(Result[Count]);
+      end;
+    until not FindNextPayload(Search, FindRec);
+    if DLLGetLastError() <> 18 then
+      RaiseException('The speech model folders cannot be checked. No data was removed.');
+  finally
+    ClosePayloadSearch(Search);
+  end;
+end;
+
+{ Check the complete selection before deleting anything. Directory junctions
+  abort; file symlinks (normal HF snapshots) are opened/deleted as links only. }
+function CleanUserData(const Dir: String; RemoveFiles: Boolean): Boolean;
+var
+  FindRec: TPayloadFindData;
+  Path, Name: String;
+  Handle, Search: THandle;
+  Attributes: Cardinal;
+begin
+  Result := False;
+  CheckDataPath(Dir);
+  Attributes := DataPathAttributes(Dir);
+  if Attributes = $FFFFFFFF then begin
+    Result := (DLLGetLastError() = 2) or (DLLGetLastError() = 3);
+    exit;
+  end;
+  if (Attributes and FILE_ATTRIBUTE_DIRECTORY) = 0 then exit;
+  Search := FindFirstPayload(AddBackslash(Dir) + '*', FindRec);
+  if Search <> THandle(-1) then begin
+    try
+      repeat
+        Name := DataFoundName(FindRec);
+        if (Name <> '.') and (Name <> '..') then begin
+          Path := AddBackslash(Dir) + Name;
+          if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0 then begin
+            if not CleanUserData(Path, RemoveFiles) then exit;
+          end else if RemoveFiles then begin
+            if not DeleteFile(Path) then exit;
+          end else begin
+            Handle := OpenPayloadFile(Path, $10000, 0, 0, 3, $200000, 0);
+            if Handle = THandle(-1) then exit;
+            ClosePayloadHandle(Handle);
+          end;
+        end;
+      until not FindNextPayload(Search, FindRec);
+      if DLLGetLastError() <> 18 then exit;
+    finally
+      ClosePayloadSearch(Search);
+    end;
+  end else if DLLGetLastError() <> 2 then exit;
+  Result := True;
+  if RemoveFiles then Result := RemoveDir(Dir);
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  Targets: TArrayOfString;
+  I: Integer;
 begin
   if (CurUninstallStep = usAppMutexCheck) or (CurUninstallStep = usUninstall) then begin
     try
       EnsureInstallStopped();
       if CurUninstallStep <> usUninstall then exit;
+      ChooseUninstallData();
+      if UninstallWipeData then begin
+        Targets := UninstallDataTargets();
+        for I := 0 to GetArrayLength(Targets) - 1 do
+          if not CleanUserData(Targets[I], False) then
+            RaiseException('Samsara data is in use or cannot be removed. No data was removed; close other programs and retry.');
+      end;
       if not CleanPayload(ExpandConstant('{app}'), False, True) then
         RaiseException('Files are in use or cannot be removed. Close other programs and retry uninstall.');
+      if UninstallWipeData then
+        for I := 0 to GetArrayLength(Targets) - 1 do
+          if not CleanUserData(Targets[I], True) then
+            RaiseException('Some Samsara data could not be removed. Samsara remains in Apps so you can retry uninstall.');
       if not CleanPayload(ExpandConstant('{app}'), True, True) then
         RaiseException('Some files could not be removed. Samsara remains in Apps so you can retry uninstall.');
     except
