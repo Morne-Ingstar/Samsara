@@ -1,7 +1,7 @@
 name: Release (CPU build)
 
-# Publishes the CPU ZIP to the tag's GitHub Release -- but ONLY the ZIP that
-# .github/workflows/release-build.yml built and verified. See RELEASING.md
+# Manually uploads verified CPU build artifacts to a draft release. Tag pushes
+# never trigger this workflow. See RELEASING.md
 # for the full picture and Docs/RELEASE_CI.md ("Where the wake-word models
 # come from") for the 2026-09-13 change behind this file's shape.
 #
@@ -12,48 +12,60 @@ name: Release (CPU build)
 # about to attach the very same broken ZIP and had to be cancelled by hand.
 # Nothing tied the two together.
 #
-# Now:
-#   - trigger: workflow_run on "Release Build (CPU, SignPath-ready)" -- GitHub
-#     Actions itself enforces the ordering; the job's `if` refuses anything
-#     but a successful, tag-triggered run.
-#   - the asset is DOWNLOADED from that run (actions/download-artifact with
-#     run-id), never rebuilt here, so the published ZIP is byte-for-byte the
-#     one whose smoke + OWW checks passed.
-#   - a belt-and-braces gate re-opens the ZIP and re-checks the nine wake-word
-#     model files and the .sha256 sidecar before attaching.
-#   - no workflow_dispatch: manual builds go through release-build.yml's own
-#     workflow_dispatch and stay artifacts (no Release), as before.
+# Supply a successful release-build run ID and release tag, then explicitly
+# set upload_to_release=true. The workflow rechecks artifacts and refuses to
+# attach them if the release already contains a SamsaraSetup installer.
 
 on:
-  workflow_run:
-    workflows: ["Release Build (CPU, SignPath-ready)"]
-    types: [completed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release tag (for example v0.40.3)'
+        required: true
+        type: string
+      build_run_id:
+        description: 'Successful release-build workflow run ID'
+        required: true
+        type: string
+      upload_to_release:
+        description: 'Attach verified build artifacts to this draft release'
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: write # attach the zip to the GitHub Release for the tag
   actions: read   # download the release-build run's artifact
 
 concurrency:
-  group: release-${{ github.event.workflow_run.head_branch }}
+  group: release-${{ inputs.version }}
   cancel-in-progress: false
 
 jobs:
   publish-cpu:
     runs-on: windows-latest
     timeout-minutes: 30
-    # Only a SUCCESSFUL release-build run, and only one that a version tag
-    # push triggered (workflow_run.head_branch is the tag name for tag pushes;
-    # workflow_dispatch builds are artifacts only and never reach here).
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      startsWith(github.event.workflow_run.head_branch, 'v')
+    # No tag-push path: manual dispatch and a true opt-in are required.
+    if: github.event_name == 'workflow_dispatch' && inputs.upload_to_release
 
     steps:
+      - name: Validate selected release-build run
+        id: run
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $run = gh run view "${{ inputs.build_run_id }}" --json conclusion,event,headBranch,headSha,workflowName | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "Could not read release-build run ${{ inputs.build_run_id }}" }
+          if ($run.workflowName -ne 'Release Build (CPU, SignPath-ready)' -or $run.conclusion -ne 'success' -or $run.event -ne 'push' -or $run.headBranch -ne "${{ inputs.version }}") {
+            throw "Selected run must be a successful tag-push run of Release Build for ${{ inputs.version }}"
+          }
+          echo "head_sha=$($run.headSha)" >> $env:GITHUB_OUTPUT
+
       - name: Checkout the built commit
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ steps.run.outputs.head_sha }}
 
       - name: Set up Node.js for browser-extension tests
         uses: actions/setup-node@v4
@@ -74,14 +86,14 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          $version = "${{ github.event.workflow_run.head_branch }}"
-          Write-Host "Publishing release-build run ${{ github.event.workflow_run.id }} for $version"
+          $version = "${{ inputs.version }}"
+          Write-Host "Uploading artifacts from release-build run ${{ inputs.build_run_id }} for $version"
           echo "version=$version" >> $env:GITHUB_OUTPUT
 
       - name: Download the verified build artifact from release-build
         uses: actions/download-artifact@v6
         with:
-          run-id: ${{ github.event.workflow_run.id }}
+          run-id: ${{ inputs.build_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           pattern: Samsara-Windows-${{ steps.version.outputs.version }}.zip
           path: release_asset
@@ -93,7 +105,7 @@ jobs:
       - name: Download the wake-word models component
         uses: actions/download-artifact@v6
         with:
-          run-id: ${{ github.event.workflow_run.id }}
+          run-id: ${{ inputs.build_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           name: Samsara-WakeWord-Models-${{ steps.version.outputs.version }}.zip
           path: release_asset
@@ -101,7 +113,7 @@ jobs:
       - name: Download the release manifest
         uses: actions/download-artifact@v6
         with:
-          run-id: ${{ github.event.workflow_run.id }}
+          run-id: ${{ inputs.build_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           name: manifest-${{ steps.version.outputs.version }}
           path: release_asset
@@ -153,7 +165,7 @@ jobs:
           $doc = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
           if ($doc.schema_version -ne 1) { Write-Error "manifest schema_version $($doc.schema_version) is not 1"; exit 1 }
           if ($doc.release_tag -ne $version) { Write-Error "manifest release_tag $($doc.release_tag) is not $version"; exit 1 }
-          if ($doc.git_sha -ne "${{ github.event.workflow_run.head_sha }}") { Write-Error "manifest git_sha $($doc.git_sha) is not the built commit"; exit 1 }
+          if ($doc.git_sha -ne "${{ steps.run.outputs.head_sha }}") { Write-Error "manifest git_sha $($doc.git_sha) is not the built commit"; exit 1 }
           foreach ($pair in @(@('core', $zip), @('wake-word-models', $modelsZip))) {
             $id, $file = $pair
             $entry = $doc.components | Where-Object { $_.id -eq $id }
@@ -171,13 +183,28 @@ jobs:
           echo "models_sidecar=$modelsSidecar" >> $env:GITHUB_OUTPUT
           echo "manifest=$manifest" >> $env:GITHUB_OUTPUT
 
+      - name: Refuse release upload when an installer already exists
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ inputs.version }}"
+          $release = gh release view $tag --json assets 2>$null
+          if ($LASTEXITCODE -ne 0) { throw "Unable to inspect release $tag; refusing upload" }
+          $assets = $release | ConvertFrom-Json
+          $installer = @($assets.assets | Where-Object { $_.name -like 'SamsaraSetup-*.exe' })
+          if ($installer.Count -gt 0) {
+            throw "Refusing to upload to $tag: it already has installer asset(s): $($installer.name -join ', ')"
+          }
+
       - name: Attach to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           # Asset attachment must never publish the build workflow's draft.
           draft: true
           make_latest: false
-          tag_name: ${{ steps.version.outputs.version }}
+          tag_name: ${{ inputs.version }}
+          overwrite_files: false
           files: |
             ${{ steps.gate.outputs.zip }}
             ${{ steps.gate.outputs.sidecar }}

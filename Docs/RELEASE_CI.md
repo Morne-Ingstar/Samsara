@@ -1,21 +1,27 @@
-# Release Build CI (draft)
+# Release Build CI
 
-`.github/workflows/release-build.yml` is a draft companion to the existing
-`.github/workflows/release.yml`. It targets the same CPU build described in
-[RELEASING.md](../RELEASING.md), but adds two things `release.yml` doesn't
-have yet:
+## Signed-release asset safety
 
-1. Every `uses:` action pinned to a full commit SHA instead of a mutable
-   major-version tag (`release.yml`'s own doc comment calls this out as "a
-   future hardening option, not done here" -- see RELEASING.md's assumptions
-   list).
-2. An explicit, disabled stub for where SignPath Foundation code signing
-   would slot in once an account exists, plus a couple of extra headless-safe
-   smoke assertions (below).
+Releases are built and code-signed locally. CI must not modify GitHub Release
+assets automatically: tag pushes only build, verify, and upload workflow
+artifacts. Both release workflows require a manual `workflow_dispatch` with
+`upload_to_release=true` before attaching any assets, and refuse to continue
+when the target release already contains a `SamsaraSetup-*.exe` installer.
+Neither workflow enables same-name asset replacement: the Release action's
+`overwrite_files` input is explicitly `false`. Keep the locally signed
+installer, archives, sidecars, and manifest as the release assets.
 
-It has not replaced `release.yml` and has not been run. This document exists
-so a maintainer can review, then either fold it into `release.yml` or run it
-standalone via a real tag/`workflow_dispatch`.
+Use the release-build workflow's upload input only for a deliberate CI upload
+to a release with no installer asset. The separate Release workflow takes the
+tag and a successful release-build run ID, revalidates that run and its
+artifacts, and applies the same installer guard.
+
+`.github/workflows/release-build.yml` builds and verifies the CPU build described in
+[RELEASING.md](../RELEASING.md), with full-commit-SHA action pins, a disabled
+SignPath stub, and additional headless-safe smoke assertions:
+
+Tag pushes store build outputs as workflow artifacts only. Release assets are
+uploaded only after an explicit manual dispatch and installer-asset check.
 
 ## What the workflow does
 
@@ -35,14 +41,12 @@ On a push of a tag matching `v*.*.*`, or a manual `workflow_dispatch`:
    `.sha256` sidecar with PowerShell's `Get-FileHash` (see the manifest note
    below).
 7. Uploads the zip + sidecar, and the smoke log, as workflow artifacts.
-8. On a tag push only: creates a **draft** GitHub Release with the zip and
-   sidecar attached (`draft: true`, always -- this workflow never publishes a
-   release). `release.yml` then runs via `workflow_run`, only if this
-   workflow succeeded, downloads this run's artifact and attaches that same
-   zip (it no longer builds its own).
+8. Tag pushes upload build outputs as workflow artifacts only. A release upload
+   requires manual dispatch with `upload_to_release=true`; an existing
+   installer asset makes the workflow fail before any upload.
 9. Has a disabled `if: false` SignPath signing step, commented with the exact
-   inputs it would need, sitting between packaging and the draft-release
-   step.
+   inputs it would need, sitting between packaging and the optional release
+   upload step.
 
 ### Note on `tools/release_manifest.py`
 
@@ -71,9 +75,9 @@ release assets by SHA-256 (`OWW_MODELS`); `release-build.yml` runs
 (download only what is missing, verify every byte, never a silent skip),
 the spec itself now raises if any of the nine is absent, the local preflight
 (`build_release.bat` -> `release_preflight.py`) verifies presence + hashes,
-and `release.yml` -- now triggered by `workflow_run` on this workflow and
-gated on its success -- re-opens the downloaded ZIP and checks the nine
-files again before attaching. What fails if they are missing: the fetch step
+and `release.yml` re-opens the selected run's downloaded ZIP and checks the
+nine files again before any explicitly requested attachment. What fails if
+they are missing: the fetch step
 (bad hash or unreachable URL), else the spec (`SystemExit` naming the files),
 else check 7 below on the frozen output, else `release.yml`'s gate; at no
 point does a ZIP without wake-word models reach a GitHub Release.
@@ -168,7 +172,7 @@ The intended process, all on GitHub-hosted `windows-latest` runners:
    configuration `stage-b` and the same policy, waits for a second manual approval,
    validates the result and replaces the installer.
 4. Compute SHA-256 sidecars from the final ZIP/installer, then upload those same
-   final files as artifacts and draft-release assets. Signing failures must fail
+   final files as artifacts. Signing failures must fail
    the job; they must never fall back silently to unsigned output.
 
 `signpath/stage-a.xml` and `stage-b.xml` have ZIP roots because upload-artifact

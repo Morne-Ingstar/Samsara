@@ -1,6 +1,14 @@
 # Releasing Samsara
 
-## CPU build: CI-built and CI-verifiable
+## CPU build: signed locally, verified by CI
+
+Release files are built and code-signed locally. CI must not touch GitHub
+Release assets automatically. A tag push runs verification and stores build
+outputs as workflow artifacts only; it does not create or update a Release.
+Both release workflows require an explicit `workflow_dispatch` input
+`upload_to_release=true` before uploading, and stop if the target Release
+already has a `SamsaraSetup-*.exe` asset. Never replace the locally signed
+installer or its accompanying release files with CI outputs.
 
 - Before tagging, run `python tools\probes\inject_matrix.py --gate` on the machine that will produce the build.
 
@@ -17,15 +25,14 @@ Pushing a version tag (`v*`) triggers `.github/workflows/release-build.yml` on a
 4. `dist\Samsara\*` is zipped as `Samsara-Windows-<tag>.zip`, for example
    `Samsara-Windows-v0.40.3.zip`.
 5. A matching `Samsara-Windows-<version>.zip.sha256` sidecar is generated from
-   the final archive. The ZIP and sidecar are uploaded as workflow artifacts
-   and, on a tag push, attached to a draft GitHub Release alongside the
-   installer, optional components and manifest.
+   the final archive. Build outputs are uploaded as workflow artifacts only.
 
-After that build succeeds, `.github/workflows/release.yml` consumes its verified
-artifacts through `workflow_run`; it does not build a second application.
-Both workflows explicitly keep the release a draft with `draft: true` and
-`make_latest: false`, including when attaching assets to an existing draft.
-Publication remains a separate release decision.
+The `.github/workflows/release.yml` workflow has no automatic trigger. A
+maintainer must manually dispatch it with the successful build run ID, release
+tag, and `upload_to_release=true` to attach verified CI files. Both workflows
+check for an existing installer before upload and keep any created release as a
+draft with `make_latest: false`. Publication remains a separate release
+decision.
 
 This is the CI-traceability piece SignPath Foundation's code-signing program
 asks for: a build a third party can point at and confirm came from this
@@ -33,14 +40,14 @@ repo's source at this commit, not from a laptop.
 
 ### Triggering a release
 
-Tagging v0.40.3 prepares a draft; it does not publish or select Latest.
+Tagging v0.40.3 verifies a CI build; it does not alter a GitHub Release.
 
 ```
 git tag v0.40.3
 git push origin v0.40.3
 ```
 
-After both workflows succeed and the release gates below pass, the runner
+After a deliberate asset upload and the release gates below pass, the runner
 publishes the draft as a pre-release without selecting Latest:
 
 ```
@@ -59,8 +66,8 @@ separate manual decisions and must not be added to either automated workflow.
 See the [GitHub CLI release edit reference](https://cli.github.com/manual/gh_release_edit).
 
 Or run the workflow manually (Actions tab -> Release Build (CPU, SignPath-ready) -> Run
-workflow) to sanity-check the build without cutting a tag — this uploads
-the artifact but does not create a GitHub Release.
+workflow) to sanity-check a build without cutting a tag. Leave
+`upload_to_release` unchecked; the run stores workflow artifacts only.
 
 ### Where artifacts land
 
@@ -68,8 +75,8 @@ the artifact but does not create a GitHub Release.
   `.zip.sha256` sidecar (Actions run page -> Artifacts), retained 30 days.
 - Every run: a `smoke-log-<version>` artifact with the smoke check's
   `samsara.log`, retained 14 days — read this first if a run looks off.
-- Tag pushes only: the ZIP and mandatory SHA-256 sidecar are also attached to
-  the draft GitHub Release for that tag.
+- Tag pushes: build outputs stay in the Actions workflow artifacts; no Release
+  asset is created or modified.
 
 For v0.40.3, the draft asset list is `SamsaraSetup-0.40.3.exe`,
 `Samsara-Windows-v0.40.3.zip`, `Samsara-GestureControl-v0.40.3.zip`,
@@ -227,7 +234,7 @@ build begins.
   must agree or `tools/check_release_version.py` fails the workflow.
 - **`softprops/action-gh-release` is pinned to an exact commit SHA** in both
   release workflows. Several `actions/*` dependencies still use major-version tags.
-- **Publisher concurrency group** (`release-${{ github.event.workflow_run.head_branch }}`)
+- **Publisher concurrency group** (`release-${{ inputs.version }}`)
   queues runs for the same tag (`cancel-in-progress: false`).
 
 ## Code signing policy and release notes
