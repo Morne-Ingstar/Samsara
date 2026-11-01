@@ -49,7 +49,9 @@ _SECRET_KEY = re.compile(
     r"(?:^|[_-])token(?:$|[_-])|password|passwd|credential|authorization|"
     r"auth[_-]?key|(?:^|[_-])auth(?:$|[_-])|secret)", re.I)
 _SECRET_TEXT = re.compile(
-    r"(?i)(?:[\"']?[\w.-]*(?:api[ _-]?key|access[_-]?key|private[_-]?key|"
+    # Start an assignment at the beginning of its key. Retrying at every
+    # character of a long safe value made backup verification quadratic.
+    r"(?i)(?:(?<![\w.-])[\"']?[\w.-]*(?:api[ _-]?key|access[_-]?key|private[_-]?key|"
     r"authorization|token(?!s\b)|password|passwd|secret|credential)"
     r"[\w.-]*[\"']?\s*[:=]\s*[\"']?[^\s\"',;}]+|"
     r"\b(?:sk-[\w-]{12,}|gh[pousr]_[\w]{15,}|(?:glpat-|hf_|xox[baprs]-)[\w-]{15,}|"

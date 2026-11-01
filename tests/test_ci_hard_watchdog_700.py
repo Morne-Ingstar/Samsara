@@ -155,6 +155,10 @@ def pytest_sessionfinish(session, exitstatus):
 
 @pytest.mark.parametrize('phase', ['setup', 'teardown', 'failed_teardown'])
 def test_watchdog_covers_fixture_lifecycle(tmp_path, phase):
+    # The deadline covers unrelated autouse setup and failure reporting too.
+    # CI's old 0.5s probe expired in tmp_path.mkdir before reaching lifecycle.
+    # Keep a bounded native hang, with enough runway to exercise each phase.
+    budget = 5
     source = NATIVE_BLOCK + '''
 import pytest
 
@@ -167,13 +171,19 @@ def lifecycle():
 def test_lifecycle(lifecycle):
     BODY
 '''
-    source = source.replace('SETUP', 'native_block(60)' if phase == 'setup' else 'pass')
-    source = source.replace('TEARDOWN', 'pass' if phase == 'setup' else 'native_block(60)')
+    source = source.replace('SETUP', "os.write(2, b'PHASE_SETUP\\n'); native_block(60)"
+                            if phase == 'setup' else 'pass')
+    source = source.replace('TEARDOWN', 'pass' if phase == 'setup' else
+                            "os.write(2, b'PHASE_TEARDOWN\\n'); native_block(60)")
     source = source.replace('BODY', 'assert False' if phase == 'failed_teardown' else 'pass')
-    result, _ = run_child(tmp_path, source, hard='0.5', soft='0')
+    result, finished = run_child(tmp_path, source, hard=str(budget), soft='0')
     assert result.returncode != 0, result.stdout + result.stderr
-    assert '[hard watchdog 0.5s] test_probe.py::test_lifecycle' in result.stderr
+    assert f'[hard watchdog {budget}s] test_probe.py::test_lifecycle' in result.stderr
+    expected_phase = 'PHASE_SETUP' if phase == 'setup' else 'PHASE_TEARDOWN'
+    assert expected_phase in result.stderr, result.stderr
     assert 'Timeout (' in result.stderr and 'native_block' in result.stderr
+    entered = float(re.search(r'NATIVE_ENTER (\d+\.\d+)', result.stderr).group(1))
+    assert 0 <= finished - entered < budget + 5, result.stderr
 
 
 def test_xdist_reports_crash_and_restarts_for_next_test(tmp_path):
