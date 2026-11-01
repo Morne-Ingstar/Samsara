@@ -70,13 +70,22 @@ def test_owner_supplied_ico_contains_required_taskbar_and_app_sizes():
 
 def test_brand_generator_does_not_emit_owner_supplied_artwork(tmp_path):
     # 879a intentionally replaces the old, separately supplied ICO/1024 source.
-    from tools.gen_icons import BRAND_SIZES, write_brand_assets
+    from tools.gen_icons import BRAND_SIZES, ico_matches, image_diff, write_brand_assets
 
     outputs = write_brand_assets(tmp_path)
     assert set(outputs) == {tmp_path / f"samsara_{size}.png" for size in BRAND_SIZES} | {
         tmp_path / "samsara.ico", tmp_path / "samsara-mark.svg"}
     for path in outputs:
-        assert path.read_bytes() == (BRAND / path.name).read_bytes()
+        committed = BRAND / path.name
+        # Match the generator's existing artwork policy: PNG encoding and edge
+        # rounding vary across Qt environments; compare pixels and ICO frames.
+        if path.suffix == ".png":
+            diff = image_diff(QImage(str(path)), QImage(str(committed)))
+            assert diff["matches"], (path.name, diff)
+        elif path.suffix == ".ico":
+            assert ico_matches(path.read_bytes(), committed.read_bytes()), path.name
+        else:
+            assert path.read_bytes() == committed.read_bytes(), path.name
     assert _ico_sizes(tmp_path / "samsara.ico") == list(REQUIRED_OWNER_ICO_SIZES)
 
 

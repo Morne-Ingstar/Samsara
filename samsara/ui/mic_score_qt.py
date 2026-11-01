@@ -25,7 +25,7 @@ class MicScoreWindow(QDialog):
         self.resize(800, 720)
         self.setStyleSheet(
             f"QDialog, QWidget {{background:{theme.BG0}; color:{theme.TEXT_PRIMARY};}}"
-            f"QLabel {{font-size:15px;}} QComboBox {{padding:8px;}}"
+            f"QLabel {{font-size:{theme.TYPE_BODY}px;}} QComboBox {{padding:8px;}}"
         )
         layout = QVBoxLayout(self)
         layout.setContentsMargins(28, 24, 28, 24)
@@ -41,7 +41,7 @@ class MicScoreWindow(QDialog):
         layout.addWidget(self.status)
         self.sentence = QLabel("Open Stremio and play my favourite show.")
         self.sentence.setWordWrap(True)
-        self.sentence.setStyleSheet(f"font-size:26px; color:{theme.ACCENT}; padding:18px 0;")
+        self.sentence.setStyleSheet(f"font-size:{theme.TYPE_TITLE}px; color:{theme.ACCENT}; padding:18px 0;")
         layout.addWidget(self.sentence)
         self.record = QPushButton("Start test")
         theme.make_primary(self.record)
@@ -274,7 +274,7 @@ class MicScoreWindow(QDialog):
         title.setTextFormat(Qt.TextFormat.PlainText)
         column.addWidget(title)
         value = QLabel(score)
-        value.setStyleSheet("font-size:22px; font-weight:600;")
+        value.setStyleSheet(f"font-size:{theme.TYPE_HEADING}px; font-weight:600;")
         column.addWidget(value)
         description = QLabel(details)
         description.setTextFormat(Qt.TextFormat.PlainText)
