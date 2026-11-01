@@ -255,7 +255,8 @@ def test_strip_rows_fit_real_host_and_stats_never_move(qapp, monkeypatch, width,
         # 888b / 890: explicit input changes request a fit; layout requests do not.
         home._queue_recent_fit()
         settle(qapp)
-        expected = stats - (recent_height + 24 if recent_height else 0)
+        # 996: hiding recent activity also removes its compact 8 px section gap.
+        expected = stats - (recent_height + 8 if recent_height else 0)
         assert home._identity.mapTo(home, home._identity.rect().topLeft()).y() == expected
         assert home._scroll.verticalScrollBar().maximum() == scrollbar
     finally:

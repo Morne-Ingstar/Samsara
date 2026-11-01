@@ -1501,7 +1501,8 @@ class TestTheStatsSitOnTheFloor:
             for _ in range(60):
                 qapp.processEvents()
             assert home._identity.y() == stats_y, "extra height must not move the stats"
-            assert stats_y - (home._recent_slot.y() + home._recent_slot.height()) == 24
+            # 996: the update row uses compact 8 px section gaps.
+            assert stats_y - (home._recent_slot.y() + home._recent_slot.height()) == 8
             assert not home._footer_in_scroll
             assert home._footer_host.parentWidget() is home
             assert home.layout().indexOf(home._footer_host) == home.layout().count() - 1

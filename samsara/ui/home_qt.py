@@ -1719,7 +1719,7 @@ class HomePage(QWidget):
         host.setStyleSheet("background: transparent;")
         host_lay = QHBoxLayout(host)
         # Keep horizontal gutters; save vertical room for the conditional slot.
-        host_lay.setContentsMargins(28, 24, 28, 24)
+        host_lay.setContentsMargins(28, 24, 28, 12)
         host_lay.setSpacing(0)
         self._content = _ContentColumn()
         self._content.setObjectName("homeContent")
@@ -1732,10 +1732,10 @@ class HomePage(QWidget):
 
         col = QVBoxLayout(self._content)
         col.setContentsMargins(0, 0, 0, 0)
-        # Compact section gaps keep all three conditional slots above the fold.
-        col.setSpacing(24)
-
+        col.setSpacing(8)  # 996: fit the update row without narrowing the card grid.
         col.addWidget(self._build_title())
+        from samsara.ui.home_update_line_qt import HomeUpdateLine
+        col.addWidget(HomeUpdateLine(self._app, self._content))
         col.addWidget(self._build_notice())
         col.addWidget(self._build_hint())
         col.addWidget(self._build_destinations())
@@ -2084,8 +2084,8 @@ class HomePage(QWidget):
                            1, 2 if cols == 3 else cols)
             if opened:
                 grid.setRowMinimumHeight(tray_row - 1, 8)
-        grid.invalidate()
-
+        grid.invalidate(); host = grid.parentWidget()
+        if host is not None: host.layout().invalidate(); host.updateGeometry()  # 996: refresh the section's cached height.
     # ---- Refresh --------------------------------------------------------
 
     def set_mark_frame(self, frame):
@@ -2353,7 +2353,7 @@ class HomePage(QWidget):
             self._footer.setFixedHeight(footer_height)
             self._footer_host.setVisible(not in_scroll)
             self._footer_host.setFixedHeight(footer_height + 12)
-            self._scroll.widget().layout().setContentsMargins(28, 24, 28, 12 if in_scroll else 24)
+            self._scroll.widget().layout().setContentsMargins(28, 24, 28, 12)
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
@@ -2378,8 +2378,8 @@ class HomePage(QWidget):
                 if widget is self._recent_slot or widget is None or widget.isHidden():
                     continue
                 sections.append(item.heightForWidth(width) if item.hasHeightForWidth() else item.sizeHint().height())
-            return sum(sections) + max(0, len(sections) - 1) * col.spacing() + 48
-
+            margins = self._scroll.widget().layout().contentsMargins()
+            return sum(sections) + max(0, len(sections) - 1) * col.spacing() + margins.top() + margins.bottom()
         # Test the full viewport first. Otherwise an initial narrow layout
         # can keep a scrollbar alive forever even though three columns fit.
         full_width = max(1, min(CONTENT_MAX_W, self._scroll.width() - 56))
