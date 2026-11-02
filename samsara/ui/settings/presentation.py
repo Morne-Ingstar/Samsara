@@ -524,6 +524,28 @@ class SettingRow(QFrame):
         super().resizeEvent(event)
 
 
+class GuideHeader(QWidget):
+    """A title with one compact guide action at its right (1015)."""
+    def __init__(self, heading, text, callback, note=None, parent=None):
+        super().__init__(parent)
+        column = QVBoxLayout(self)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(8)
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.addWidget(heading, 1)
+        self.button = QPushButton(text)
+        self.button.setAccessibleName(text)
+        self.button.setProperty("settingsToolAction", True)
+        self.button.setFixedHeight(theme.HIT_TARGET_MIN)
+        self.button.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        self.button.clicked.connect(callback)
+        title_row.addWidget(self.button, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        column.addLayout(title_row)
+        if note is not None:
+            column.addWidget(note)
+
+
 class Page(QScrollArea):
     def __init__(self, title, subtitle):
         super().__init__()
@@ -535,10 +557,10 @@ class Page(QScrollArea):
         self.column = QVBoxLayout(self.container)
         self.column.setContentsMargins(28, 24, 28, 24)
         self.column.setSpacing(8)
-        heading = QLabel(title)
+        heading = self.heading = QLabel(title)
         heading.setProperty("role", "title")
         self.column.addWidget(heading)
-        note = QLabel(subtitle)
+        note = self.subtitle = QLabel(subtitle)
         note.setWordWrap(True)
         note.setProperty("role", "description")
         self.column.addWidget(note)
@@ -561,6 +583,15 @@ class Page(QScrollArea):
         self.setWidget(self.container)
         self.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
         self.base_rows = []
+
+    def add_guide(self, text, callback):
+        """Give guide-bearing pages the same single header action slot."""
+        self.column.removeWidget(self.heading)
+        self.column.removeWidget(self.subtitle)
+        self.guide_header = GuideHeader(
+            self.heading, text, callback, self.subtitle, self.container)
+        self.column.insertWidget(0, self.guide_header)
+        return self.guide_header.button
 
     def add_row(self, row, advanced=False):
         if advanced:

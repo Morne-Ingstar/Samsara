@@ -6,6 +6,7 @@ from samsara.config_schema import SETTINGS_SCHEMA
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QCheckBox, QGridLayout, QLabel, QLineEdit, QWidget, QSizePolicy
 from .presentation import SettingRow, CleanComboBox
+from .audio_page import open_mic_setup_guide as open_microphone_guide
 
 TITLE = "Dictation"
 SUBTITLE = "Choose how you start speaking and deliver text."
@@ -292,6 +293,10 @@ def build(owner):
 
     owner._source_saves['general'][0] = save_sends
     page = owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)
+    # PLACEHOLDER COPY (1015): microphone guide stays available in the header.
+    owner._widgets['dictation_mic_setup_guide_button'] = page.add_guide(
+        'Microphone setup',
+        lambda: open_microphone_guide(owner.app))
     pace = owner._widgets['speech_pace']
     pace_row = owner._rows_by_widget['speech_pace']
     explanation = QLabel(pace_row)
@@ -369,6 +374,27 @@ def build(owner):
         control["target_process"].textChanged.connect(update_search_text)
         control["send_word"].textChanged.connect(update_search_text)
     update_search_text()
-    from .calm_layout import group_page
+    from .calm_layout import GroupHeading, group_page
     group_page(page, GROUPS)
+    from .presentation import GuideHeader
+    from samsara.ui import theme
+
+    def open_wake_guide():
+        from samsara.ui.mic_setup_wizard_qt import open_wake_calibration
+        open_wake_calibration(owner.app, parent=owner)
+
+    # Wake settings share this page. Give their existing section one action,
+    # using exactly the same title/action treatment as the page header.
+    for index in range(page.base.count()):
+        heading = page.base.itemAt(index).widget()
+        if isinstance(heading, GroupHeading) and heading.text() == GROUPS['cmd_tab_enabled']:
+            page.base.removeWidget(heading)
+            heading.setContentsMargins(0, 0, 0, 0)
+            # PLACEHOLDER COPY (1015)
+            page.wake_guide_header = GuideHeader(
+                heading, 'Wake word setup', open_wake_guide, parent=page.container)
+            page.wake_guide_header.setContentsMargins(0, theme.SPACE_4, 0, theme.SPACE_2)
+            page.base.insertWidget(index, page.wake_guide_header)
+            owner._widgets['wake_setup_guide_button'] = page.wake_guide_header.button
+            break
     return page

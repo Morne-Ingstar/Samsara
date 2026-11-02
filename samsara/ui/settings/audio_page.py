@@ -143,6 +143,11 @@ GROUPS = {
 }
 
 
+def open_mic_setup_guide(app):
+    """Open the existing microphone guide from either Settings destination."""
+    getattr(app, "open_mic_setup_guide", lambda: None)()
+
+
 def build(owner):
     from .calm_layout import group_page
     from PySide6.QtWidgets import QPushButton, QSizePolicy
@@ -163,14 +168,20 @@ def build(owner):
     picker.activated.connect(source.activated.emit)
     source._audio_mic_combo = picker
     owner._widgets['audio_mic_combo'] = picker
-    guide_button = QPushButton("Set up microphone...")
-    guide_button.clicked.connect(
-        lambda: getattr(owner.app, "open_mic_setup_guide", lambda: None)()
-    )
+    # PLACEHOLDER COPY (1015): one guide in the shared page header.
+    open_guide = lambda: open_mic_setup_guide(owner.app)
+    add_guide = getattr(page, "add_guide", None)
+    if add_guide is not None:
+        guide_button = add_guide("Microphone setup", open_guide)
+    else:
+        # Headerless page hosts retain the original microphone row action.
+        guide_button = QPushButton("Microphone setup")
+        guide_button.clicked.connect(open_guide)
     from samsara.ui.mic_score_qt import open_mic_score
     score_button = QPushButton("Mic score...")
     score_button.clicked.connect(lambda: open_mic_score(owner.app))
-    guide_row = SettingRow("Microphone", "Choose and test the microphone Samsara listens to.", [picker, guide_button, score_button], parent=page.container)
+    controls = [picker, score_button] if add_guide is not None else [picker, guide_button, score_button]
+    guide_row = SettingRow("Microphone", "Choose and test the microphone Samsara listens to.", controls, parent=page.container)
     guide_row.setObjectName("microphoneSetupGuide")
     page.base.insertWidget(0, guide_row)
     owner._widgets["audio_mic_setup_guide_button"] = guide_button

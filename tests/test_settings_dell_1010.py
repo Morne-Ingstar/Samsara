@@ -55,13 +55,14 @@ def test_single_guide_uses_header_right_iff_provider_configuration_is_incomplete
     header = page.ava_header
     button = window._widgets['ava_setup_guide_button']
     assert header.isVisible()
-    assert page.advanced.toggle.accessibleName() == ('More Ava settings' if pending else 'Advanced')
+    # 1015: setup never changes access to settings or hides the header guide.
+    assert page.advanced.toggle.accessibleName() == 'Advanced'
     assert not page.advanced.toggle.isChecked()
     route = window._rows_by_widget['providerRoute']
     assert route.isVisible()
-    assert button.isVisible() is pending
+    assert button.isVisible()
     from PySide6.QtWidgets import QLabel, QPushButton
-    assert [b for b in page.findChildren(QPushButton) if b.text() == 'Set up Ava...'] == [
+    assert [b for b in page.findChildren(QPushButton) if b.text() == 'Ava guide'] == [
         button]
     assert page.base.itemAt(0).widget() is route is page.base_rows[0]
     assert not window._widgets['ava_conversation_log_enabled'].isVisible()
@@ -90,7 +91,8 @@ def test_top_guide_opens_and_more_settings_reveals_existing_controls(window, qap
     assert not window._widgets['ava_conversation_log_enabled'].isVisible()
     page.advanced.toggle.click()
     qapp.processEvents()
-    assert page.advanced.toggle.text().startswith('More Ava settings')
+    # 1015: retain the ordinary Advanced disclosure in every setup state.
+    assert page.advanced.toggle.text().startswith('Advanced')
     # The combo is intentionally hidden behind the route's segmented control.
     assert window._rows_by_widget['providerRoute'].isVisible()
     assert window._widgets['ava_memory_mode'].isVisible()
@@ -121,7 +123,7 @@ def test_configuration_changes_restore_layout_without_rebuilding_or_readiness_pr
         assert window._widgets['ava_memory_mode'] is control
         assert page.ava_header is header
         assert window._widgets['ava_setup_guide_button'] is button
-        assert button.isVisible() is pending
+        assert button.isVisible()  # 1015: the guide stays available for reconfiguration.
         assert tuple(page.base_rows) == base_rows
         assert page.base.itemAt(0).widget() is route
         assert route.disclosure is None

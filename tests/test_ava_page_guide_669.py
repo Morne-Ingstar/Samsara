@@ -46,7 +46,8 @@ def test_ava_page_guide_is_first_and_opens_guide(ava_page):
     window, page = ava_page
 
     assert page.base.itemAt(0).widget() is page.base_rows[0]
-    assert window._widgets["ava_setup_guide_button"].text() == "Set up Ava..."
+    # 1015: a permanent guide label also fits an already configured Ava.
+    assert window._widgets["ava_setup_guide_button"].text() == "Ava guide"
     window.app.guide_opened = False
     window._widgets["ava_setup_guide_button"].click()
     assert window.app.guide_opened is True
