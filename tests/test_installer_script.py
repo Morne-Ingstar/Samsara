@@ -91,12 +91,15 @@ class TestComponentsMatchTheManifest:
 
 class TestGpuAndComingSoon:
     def test_gpu_component_is_disabled_with_reason_never_hidden(self, iss):
+        # 1005: unsupported CUDA is filtered before types and disk sizes are built.
         code = _section(iss, "Code")
         assert "cuda_pack" in _component_names(iss)
         assert "No NVIDIA GPU detected" in code
         assert "ItemEnabled[Idx] := False" in code
         # 994: unpublished packs are hidden; hardware reasons remain for published packs.
         assert '#if CudaPackAvailable != 0' in _section(iss, "Components")
+        cuda = next(l for l in _section(iss, "Components").splitlines() if 'Name: "cuda_pack"' in l)
+        assert 'Check: CanUseCuda' in cuda
         # detection failure keeps it selectable with a neutral note
         assert "Could not detect a GPU" in code
         assert "Result := -1" in code and "except" in code
@@ -105,7 +108,8 @@ class TestGpuAndComingSoon:
 
     def test_gpu_component_is_not_in_the_full_type_when_detection_says_no(self, iss):
         code = _section(iss, "Code")
-        assert "GpuDetected = 0" in code and "Checked[Idx] := False" in code
+        # 1005: filtering prevents Full and unattended selection from rechecking CUDA.
+        assert "Result := GpuDetected <> 0;" in code and "Check: CanUseCuda" in iss
 
     def test_command_model_follows_the_manifest_available_flag(self, iss):
         assert "#ifndef CommandModelAvailable" in iss and "#define CommandModelAvailable 0" in iss

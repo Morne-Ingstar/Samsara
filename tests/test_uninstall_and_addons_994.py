@@ -142,7 +142,7 @@ def test_quit_ipc_uses_draft_aware_exit_without_bypassing_it(qapp, monkeypatch):
         assert receiver.nativeEvent(None, ctypes.addressof(msg)) == (True, 1)
         assert not quit_app.called  # quit is queued on Qt, as for a tray action
         qapp.processEvents()
-        quit_app.assert_called_once_with()
+        quit_app.assert_called_once_with(reason='user-quit')  # 1005: persist an expected clean exit
     finally:
         receiver.deleteLater()
 

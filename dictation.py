@@ -2295,7 +2295,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         except Exception as _cw_err:
             logger.warning(f"[CONFIG] File watcher unavailable: {_cw_err}")
 
-        self.create_tray_icon()
+        from samsara.single_instance import bind_quit_target; bind_quit_target(self); self.create_tray_icon()  # 1005
 
     def _tts_init_worker(self) -> None:
         """Install the speech/caption runtime off the boot thread, then announce."""

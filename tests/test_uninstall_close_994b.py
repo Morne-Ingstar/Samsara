@@ -101,8 +101,10 @@ def test_visible_wait_has_ten_second_grace_period_before_force():
 def test_cancel_and_silent_abort_before_any_shutdown_request():
     stop = body("procedure EnsureInstallStopped();", "{ Check every payload file")
     request = stop.index("RequestInstallQuit(Processes);")
-    assert stop.index("if UninstallSilent() then") < request
+    # 1005: silent uninstall now requests quit without prompting or a wait form.
+    assert stop.index("if not UninstallSilent() then") < request
     assert stop.index("IDCANCEL) <> IDOK then") < request
-    assert stop[:request].count("UninstallCloseCancelled := True; Abort;") == 2
+    assert stop[:request].count("UninstallCloseCancelled := True; Abort;") == 1
+    assert stop.index("if UninstallSilent() then") > request  # 1005: abort only after graceful timeout
     handler = body("procedure CurUninstallStepChanged", "{ The ids to fetch")
     assert "if not UninstallCloseCancelled then\n        SuppressibleMsgBox" in handler

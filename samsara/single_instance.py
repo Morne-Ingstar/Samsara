@@ -336,12 +336,30 @@ def _activate_existing_window(last=None):
     return api.GetForegroundWindow() == hwnd
 
 
-def _request_uninstall_quit():
+_quit_target = None
+
+
+def bind_quit_target(app):
+    """Publish shutdown before DictationApp enters its lifetime tray loop."""
+    global _quit_target
+    _quit_target = app.quit_app
+
+
+def _request_uninstall_quit(*, silent=False):
     """Use the same draft-aware shutdown as the tray's Exit action."""
     app = getattr(sys.modules.get('__main__'), 'app', None)
-    quitter = getattr(app, 'quit_app', None)
+    quitter = _quit_target or getattr(app, 'quit_app', None)
     if callable(quitter):
-        quitter()
+        target = getattr(quitter, '__self__', app)
+        if silent:
+            from samsara.kept_session_draft import quit_draft_waiting
+            if quit_draft_waiting(target, getattr(target, '_session_mode_manager', None)):
+                logging.getLogger('Samsara').warning('[EXIT] Silent uninstall deferred: unsent draft')
+                return
+        logging.getLogger('Samsara').info('[EXIT] Uninstall requested clean shutdown')
+        quitter(reason='user-quit')
+    else:
+        logging.getLogger('Samsara').warning('[EXIT] Uninstall quit target is not ready')
 
 
 def _create_activation_receiver(mutex_name):
@@ -380,7 +398,8 @@ def _create_activation_receiver(mutex_name):
             msg = wintypes.MSG.from_address(int(message))
             if msg.message == quit_message_id:
                 from PySide6.QtCore import QTimer
-                QTimer.singleShot(0, _request_uninstall_quit)
+                silent = bool(msg.wParam)
+                QTimer.singleShot(0, lambda: _request_uninstall_quit(silent=silent))
                 return True, 1
             if msg.message == message_id:
                 try:

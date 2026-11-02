@@ -148,7 +148,7 @@ Name: "core";             Description: "Samsara (required)";                    
 Name: "wake_word_models"; Description: "Hands-free: wake-word models";                        Types: full custom; ExtraDiskSpaceRequired: {#WakeWordModelsSize}
 #endif
 #if CudaPackAvailable != 0
-Name: "cuda_pack";        Description: "GPU acceleration: NVIDIA CUDA pack";                  Types: full; ExtraDiskSpaceRequired: {#CudaPackSize}
+Name: "cuda_pack";        Description: "GPU acceleration: NVIDIA CUDA pack";                  Types: full; ExtraDiskSpaceRequired: {#CudaPackSize}; Check: CanUseCuda
 #endif
 #if CommandModelAvailable != 0
 Name: "command_model";    Description: "Command model for the hands-free command lane";       ExtraDiskSpaceRequired: {#CommandModelSize}
@@ -177,6 +177,7 @@ Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; F
 [Code]
 var
   GpuDetected: Integer;        { 1 = NVIDIA present, 0 = none, -1 = detection failed }
+  GpuChecked: Boolean;
   FetchOutcome: Integer;       { -1 = not run, else the fetcher's exit code }
   FetchRequested: String;
   UninstallCloseCancelled: Boolean;
@@ -231,11 +232,21 @@ begin
   end;
 end;
 
+function CanUseCuda(): Boolean;
+begin
+  { 1005: filter BEFORE Inno builds the type selection and disk estimate,
+    including /TYPE=full and /COMPONENTS=cuda_pack unattended installs. }
+  if not GpuChecked then begin
+    GpuDetected := DetectNvidia();
+    GpuChecked := True;
+  end;
+  Result := GpuDetected <> 0;
+end;
+
 procedure InitializeWizard();
 begin
   FetchOutcome := -1;
   FetchRequested := '';
-  GpuDetected := DetectNvidia();
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
@@ -244,9 +255,8 @@ var
   Msg: String;
 begin
   if CurPageID = wpSelectComponents then begin
-    { GPU acceleration: disabled WITH the reason visible when no NVIDIA
-      device is present; selectable with a neutral note when detection
-      itself failed; preselected when a GPU is present. Never hidden. }
+    { 1005: CanUseCuda omits the row when no NVIDIA device is present.
+      Detection failure keeps the existing manual selection available. }
     Idx := ComponentIndex('cuda_pack');
     if Idx >= 0 then begin
       if GpuDetected = 0 then begin
@@ -278,7 +288,20 @@ begin
     else
       Msg := Msg + #13#10#13#10 + 'Some components could not be installed (code ' + IntToStr(FetchOutcome) + '). Samsara itself is installed and works; try again later from Settings.';
     WizardForm.FinishedLabel.Caption := Msg;
+    { 1005: the native label does not grow when its caption changes. }
+    WizardForm.FinishedLabel.AdjustHeight();
+    WizardForm.RunList.Top := WizardForm.FinishedLabel.Top +
+      WizardForm.FinishedLabel.Height + ScaleY(16);
+    WizardForm.RunList.Height := WizardForm.FinishedPage.ClientHeight -
+      WizardForm.RunList.Top;
   end;
+end;
+
+function InitializeUninstall(): Boolean;
+begin
+  { 1005: foreground the uninstaller before Inno's own confirmation. }
+  if not UninstallSilent() then BringToFrontAndRestore();
+  Result := True;
 end;
 
 { 994: never target an executable by name alone. Profile overrides have
@@ -491,7 +514,8 @@ begin
       { Check liveness AFTER reading the window PID: prevent PID reuse. }
       if (Pid = Processes[I].Pid) and
         (WaitForSingleObject(Processes[I].Handle, 0) <> 0) then
-        PostMessage(Window, QuitMessage, 0, 0);
+        if UninstallSilent() then PostMessage(Window, QuitMessage, 1, 0)
+        else PostMessage(Window, QuitMessage, 0, 0);
       Window := FindWindowEx(0, Window, '', '');
     end;
   end;
@@ -524,9 +548,11 @@ begin
     if not InstallIsRunning(Processes) then begin Result := True; exit; end;
     { PLACEHOLDER COPY (994b). Keep the native wait window responsive;
       retained handles, not repeated path queries, determine completion. }
-    Status.Caption :=
-      Format('Closing Samsara... %d seconds remaining', [10 - I div 4]);
-    WaitForm.Refresh();
+    if WaitForm <> nil then begin
+      Status.Caption :=
+        Format('Closing Samsara... %d seconds remaining', [10 - I div 4]);
+      WaitForm.Refresh();
+    end;
     while PeekShutdownMessage(Msg, 0, 0, 0, 1) do begin { PM_REMOVE }
       if Msg.Msg = $12 then begin { WM_QUIT: cancel before payload removal }
         UninstallCloseCancelled := True;
@@ -552,14 +578,18 @@ begin
   Processes := InstallProcesses();
   try
     if GetArrayLength(Processes) = 0 then exit;
-    { PLACEHOLDER COPY (994b). Silent uninstall cancels without signals. }
-    if UninstallSilent() then begin UninstallCloseCancelled := True; Abort; end;
-    if SuppressibleTaskDialogMsgBox('Samsara is running. Close it and continue?',
+    if not UninstallSilent() then begin
+      BringToFrontAndRestore();
+      if SuppressibleTaskDialogMsgBox('Samsara is running. Close it and continue?',
       'Samsara will be asked to exit. If it is still running after 10 seconds, it will be force-closed. Save your work first.',
-      mbConfirmation, MB_OKCANCEL, ['Close Samsara', 'Cancel'], 0, IDCANCEL) <> IDOK then begin UninstallCloseCancelled := True; Abort; end;
+        mbConfirmation, MB_OKCANCEL, ['Close Samsara', 'Cancel'], 0, IDCANCEL) <> IDOK then begin UninstallCloseCancelled := True; Abort; end;
+    end;
     { The uninstaller's progress form does not exist at usAppMutexCheck. }
-    WaitForm := CreateCustomForm(ScaleX(380), ScaleY(76), False, False);
+    WaitForm := nil;
+    Status := nil;
     try
+      if not UninstallSilent() then begin
+      WaitForm := CreateCustomForm(ScaleX(380), ScaleY(76), False, False);
       WaitForm.Caption := 'Uninstall Samsara';
       WaitForm.BorderIcons := [];
       Status := TNewStaticText.Create(WaitForm);
@@ -569,10 +599,16 @@ begin
       Status.Width := WaitForm.ClientWidth - ScaleX(32);
       WaitForm.FlipAndCenterIfNeeded(True, nil, False);
       WaitForm.Show();
+      end;
       RequestInstallQuit(Processes);
       if WaitForInstallExit(Processes, WaitForm, Status) then exit;
-      Status.Caption := 'Force-closing Samsara...';
-      WaitForm.Refresh();
+      { 1005: unattended uninstall cannot resolve a pending draft. Keep the
+        app and retry uninstaller intact rather than forcing past that choice. }
+      if UninstallSilent() then begin UninstallCloseCancelled := True; Abort; end;
+      if WaitForm <> nil then begin
+        Status.Caption := 'Force-closing Samsara...';
+        WaitForm.Refresh();
+      end;
       for I := 0 to GetArrayLength(Processes) - 1 do begin
         if WaitForSingleObject(Processes[I].Handle, 0) = 0 then continue;
         Handle := OpenProcess($100001, False, Processes[I].Pid); { SYNCHRONIZE | TERMINATE }
@@ -592,7 +628,7 @@ begin
       if not WaitForInstallExit(Processes, WaitForm, Status) then
         RaiseException('Samsara is still running. Uninstall cancelled; no files were removed.');
     finally
-      WaitForm.Free();
+      if WaitForm <> nil then WaitForm.Free();
     end;
   finally
     CloseInstallProcesses(Processes);
