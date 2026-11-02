@@ -9,7 +9,7 @@ from samsara.ui import theme
 # Owner-supplied corrections for the in-app summaries, including the next release.
 RELEASE_SUMMARIES = {
     "0.40.3": "0.40.3 - a more forgiving microphone setup, and a safer uninstall.",
-    "0.40.4": "0.40.4 - faster start, clearer download progress, simpler setup, and a cleaner install and uninstall.",
+    "0.40.4": "0.40.4 - faster start, simpler setup, a better microphone picker, and a cleaner install and uninstall.",
 }
 
 

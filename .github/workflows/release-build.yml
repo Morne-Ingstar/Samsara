@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version string for artifact naming (e.g. v0.40.3). Leave blank to auto-generate from the commit SHA.'
+        description: 'Version string for artifact naming (e.g. v0.40.4). Leave blank to auto-generate from the commit SHA.'
         required: false
         default: ''
       upload_to_release:

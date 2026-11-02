@@ -141,7 +141,7 @@ def test_seen_version_is_still_available_and_future_version_is_not_announced(qap
     try:
         assert home._whats_new_button.text() == "What's new"
         home._whats_new_button.click()
-        assert home._whats_new_button.dialog.findChild(QLabel, 'releaseSummary').text().startswith('0.40.3 -')
+        assert home._whats_new_button.dialog.findChild(QLabel, 'releaseSummary').text().startswith('0.40.4 -')
         assert 'signed' not in home._whats_new_button.dialog.findChild(QLabel, 'releaseSummary').text()
         home._whats_new_button.dialog.close()
     finally:
@@ -150,7 +150,7 @@ def test_seen_version_is_still_available_and_future_version_is_not_announced(qap
 
 @pytest.mark.parametrize('version,expected', [
     ('0.40.3', '0.40.3 - a more forgiving microphone setup, and a safer uninstall.'),
-    ('0.40.4', '0.40.4 - faster start, clearer download progress, simpler setup, and a cleaner install and uninstall.'),
+    ('0.40.4', '0.40.4 - faster start, simpler setup, a better microphone picker, and a cleaner install and uninstall.'),
 ])
 def test_corrected_in_app_release_summaries(tmp_path, version, expected):
     path = tmp_path / 'CHANGELOG.md'

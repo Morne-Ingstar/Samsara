@@ -6,6 +6,21 @@ All notable changes to Samsara are documented here.
 
 - **Hands-free by voice** - Say the wake word and "hands free" (or "start hands free", "dictate mode") to start hands-free dictation without touching a key; "hands free" also works as a command. Needs the hands-free key set to Toggle.
 
+## [0.40.4] - 2026-11-01
+
+0.40.4 - faster start, simpler setup, a better microphone picker, and a cleaner install and uninstall.
+
+- **Faster start.** Samsara gets ready noticeably sooner, up to several seconds on slower PCs.
+- **Simpler setup.** The speech model starts downloading during setup and shows how much is left, with Retry if the connection drops. Start Samsara takes you straight in; the tutorial is there when you want it.
+- **Your microphone, your choice.** A real microphone picker: the mic you choose becomes your preferred one, System default is the fallback, and Samsara switches back when your preferred mic reconnects.
+- **Your words, recognised.** Your dictionary and built-in vocabulary now help in every way of talking, including hands-free.
+- **Guides where you need them.** Ava, microphone and wake word setup each have a button at the top of their Settings page.
+- **Cleaner Home.** Less clutter; what's new is one click away.
+- **Back up your settings.** Save and restore your settings, including by voice.
+- **Favorites by voice.** Open, add and rename favorite apps and sites by voice.
+- **Cleaner install, update and uninstall.** The installer installs just the app. Samsara restarts itself after an update. Uninstall closes Samsara gracefully and can remove your settings and downloaded models for a fresh start.
+- **Tidier downloads.** This page holds just the installer and the portable ZIP. Optional extras (like NVIDIA acceleration) are added from inside Samsara.
+
 ## [0.40.3] - 2026-11-01
 
 0.40.3 - signed installer and app, a more forgiving microphone setup, and a safer uninstall.

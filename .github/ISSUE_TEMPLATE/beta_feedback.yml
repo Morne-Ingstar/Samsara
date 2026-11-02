@@ -1,5 +1,5 @@
 name: Beta workflow feedback
-description: Tell us where v0.40.3 reduced—or failed to reduce—hands-on work
+description: Tell us where v0.40.4 reduced—or failed to reduce—hands-on work
 title: "[Beta feedback]: "
 body:
   - type: markdown
@@ -11,7 +11,7 @@ body:
     id: version
     attributes:
       label: Samsara version
-      placeholder: v0.40.3
+      placeholder: v0.40.4
     validations:
       required: true
 

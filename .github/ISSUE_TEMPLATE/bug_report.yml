@@ -12,7 +12,7 @@ body:
     attributes:
       label: Samsara version
       description: Find this in About or the release/archive name.
-      placeholder: v0.40.3
+      placeholder: v0.40.4
     validations:
       required: true
 
