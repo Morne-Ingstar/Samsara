@@ -48,23 +48,10 @@ def world(tmp_path):
 
 @pytest.mark.parametrize("flags", itertools.product((False, True), repeat=4))
 def test_installer_offers_exactly_published_components(flags):
-    """Evaluate the actual component guards for every publication combination."""
-    values = dict(zip(PACKS.values(), flags))
-    body = ISS.split("[Components]", 1)[1].split("[Files]", 1)[0]
-    active = True
-    offered = []
-    for line in body.splitlines():
-        if line.startswith("#if "):
-            match = re.fullmatch(r"#if (\w+)Available != 0", line)
-            assert match, line
-            active = values[match[1]]
-        elif line == "#endif":
-            active = True
-        elif active and line.startswith("Name:"):
-            offered.append(re.search(r'Name: "([a-z_]+)"', line)[1])
-    assert offered == ["core", *(name for name, define in PACKS.items() if values[define])]
-    for define in PACKS.values():
-        assert f"#ifndef {define}Available\n  #define {define}Available 0" in ISS
+    # 1016: publication flags cannot offer packs in the app-only installer.
+    assert '[Components]' not in ISS and '[Types]' not in ISS
+    assert 'manifest_defines.iss' not in ISS
+    assert 'Components:' not in ISS.split('[Files]', 1)[1].split('[Icons]', 1)[0]
 
 
 def test_manifest_defines_publish_and_withdraw_every_pack(tmp_path, monkeypatch):

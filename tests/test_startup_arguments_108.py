@@ -125,7 +125,11 @@ def test_the_installer_argument_is_the_one_the_script_passes():
 
     iss = (REPO / "installer" / "samsara.iss").read_text(encoding="utf-8", errors="replace")
     source = ENTRY.read_text(encoding="utf-8", errors="replace")
-    assert "--fetch-components" in iss
+    # 1016: the app-only installer launches normally; no pack-fetch argument.
+    assert "--fetch-components" not in iss
+    launch = iss.split("[Run]", 1)[1].split("[Code]", 1)[0]
+    assert 'Filename: "{app}\\{#AppExeName}";' in launch
+    assert "Parameters:" not in launch  # Empty argv follows normal startup.
     modes = re.search(r"_ARGUMENT_MODES = \(([^)]*)\)", source).group(1)
     assert "--fetch-components" in modes
 

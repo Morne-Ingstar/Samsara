@@ -103,7 +103,10 @@ def test_manifest_urls_are_under_addons(version):
 
 def test_installer_default_uses_addons():
     script = (Path(__file__).resolve().parents[1] / "installer/samsara.iss").read_text(encoding="utf-8")
-    assert '#define ManifestUrl "https://github.com/Morne-Ingstar/Samsara/releases/download/addons/manifest-" + AppVersion + ".json"' in script
+    # 1016: Setup no longer downloads packs; the app still uses add-ons.
+    assert "ManifestUrl" not in script and "--fetch-components" not in script
+    assert fq.default_manifest_url(VERSION) == (
+        "https://github.com/Morne-Ingstar/Samsara/releases/download/addons/manifest-" + VERSION + ".json")
 
 
 def test_generator_separates_app_and_optional_assets(tmp_path):
@@ -421,7 +424,7 @@ def test_components_render_only_optional_packs(tmp_path, qapp, include_installed
                              gpu_probe=lambda: True, run_in_thread=False,
                              include_installed=include_installed)
     listed = page.refresh()
-    expected = {"cuda-pack", "wake-word-models"}
+    expected = {"cuda-pack"}  # 1016: bundled wake models have no Components row.
     if include_installed:
         expected.add("gesture-control")
         assert page._rows["gesture-control"]["get"].text() == "Installed"

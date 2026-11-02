@@ -1,10 +1,7 @@
 """installer/samsara.iss and tools/build_installer.cmd, parsed as text (Inno
-Setup is not needed to run these): every component the installer offers
-maps to a manifest component id; a published GPU pack is disabled with its
-hardware reason; every optional pack follows the manifest's
-`available` flag through a build-time define; the fetch is the app's own
-headless mode; the build command versions from the same source as the
-build and names the output as required."""
+Setup is not needed to run these): Setup copies the bundled app with no
+optional component selection or downloads (1016); the build command versions
+from the same source as the build and names the output as required."""
 
 from __future__ import annotations
 
@@ -52,71 +49,41 @@ def _manifest_mapping(text: str) -> dict:
 
 class TestComponentsMatchTheManifest:
     def test_every_installer_component_maps_to_a_manifest_id(self, iss):
-        manifest_ids = {c["id"] for c in gen.component_specs("v0.0.0")}
-        names = _component_names(iss)
-        mapping = _manifest_mapping(iss)
-        assert names, "no components declared"
-        for name in names:
-            assert name in mapping, f"installer component {name!r} has no ManifestId mapping"
-            assert mapping[name] in manifest_ids, f"{name!r} maps to {mapping[name]!r}, not a manifest id"
-        assert set(mapping.values()) == manifest_ids, "the installer must offer every manifest component"
+        # 1016: the installer now copies the app without optional selection/fetch.
+        assert "[Components]" not in iss and "[Types]" not in iss
 
     def test_component_ids_are_inno_identifiers_and_manifest_ids_are_manifest_ids(self, iss):
-        for name, cid in _manifest_mapping(iss).items():
-            assert re.fullmatch(r"[a-z][a-z0-9_]*", name)
-            assert re.fullmatch(r"[a-z0-9][a-z0-9-]*", cid)
+        # 1016: the installer now copies the app without optional selection/fetch.
+        assert "ManifestId" not in _section(iss, "Code")
 
     def test_core_is_fixed_and_in_every_type(self, iss):
-        comp = _section(iss, "Components")
-        core = [l for l in comp.splitlines() if l.startswith('Name: "core"')][0]
-        assert "Flags: fixed" in core and "Types: full minimal custom" in core
+        # 1016: the installer now copies the app without optional selection/fetch.
+        assert "Components:" not in _section(iss, "Files")
 
     def test_defaults_give_a_working_install_on_enter(self, iss):
-        comp = _section(iss, "Components")
-        wake = [l for l in comp.splitlines() if 'Name: "wake_word_models"' in l][0]
-        assert "Types: full custom" in wake, "wake-word models preselected"
-        cmd = [l for l in comp.splitlines() if 'Name: "command_model"' in l][0]
-        assert "Types:" not in cmd, "the command model is never preselected"
-        gesture = [l for l in comp.splitlines() if 'Name: "gesture_control"' in l][0]
-        assert "Types:" not in gesture, "gesture control is never preselected"
-        assert "Name: \"full\"" in _section(iss, "Types") and "Flags: iscustom" in _section(iss, "Types")
+        # 1016: the installer now copies the app without optional selection/fetch.
+        assert "Source:" in _section(iss, "Files")
+        assert "[Components]" not in iss
 
     def test_sizes_come_from_the_manifest_defines(self, iss):
-        assert '#include "manifest_defines.iss"' in iss and '#ifexist "manifest_defines.iss"' in iss
-        comp = _section(iss, "Components")
-        for define in ("WakeWordModelsSize", "CudaPackSize", "CommandModelSize", "GestureControlSize"):
-            assert f"ExtraDiskSpaceRequired: {{#{define}}}" in comp
-        assert "ShowComponentSizes=yes" in _section(iss, "Setup")
+        # 1016: the installer now copies the app without optional selection/fetch.
+        assert "ExtraDiskSpaceRequired" not in iss
+        assert "ShowComponentSizes" not in _section(iss, "Setup")
 
 
 class TestGpuAndComingSoon:
     def test_gpu_component_is_disabled_with_reason_never_hidden(self, iss):
-        # 1005: unsupported CUDA is filtered before types and disk sizes are built.
-        code = _section(iss, "Code")
-        assert "cuda_pack" in _component_names(iss)
-        assert "No NVIDIA GPU detected" in code
-        assert "ItemEnabled[Idx] := False" in code
-        # 994: unpublished packs are hidden; hardware reasons remain for published packs.
-        assert '#if CudaPackAvailable != 0' in _section(iss, "Components")
-        cuda = next(l for l in _section(iss, "Components").splitlines() if 'Name: "cuda_pack"' in l)
-        assert 'Check: CanUseCuda' in cuda
-        # detection failure keeps it selectable with a neutral note
-        assert "Could not detect a GPU" in code
-        assert "Result := -1" in code and "except" in code
-        # both detection routes exist
-        assert "nvcuda.dll" in code and "Win32_VideoController" in code
+        # 1016: the installer now copies the app without optional selection/fetch.
+        assert "cuda_pack" not in iss
+        assert "ComponentsList" not in _section(iss, "Code")
 
     def test_gpu_component_is_not_in_the_full_type_when_detection_says_no(self, iss):
-        code = _section(iss, "Code")
-        # 1005: filtering prevents Full and unattended selection from rechecking CUDA.
-        assert "Result := GpuDetected <> 0;" in code and "Check: CanUseCuda" in iss
+        # 1016: the installer now copies the app without optional selection/fetch.
+        assert "[Types]" not in iss and "CanUseCuda" not in iss
 
     def test_command_model_follows_the_manifest_available_flag(self, iss):
-        assert "#ifndef CommandModelAvailable" in iss and "#define CommandModelAvailable 0" in iss
-        code = _section(iss, "Code")
-        # 994: availability now controls the row itself instead of a disabled placeholder.
-        assert "#if CommandModelAvailable != 0" in _section(iss, "Components")
-        assert "Coming soon" not in code
+        # 1016: the installer now copies the app without optional selection/fetch.
+        assert "command_model" not in iss and "CommandModelAvailable" not in iss
 
     def test_build_cmd_generates_the_availability_define_from_the_manifest(self):
         cmd = CMD.read_text(encoding="utf-8")
@@ -149,19 +116,14 @@ class TestInstallBehaviour:
         assert "DefaultDirName={autopf}" in setup
 
     def test_fetch_is_the_apps_headless_mode_and_never_fails_the_install(self, iss):
-        code = _section(iss, "Code")
-        assert "--fetch-components" in code and "--manifest" in code and "--progress-window" in code
-        assert "--components-dir" in code and "{param:ComponentsDir|}" in code
-        assert "{param:NoFetch|0}" in code
-        assert "ewWaitUntilTerminated" in code
-        # exit codes shape the Finished page: cancelled (5) and no network (4)
-        assert "FetchOutcome = 5" in code and "FetchOutcome = 4" in code
-        assert "cancelled" in code.lower() and "no network" in code.lower()
-        assert "Samsara itself is installed and works" in code
+        # 1016: the installer now copies the app without optional selection/fetch.
+        assert "--fetch-components" not in _section(iss, "Code")
+        assert "Optional components can be added any time from Settings." in iss
 
     def test_no_big_component_is_bundled(self, iss):
+        # 1016: the installer now copies the app without optional selection/fetch.
         files = _section(iss, "Files")
-        assert files.count("Source:") == 1 and "Components: core" in files
+        assert files.count("Source:") == 1 and "Components:" not in files
 
     def test_version_and_output_name(self, iss):
         assert "#ifndef AppVersion" in iss and "#error AppVersion is required" in iss

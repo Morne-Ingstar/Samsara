@@ -575,8 +575,8 @@ _FIRST_RUN_NETWORK_COPY = (
 
 class ComponentsPage:
     """The wizard's optional-components page, built on a QWidget the caller
-    owns. Rows: name, size, what it enables, a "Get <name>" button (or a
-    visible reason when it cannot be fetched), a progress bar and a
+    owns. Rows: name, size, what it enables, a "Get <name>" button or an
+    Installed status. Unusable downloads have no row. A progress bar and a
     "Cancel <name>" button while fetching. One "Later" button advances.
 
     Accessibility: every button is at least 44 px tall with its visible
@@ -720,7 +720,7 @@ class ComponentsPage:
         return list(getattr(self, "_listed", []))
 
     def _rebuild(self):
-        from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QPushButton, QVBoxLayout, QWidget  # noqa: PLC0415
+        from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QPushButton, QSizePolicy, QVBoxLayout, QWidget  # noqa: PLC0415
 
         from samsara.ui import theme  # noqa: PLC0415
 
@@ -737,12 +737,19 @@ class ComponentsPage:
         gpu = None
         self._listed = (
             [c for c in self._manifest["components"]
-             if c.get("available") and _optional_component(c)]
+             if _optional_component(c) and (c.get("available")
+                 or component_installed(c, self._app_root, self._downloads))]
             if self._include_installed else
             missing_components(self._manifest, self._app_root, self._downloads)
         )
         if any("nvidia_gpu" in c.get("requires", []) for c in self._listed):
             gpu = self._gpu_probe()
+        # 1016: bundled wake models have no add/remove action; hide them here.
+        # Keep installed legacy add-ons visible, hide unusable downloads.
+        self._listed = [c for c in self._listed
+                        if c["id"] != "wake-word-models" and (
+                            component_installed(c, self._app_root, self._downloads)
+                            or component_note(c, gpu) != NO_NVIDIA)]
         if not self._listed:
             self._status.setText("Everything is installed.")
             return
@@ -762,16 +769,18 @@ class ComponentsPage:
             benefit.setWordWrap(True)
             benefit.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
             cl.addWidget(benefit)
-            note = component_note(component, gpu)
             installed = component_installed(component, self._app_root, self._downloads)
+            note = None if installed else component_note(component, gpu)
             row = QHBoxLayout()
             row.setSpacing(12)
             get_btn = QPushButton(f"Get {component['name']}")
             get_btn.setAccessibleName(get_btn.text())
             get_btn.setMinimumHeight(MIN_TARGET)
             get_btn.setMinimumWidth(MIN_TARGET)
-            theme.make_primary(get_btn)
+            # 1016: Settings paints a neutral row face; keep its text readable.
+            theme.make_secondary(get_btn)
             get_btn.clicked.connect(lambda _=False, c=component: self.start_fetch(c["id"]))
+            get_btn.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
             row.addWidget(get_btn)
             cancel_btn = QPushButton(f"Cancel {component['name']}")
             cancel_btn.setAccessibleName(cancel_btn.text())
@@ -800,17 +809,21 @@ class ComponentsPage:
             result.setAccessibleName(f"{component['name']} result")
             result.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_MIN}px;")
             cl.addWidget(result)
+            status = None
             if components.pending_component(self._app_root, component).exists():
-                get_btn.setText("Restart needed")  # Stand-in owner wording (612).
-                get_btn.setAccessibleName(get_btn.text())
-                get_btn.setEnabled(False)
+                status = "Restart needed"
                 result.setText(components.pending_install_message(self._app_root, component))
             elif installed:
-                get_btn.setText("Installed")
-                get_btn.setEnabled(False)
-                result.setText("Installed.")
-            elif note == COMING_SOON or note == NO_NVIDIA:
-                get_btn.setEnabled(False)
+                status = "Installed"
+            if status:
+                label = QLabel(status)
+                label.setAccessibleName(f"{component['name']}: {status}")
+                label.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;")
+                label.setMinimumHeight(MIN_TARGET)
+                row.replaceWidget(get_btn, label)
+                get_btn.hide()
+                get_btn.deleteLater()
+                get_btn = label
             self._rows_layout.addWidget(card)
             self._rows[component["id"]] = {
                 "component": component, "get": get_btn, "cancel": cancel_btn,
@@ -833,6 +846,8 @@ class ComponentsPage:
     def start_fetch(self, component_id: str):
         row = self._rows.get(component_id)
         if row is None:
+            return
+        if not hasattr(row["get"], "clicked") or not row["get"].isEnabled():
             return
         component = row["component"]
         flag = threading.Event()
@@ -945,13 +960,21 @@ class ComponentsPage:
         row["cancel"].setVisible(False)
         row["bar"].setVisible(False)
         row["result"].setText(message)
-        row["get"].setEnabled(retry)
-        if restart:
-            row["get"].setText("Restart needed")  # Stand-in owner wording (612).
-            row["get"].setAccessibleName(row["get"].text())
-        elif not retry:
-            row["get"].setText(f"Installed {row['component']['name']}")
-            row["get"].setAccessibleName(row["get"].text())
+        if retry:
+            row["get"].setEnabled(True)
+            return
+        # 1016: replace only this action; other in-flight rows keep their callbacks.
+        from PySide6.QtWidgets import QLabel  # noqa: PLC0415
+        from samsara.ui import theme  # noqa: PLC0415
+        button = row["get"]
+        label = QLabel("Restart needed" if restart else "Installed", button.parentWidget())
+        label.setAccessibleName(f"{row['component']['name']}: {label.text()}")
+        label.setMinimumHeight(MIN_TARGET)
+        label.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.TYPE_BODY}px;")
+        button.parentWidget().layout().replaceWidget(button, label)
+        button.hide()
+        button.deleteLater()
+        row["get"] = label
 
     def _post(self, fn):
         """Run fn on the Qt thread (the fetch runs on a worker)."""

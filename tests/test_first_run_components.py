@@ -257,6 +257,11 @@ class TestNotes:
 def page(qapp, world):
     from PySide6.QtWidgets import QWidget
 
+    # 1016: exercise downloads with an addable pack, not bundled wake models.
+    gesture = _zip_bytes({"cv2/runtime.dll": b"g" * 6000})
+    world["manifest"]["components"].append(_component(
+        "gesture-control", "Gesture control", gesture, kind="feature", install_dir="_internal"))
+    world["blobs"]["gesture-control.zip"] = gesture
     host = QWidget()
     later = []
     p = fq.ComponentsPage(host, on_later=lambda: later.append(True),
@@ -292,11 +297,13 @@ class TestComponentsPage:
         p, _, _ = page
         listed = p.refresh()
         # 994: unavailable assets have no row.
-        assert [c["id"] for c in listed] == ["cuda-pack", "wake-word-models"]
+        # 1016: unsupported CUDA has no row.
+        assert [c["id"] for c in listed] == ["gesture-control"]
         # install one by hand (marker + files) and it drops off the list
-        fq.install_component(io.BytesIO(world["blobs"]["wake-word-models.zip"]),
-                             world["manifest"]["components"][1], world["app_root"], world["downloads"])
-        assert [c["id"] for c in p.refresh()] == ["cuda-pack"]
+        fq.install_component(io.BytesIO(world["blobs"]["gesture-control.zip"]),
+                             world["manifest"]["components"][-1], world["app_root"], world["downloads"])
+        # 1016: both remaining rows are now omitted.
+        assert p.refresh() == []
 
     def test_rows_show_size_benefit_and_reasons(self, page):
         from PySide6.QtWidgets import QLabel
@@ -304,34 +311,37 @@ class TestComponentsPage:
         p, _, host = page
         p.refresh()
         texts = [w.text() for w in host.findChildren(QLabel)]
-        assert any("Wake-word models" in t and "KB" in t for t in texts)
-        assert fq.COMPONENT_BENEFITS["wake-word-models"] in texts
-        assert p._rows["cuda-pack"]["note"].text() == fq.NO_NVIDIA and not p._rows["cuda-pack"]["get"].isEnabled()
+        assert any("Gesture control" in t and "KB" in t for t in texts)
+        assert fq.COMPONENT_BENEFITS["gesture-control"] in texts
+        # 1016: omit the unusable entry entirely.
+        assert "cuda-pack" not in p._rows
         # 994: no disabled Coming soon placeholder.
         assert "command-model" not in p._rows
-        assert p._rows["wake-word-models"]["get"].isEnabled()
+        assert p._rows["gesture-control"]["get"].isEnabled()
+        assert "wake-word-models" not in p._rows  # 1016: always bundled.
 
     def test_get_now_fetches_and_installs_and_later_advances(self, page, world, qapp):
         p, later, _ = page
         p.refresh()
-        p._rows["wake-word-models"]["get"].click()
+        p._rows["gesture-control"]["get"].click()
         qapp.processEvents()
-        assert (world["app_root"] / "models" / "a.onnx").exists()
-        assert p._rows["wake-word-models"]["result"].text() == "Installed."
-        assert p._rows["wake-word-models"]["get"].text() == "Installed Wake-word models"
+        assert (world["app_root"] / "_internal" / "cv2" / "runtime.dll").exists()
+        # 1016: installed status is a readable label, not a disabled button.
+        assert p._rows["gesture-control"]["result"].text() == "Installed."
+        assert p._rows["gesture-control"]["get"].text() == "Installed"
         p._later_btn.click()
         assert later == [True]
 
     def test_cancel_button_stops_the_fetch_and_keeps_core(self, page, world, qapp):
         p, _, _ = page
         p.refresh()
-        row = p._rows["wake-word-models"]
+        row = p._rows["gesture-control"]
         # cancel as soon as the first progress report arrives
         original = fq.fetch_and_install
 
         def fetch_then_cancel(component, app_root, downloads_dir, *, progress=None, cancel=None, opener=None):
             def _progress(done, total):
-                p.cancel_fetch("wake-word-models")
+                p.cancel_fetch("gesture-control")
                 if progress:
                     progress(done, total)
             return original(component, app_root, downloads_dir, progress=_progress, cancel=cancel, opener=opener)
@@ -344,7 +354,7 @@ class TestComponentsPage:
             fq.fetch_and_install = original
         assert row["result"].text().startswith("Cancelled")
         assert row["get"].isEnabled(), "can try again"
-        assert not (world["app_root"] / "models").exists()
+        assert not (world["app_root"] / "_internal").exists()
 
     def test_accessibility_targets_and_names(self, page):
         from PySide6.QtWidgets import QAbstractButton

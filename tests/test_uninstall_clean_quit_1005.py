@@ -126,13 +126,9 @@ def test_silent_uninstall_with_unsent_words_does_not_open_draft_dialog(monkeypat
 
 
 def test_cuda_hardware_filter_precedes_types_sizes_and_unattended_selection():
-    row = next(line for line in ISS.splitlines() if line.startswith('Name: "cuda_pack"'))
-    assert 'Check: CanUseCuda' in row and 'ExtraDiskSpaceRequired:' in row
-    check = section('function CanUseCuda()', 'procedure InitializeWizard()')
-    assert 'if not GpuChecked then begin' in check
-    assert 'GpuDetected := DetectNvidia();' in check
-    assert 'GpuChecked := True;' in check
-    assert 'Result := GpuDetected <> 0;' in check
+    # 1016: no installer types or optional packs, including unattended installs.
+    assert '[Components]' not in ISS and '[Types]' not in ISS
+    assert 'ExtraDiskSpaceRequired:' not in ISS and '--fetch-components' not in ISS
 
 
 def test_silent_uninstall_uses_same_quit_wait_and_identity_checks_without_forms():
@@ -153,5 +149,6 @@ def test_confirmation_foreground_and_finish_text_layout():
     foreground = section('function InitializeUninstall()', '{ 994: never target')
     assert 'if not UninstallSilent() then BringToFrontAndRestore();' in foreground
     finish = section('if CurPageID = wpFinished then begin', 'function InitializeUninstall()')
-    assert finish.index('FinishedLabel.Caption := Msg;') < finish.index('FinishedLabel.AdjustHeight();')
+    # 1016: the single Finish message is assigned directly, before measuring it.
+    assert finish.index('FinishedLabel.Caption :=') < finish.index('FinishedLabel.AdjustHeight();')
     assert 'WizardForm.RunList.Top := WizardForm.FinishedLabel.Top +' in finish

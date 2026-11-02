@@ -323,7 +323,7 @@ def test_headless_restart_is_a_clear_result_without_raw_exception(tmp_path, monk
 
 @pytest.mark.parametrize("restart", [True, False], ids=["restart", "generic-failure"])
 def test_component_page_shows_clear_status_and_survives_refresh(qapp, tmp_path, monkeypatch, restart, addon):
-    from PySide6.QtWidgets import QVBoxLayout, QWidget
+    from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
     from samsara.ui import theme
 
     spec, relative = addon
@@ -343,17 +343,26 @@ def test_component_page_shows_clear_status_and_survives_refresh(qapp, tmp_path, 
             raise PermissionError(5, "Access is denied: synthetic/PIL/_imaging.pyd")
         monkeypatch.setattr(fq, "fetch_and_install", fail)
     page.refresh()
+    if comp["id"] == "wake-word-models":
+        # 1016: bundled models are hidden; backend install tests above remain.
+        assert page.listed == [] and page._rows == {}
+        host.close()
+        assert_no_install_temp(app)
+        return
     page.start_fetch(comp["id"])
     row = page._rows[comp["id"]]
     assert row["result"].text() == (c.RESTART_INSTALL_MESSAGE if restart else c.INSTALL_FAILED_MESSAGE)
-    assert row["get"].isEnabled() != restart
+    # 1016: pending installs use readable status labels, failures retain Retry.
+    assert isinstance(row["get"], QLabel) == restart
+    assert row["get"].isEnabled()
     assert not row["cancel"].isVisible() and not row["bar"].isVisible()
     if restart:
         assert row["get"].text() == "Restart needed"
         page.refresh()
         row = page._rows[comp["id"]]
         assert row["result"].text() == c.RESTART_INSTALL_MESSAGE
-        assert not row["get"].isEnabled()
+        # 1016: status is a label, rather than a disabled action.
+        assert isinstance(row["get"], QLabel) and row["get"].isEnabled()
         host.resize(780, 560)
         host.show()
         qapp.processEvents()

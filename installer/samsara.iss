@@ -1,32 +1,21 @@
 ; Samsara installer -- Inno Setup 6 (34).
 ;
-; Installs the CORE app only, per user by default (no admin), and offers
-; the optional components from the release manifest on a Components page.
-; The big components are NOT bundled: after the files are copied the
-; installer runs the app's own fetcher (Samsara.exe --fetch-components ...,
-; samsara/ui/first_run_qt.py) for the selected ids, which downloads with
-; SHA-256 verification, resumes, and can be cancelled. Cancelling, or having
-; no network, leaves a working core install; the Finished page says so.
-; Anything skipped here stays available in the first-run wizard and in
-; Settings forever.
+; Installs the app and its bundled runtime files, including wake-word models.
+; Optional packs are available later from Settings > Advanced > Components.
+; No component selection or downloads run during installation (1016).
+; Existing add-on files are preserved on upgrade.
 ;
 ; Build: tools\build_installer.cmd (reads the version from
-; samsara\__init__.py and the component sizes from manifest.json, writes
-; installer\manifest_defines.iss, runs ISCC). Compile-time defines:
+; samsara\__init__.py, runs ISCC). Compile-time defines:
 ;   AppVersion   e.g. 0.23.0-beta.1   (required)
 ;   DistDir      the PyInstaller output folder (default ..\dist\Samsara)
 ;   OutputDir    where SamsaraSetup-<version>.exe goes (default ..\dist)
-;   ManifestUrl  the release manifest URL (default: the tag's asset)
 ;
-; Command-line switches the installer accepts (besides Inno's own):
-;   /ComponentsDir="D:\folder"   fetch components from a local folder of the
-;                                release ZIPs instead of the network
-;   /NoFetch                     skip the post-install fetch entirely
 ; Uninstaller only: /WIPEDATA explicitly removes Samsara's user data and
 ; Systran faster-whisper downloads, including during silent uninstall.
 ;
 ; Accessibility: Inno Setup's wizard is fully keyboard-driven (Tab/Shift+Tab
-; through every control, Space toggles a component, Alt+N / Alt+B for
+; through every control, Alt+N / Alt+B for
 ; Next / Back, Enter for the default button) and has no hover-only
 ; controls; the wizard is per-monitor DPI aware, so at 150% Windows
 ; scaling every page, list and button scales with the text.
@@ -40,41 +29,6 @@
 #ifndef OutputDir
   #define OutputDir "..\dist"
 #endif
-#ifndef ManifestUrl
-  #define ManifestUrl "https://github.com/Morne-Ingstar/Samsara/releases/download/addons/manifest-" + AppVersion + ".json"
-#endif
-
-; Component sizes and availability, generated from manifest.json by
-; tools\build_installer.cmd. Without the file every size is unknown (0)
-; and optional packs are hidden until their availability is known.
-#ifexist "manifest_defines.iss"
-  #include "manifest_defines.iss"
-#endif
-#ifndef CudaPackSize
-  #define CudaPackSize 0
-#endif
-#ifndef WakeWordModelsSize
-  #define WakeWordModelsSize 0
-#endif
-#ifndef CommandModelSize
-  #define CommandModelSize 0
-#endif
-#ifndef GestureControlSize
-  #define GestureControlSize 0
-#endif
-#ifndef CommandModelAvailable
-  #define CommandModelAvailable 0
-#endif
-#ifndef CudaPackAvailable
-  #define CudaPackAvailable 0
-#endif
-#ifndef WakeWordModelsAvailable
-  #define WakeWordModelsAvailable 0
-#endif
-#ifndef GestureControlAvailable
-  #define GestureControlAvailable 0
-#endif
-
 #define AppName "Samsara"
 #define AppPublisher "Samsara"
 #define AppURL "https://github.com/Morne-Ingstar/Samsara"
@@ -116,7 +70,6 @@ WizardSizePercent=120
 UninstallDisplayIcon={app}\{#AppExeName}
 LicenseFile=..\LICENSE
 SetupLogging=yes
-ShowComponentSizes=yes
 AppMutex=Local\Samsara.SingleInstance
 CloseApplications=yes
 RestartApplications=no
@@ -129,36 +82,8 @@ SignedUninstaller=yes
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
-[Types]
-Name: "full";    Description: "Full (everything your machine can use)"
-Name: "minimal"; Description: "Core application only"
-Name: "custom";  Description: "Custom"; Flags: iscustom
-
-; Component names must be Inno identifiers (no hyphens); ManifestId() in
-; [Code] maps each to its manifest id, and tests/test_installer_script.py
-; asserts every mapped id exists in the manifest. Sizes come from the
-; manifest (ExtraDiskSpaceRequired shows them on the page). Every default
-; is chosen so that pressing Enter through the wizard gives a working
-; install: core is fixed; wake-word models are preselected; the CUDA pack
-; is preselected only when an NVIDIA GPU is detected (see [Code]); the
-; unpublished packs are omitted until the manifest says they are available.
-[Components]
-Name: "core";             Description: "Samsara (required)";                                  Types: full minimal custom; Flags: fixed
-#if WakeWordModelsAvailable != 0
-Name: "wake_word_models"; Description: "Hands-free: wake-word models";                        Types: full custom; ExtraDiskSpaceRequired: {#WakeWordModelsSize}
-#endif
-#if CudaPackAvailable != 0
-Name: "cuda_pack";        Description: "GPU acceleration: NVIDIA CUDA pack";                  Types: full; ExtraDiskSpaceRequired: {#CudaPackSize}; Check: CanUseCuda
-#endif
-#if CommandModelAvailable != 0
-Name: "command_model";    Description: "Command model for the hands-free command lane";       ExtraDiskSpaceRequired: {#CommandModelSize}
-#endif
-#if GestureControlAvailable != 0
-Name: "gesture_control";  Description: "Gesture control: webcam hand poses";                  ExtraDiskSpaceRequired: {#GestureControlSize}
-#endif
-
 [Files]
-Source: "{#DistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: core
+Source: "{#DistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#AppName}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\{#AppExeName}"; AppUserModelID: "MorneIngstar.Samsara"; Tasks: startmenushortcut
@@ -170,125 +95,18 @@ Name: "startmenushortcut"; Description: "Create a Start Menu shortcut"; GroupDes
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Run]
-; The component fetch itself runs from [Code] (CurStepChanged) so its exit
-; code can shape the Finished page; this entry only offers to start the app.
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [Code]
 var
-  GpuDetected: Integer;        { 1 = NVIDIA present, 0 = none, -1 = detection failed }
-  GpuChecked: Boolean;
-  FetchOutcome: Integer;       { -1 = not run, else the fetcher's exit code }
-  FetchRequested: String;
   UninstallCloseCancelled: Boolean;
   UninstallWipeData: Boolean;
 
-{ Inno component name -> manifest component id (docs/RELEASE_MANIFEST.md). }
-function ManifestId(const Name: String): String;
-begin
-  Result := '';
-  if Name = 'core' then Result := 'core';
-  if Name = 'cuda_pack' then Result := 'cuda-pack';
-  if Name = 'wake_word_models' then Result := 'wake-word-models';
-  if Name = 'command_model' then Result := 'command-model';
-  if Name = 'gesture_control' then Result := 'gesture-control';
-end;
-
-function ComponentIndex(const Name: String): Integer;
-var
-  I: Integer;
-begin
-  Result := -1;
-  for I := 0 to WizardForm.ComponentsList.Items.Count - 1 do
-    if CompareText(WizardForm.ComponentsList.ItemSubItem[I], Name) = 0 then
-      Result := I;
-end;
-
-{ NVIDIA present? nvcuda.dll ships with the NVIDIA driver; when that check
-  cannot run, a WMI video-controller query is the second opinion. Any
-  exception means "could not detect", never "no GPU". }
-function DetectNvidia(): Integer;
-var
-  Locator, Service, Items, Item: Variant;
-  I: Integer;
-begin
-  Result := -1;
-  try
-    if FileExists(ExpandConstant('{sys}\nvcuda.dll')) then begin
-      Result := 1;
-      exit;
-    end;
-    Locator := CreateOleObject('WbemScripting.SWbemLocator');
-    Service := Locator.ConnectServer('.', 'root\cimv2');
-    Items := Service.ExecQuery('SELECT Name FROM Win32_VideoController');
-    Result := 0;
-    for I := 0 to Items.Count - 1 do begin
-      Item := Items.ItemIndex(I);
-      if Pos('NVIDIA', Uppercase(String(Item.Name))) > 0 then
-        Result := 1;
-    end;
-  except
-    Result := -1;
-  end;
-end;
-
-function CanUseCuda(): Boolean;
-begin
-  { 1005: filter BEFORE Inno builds the type selection and disk estimate,
-    including /TYPE=full and /COMPONENTS=cuda_pack unattended installs. }
-  if not GpuChecked then begin
-    GpuDetected := DetectNvidia();
-    GpuChecked := True;
-  end;
-  Result := GpuDetected <> 0;
-end;
-
-procedure InitializeWizard();
-begin
-  FetchOutcome := -1;
-  FetchRequested := '';
-end;
-
 procedure CurPageChanged(CurPageID: Integer);
-var
-  Idx: Integer;
-  Msg: String;
 begin
-  if CurPageID = wpSelectComponents then begin
-    { 1005: CanUseCuda omits the row when no NVIDIA device is present.
-      Detection failure keeps the existing manual selection available. }
-    Idx := ComponentIndex('cuda_pack');
-    if Idx >= 0 then begin
-      if GpuDetected = 0 then begin
-        WizardForm.ComponentsList.Checked[Idx] := False;
-        WizardForm.ComponentsList.ItemEnabled[Idx] := False;
-        WizardForm.ComponentsList.ItemCaption[Idx] := 'GPU acceleration: NVIDIA CUDA pack (No NVIDIA GPU detected)';
-      end else if GpuDetected = 1 then begin
-        WizardForm.ComponentsList.ItemEnabled[Idx] := True;
-        WizardForm.ComponentsList.ItemCaption[Idx] := 'GPU acceleration: NVIDIA CUDA pack (NVIDIA GPU detected)';
-        if WizardForm.TypesCombo.ItemIndex = 0 then
-          WizardForm.ComponentsList.Checked[Idx] := True;
-      end else begin
-        WizardForm.ComponentsList.ItemEnabled[Idx] := True;
-        WizardForm.ComponentsList.ItemCaption[Idx] := 'GPU acceleration: NVIDIA CUDA pack (Could not detect a GPU; choose it if you have an NVIDIA card)';
-      end;
-    end;
-  end;
-
   if CurPageID = wpFinished then begin
-    Msg := WizardForm.FinishedLabel.Caption;
-    if FetchRequested = '' then
-      Msg := Msg + #13#10#13#10 + 'Optional components can be added any time from Settings.'
-    else if FetchOutcome = 0 then
-      Msg := Msg + #13#10#13#10 + 'Optional components installed: ' + FetchRequested + '.'
-    else if FetchOutcome = 5 then
-      Msg := Msg + #13#10#13#10 + 'Component download cancelled. Samsara itself is installed and works; the components can be added later from Settings.'
-    else if FetchOutcome = 4 then
-      Msg := Msg + #13#10#13#10 + 'The components could not be downloaded (no network). Samsara itself is installed and works; the components can be added later from Settings, or installed from the release ZIPs (docs\INSTALL.md).'
-    else
-      Msg := Msg + #13#10#13#10 + 'Some components could not be installed (code ' + IntToStr(FetchOutcome) + '). Samsara itself is installed and works; try again later from Settings.';
-    WizardForm.FinishedLabel.Caption := Msg;
-    { 1005: the native label does not grow when its caption changes. }
+    WizardForm.FinishedLabel.Caption := WizardForm.FinishedLabel.Caption + #13#10#13#10 +
+      'Optional components can be added any time from Settings.';
     WizardForm.FinishedLabel.AdjustHeight();
     WizardForm.RunList.Top := WizardForm.FinishedLabel.Top +
       WizardForm.FinishedLabel.Height + ScaleY(16);
@@ -917,52 +735,5 @@ begin
         SuppressibleMsgBox(GetExceptionMessage(), mbError, MB_OK, IDOK);
       Abort;
     end;
-  end;
-end;
-
-{ The ids to fetch, in manifest form, from the checked components. }
-function SelectedComponentIds(): String;
-var
-  I: Integer;
-  Id: String;
-begin
-  Result := '';
-  for I := 0 to WizardForm.ComponentsList.Items.Count - 1 do begin
-    if WizardForm.ComponentsList.Checked[I] and WizardForm.ComponentsList.ItemEnabled[I] then begin
-      Id := ManifestId(WizardForm.ComponentsList.ItemSubItem[I]);
-      if (Id <> '') and (Id <> 'core') then begin
-        if Result <> '' then Result := Result + ',';
-        Result := Result + Id;
-      end;
-    end;
-  end;
-end;
-
-procedure CurStepChanged(CurStep: TSetupStep);
-var
-  Params, ComponentsDir, ManifestPath: String;
-  ResultCode: Integer;
-begin
-  if CurStep = ssPostInstall then begin
-    if ExpandConstant('{param:NoFetch|0}') <> '0' then exit;
-    FetchRequested := SelectedComponentIds();
-    if FetchRequested = '' then exit;
-    ManifestPath := ExpandConstant('{#ManifestUrl}');
-    ComponentsDir := ExpandConstant('{param:ComponentsDir|}');
-    if ComponentsDir <> '' then begin
-      if FileExists(AddBackslash(ComponentsDir) + 'manifest.json') then
-        ManifestPath := AddBackslash(ComponentsDir) + 'manifest.json';
-    end;
-    Params := '--fetch-components ' + FetchRequested + ' --manifest "' + ManifestPath + '" --progress-window';
-    if ComponentsDir <> '' then
-      Params := Params + ' --components-dir "' + ComponentsDir + '"';
-    Log('Fetching components: ' + Params);
-    { waits for the fetcher; its own window shows progress and a Cancel
-      button. A non-zero code never fails the install: core is complete. }
-    if not Exec(ExpandConstant('{app}\{#AppExeName}'), Params, ExpandConstant('{app}'),
-                SW_SHOW, ewWaitUntilTerminated, ResultCode) then
-      ResultCode := 6;
-    FetchOutcome := ResultCode;
-    Log('Component fetch exit code: ' + IntToStr(ResultCode));
   end;
 end;
