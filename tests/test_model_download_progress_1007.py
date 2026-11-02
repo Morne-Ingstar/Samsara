@@ -286,7 +286,9 @@ def test_home_progress_and_retry_button_restarts_once(qapp, monkeypatch, qt_widg
     app = _app(model_loaded=False, loading_model=False, _speech_model_phase='downloading',
                _speech_model_progress=transfer.Progress(72_000_000, 145_000_000, 52), load_model_async=Mock())
     with qt_widget_scope(_hub(qapp, monkeypatch, app=app)) as win:
-        assert '72.0 / 145.0 MB (49%)' in win._lbl_mode.text()
+        # 1014: detailed progress belongs in Home's banner; keep the bottom bar short.
+        assert '72.0 / 145.0 MB (49%)' in win._panel_cache['Home']._notice_text.text()
+        assert win._lbl_mode.text() == 'Downloading speech model'
         app._speech_model_phase = 'failed'
         win._refresh_status()
         assert win._badge.text() == 'Retry' and win._badge.isEnabled()

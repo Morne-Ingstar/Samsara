@@ -1,6 +1,6 @@
 """Quiet Home entry to the existing updater; never schedules a network check."""
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QWidget
+from PySide6.QtWidgets import QBoxLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QWidget
 from shiboken6 import isValid
 
 from samsara.ui import theme, update_qt
@@ -12,7 +12,7 @@ RELEASE_NOTE = "Samsara is newly released — expect frequent updates."
 
 
 class HomeUpdateLine(QWidget):
-    def __init__(self, app, parent=None):
+    def __init__(self, app, parent=None, notes_button=None):
         super().__init__(parent)
         self.setObjectName("homeUpdateLine")
         self._app = app
@@ -20,7 +20,7 @@ class HomeUpdateLine(QWidget):
         self._release = None
         self._channel = channel_token(app)
         self._seen_auto_release = None
-        row = QHBoxLayout(self)
+        row = QBoxLayout(QBoxLayout.Direction.LeftToRight, self)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(12)
         self.status = QLabel(RELEASE_NOTE)
@@ -29,6 +29,7 @@ class HomeUpdateLine(QWidget):
         self.status.setWordWrap(True)
         self.status.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.TYPE_BODY}px;")
         self.status.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.status.setMinimumWidth(0)
         self.button = QPushButton("Check for updates")
         self.button.setObjectName("homeCheckForUpdatesButton")
         self.button.setAccessibleName(self.button.text())
@@ -39,12 +40,27 @@ class HomeUpdateLine(QWidget):
         self.button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.button.clicked.connect(self._clicked)
         row.addWidget(self.status, 1)
-        row.addWidget(self.button, 0, Qt.AlignmentFlag.AlignLeft)
+        self.actions = QWidget(self)
+        actions = QHBoxLayout(self.actions)
+        actions.setContentsMargins(0, 0, 0, 0)
+        actions.setSpacing(12)
+        actions.addWidget(self.button)
+        self.notes_button = notes_button
+        if notes_button is not None:
+            actions.addWidget(notes_button)
+        row.addWidget(self.actions, 0, Qt.AlignmentFlag.AlignRight)
         # Observe already-completed checks only. This timer does no I/O.
         self._timer = QTimer(self)
         self._timer.setInterval(500)
         self._timer.timeout.connect(self.refresh)
+        self._set(RELEASE_NOTE)
         self.refresh()
+
+    def resizeEvent(self, event):
+        # 1014: preserve complete action targets; wrap the row in narrow hosts.
+        stacked = self.width() < self.actions.sizeHint().width() + self.status.minimumSizeHint().width() + 12
+        self.layout().setDirection(QBoxLayout.Direction.TopToBottom if stacked else QBoxLayout.Direction.LeftToRight)
+        super().resizeEvent(event)
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -60,6 +76,7 @@ class HomeUpdateLine(QWidget):
         self.button.setText(button)
         self.button.setAccessibleName(button)
         self.button.setEnabled(enabled)
+        self.button.setMinimumWidth(self.button.sizeHint().width())
 
     def _available(self, release):
         self._release = release
@@ -68,6 +85,8 @@ class HomeUpdateLine(QWidget):
         self._set(f"Version {release.version} is available.", action)
 
     def refresh(self):
+        if self.notes_button is not None:
+            self.notes_button.refresh()
         token = channel_token(self._app)
         tray = getattr(self._app, "tray_icon", None)
         automatic = getattr(tray, "_available_update", None)

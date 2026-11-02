@@ -381,7 +381,10 @@ class TestWhatsNewNote:
         version, sentence = home_qt.changelog_summary()
         assert version and sentence
         text = home_qt.CHANGELOG_PATH.read_text(encoding="utf-8")
-        assert sentence in text and version in text
+        # 1014: only the owner's corrected in-app summaries override source prose.
+        from samsara.ui.home_release_notes_qt import RELEASE_SUMMARIES
+        assert version in text
+        assert sentence == RELEASE_SUMMARIES[version] if version in RELEASE_SUMMARIES else sentence in text
 
     def test_unreleased_is_never_announced(self, tmp_path):
         path = tmp_path / "CHANGELOG.md"
@@ -410,12 +413,13 @@ class TestWhatsNewNote:
         monkeypatch.setattr(home_qt, "whats_new_note",
                             lambda seen, *a, **k: None if seen == "9.9.9" else ("9.9.9", "New."))
         home = page()
-        assert home._hint_card.isVisibleTo(home)
-        assert "New." in " ".join(home.visible_texts())
-        assert home._hint_hide_btn.text() == home_qt.DISMISS
-        home._hint_hide_btn.click()
+        # 1014: notes leave Home's card slot; opening the header button marks seen.
         assert not home._hint_card.isVisibleTo(home)
+        assert "New." not in " ".join(home.visible_texts())
+        home._whats_new_button.click()
         assert _FakeSettings.values.get(home_qt.WHATS_NEW_SEEN_KEY) == "9.9.9"
+        assert home._whats_new_button.dialog.findChild(home_qt.QLabel, "releaseSummary").text() == "New."
+        home._whats_new_button.dialog.close()
 
 
 # ---------------------------------------------------------------------------
@@ -1303,17 +1307,16 @@ for _ in range(40):
 home = win._panel_cache["Home"]
 # Measure Home while it is the CURRENT page: a hidden page keeps stale
 # geometry, which would make this gate lie.
-# The compact release actions have a separate 30-DIP contract (388).
-# Measure them while Home is current, including the shared clipping check.
-release_actions = (home._hint_action_btn, home._hint_hide_btn)
-assert home._whats_new == "9.9.9"
+# 1014: release notes are a header button; the suggestion slot stays hidden.
+release_actions = (home._whats_new_button,)
+assert home._whats_new is None and not home._hint_card.isVisibleTo(home)
 assert all(b.isVisibleTo(home) for b in release_actions)
 home_metrics = {
     "home_overflow": home_qt.overflowing_widgets(home),
     "content_w": home.content_widget.width(),
     "viewport_w": home._scroll.viewport().width(),
     "release_action_heights": [b.height() for b in release_actions],
-    "release_action_height": home_qt._px(30),
+    "release_action_height": 44,
     "buttons_under_44": [b.text() for b in home.findChildren(main_window_qt.QPushButton)
                          if b not in release_actions and b.isVisibleTo(home)
                          and (b.height() < 44 or b.width() < 44)],
@@ -1355,7 +1358,7 @@ def test_nothing_clips_at_windows_scaling_and_larger_text(tmp_path, scale_factor
     assert result["help_overflow"] == [], result
     assert result["content_w"] <= result["viewport_w"], result
     assert result["buttons_under_44"] == [], result
-    assert result["release_action_heights"] == [result["release_action_height"]] * 2, result
+    assert result["release_action_heights"] == [result["release_action_height"]], result
     if font_factor != "1":
         assert result["scale"] > 1.1
 
@@ -1687,7 +1690,9 @@ class TestTheSuggestionSpeaksPlainly:
         monkeypatch.setattr(home_qt, "whats_new_note", lambda *a, **k: ("9.9.9", "New."))
         home = page()
         home.refresh()
-        assert home._hint_sub.text() == "New."
+        # 1014: notes have no Home card or diagnostic controls.
+        assert not home._hint_card.isVisibleTo(home)
+        assert home._whats_new_button.isVisibleTo(home)
         assert not home._hint_details_btn.isVisibleTo(home)
 
 

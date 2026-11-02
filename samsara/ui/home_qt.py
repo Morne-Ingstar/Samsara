@@ -360,8 +360,8 @@ CREED_ASCII = "Free - Open source - Accessibility first"
 #: The conditional slot (89). It renders ONLY when it has something real to
 #: say, and collapses to ZERO height otherwise -- no padding, no placeholder,
 #: no manufactured tip. Priority: a DIAGNOSTIC hint (86's tier 1, which cites
-#: its evidence and never fires on a single occurrence), else a one-shot
-#: "what's new" note after the version changes, else nothing. Generic command
+#: its evidence and never fires on a single occurrence), else nothing.
+#: Release notes live behind the header button (1014). Generic command
 #: tips do NOT belong here: the status strip's marquee owns those.
 SUGGESTION_HEADING = {"diagnostic": "Suggestion", "whatsnew": "What's new"}
 DISMISS = "Dismiss"
@@ -415,6 +415,8 @@ def changelog_summary(path: Optional[Path] = None) -> tuple:
     if version is None or not paragraph:
         return version, None
     text = " ".join(paragraph)
+    from samsara.ui.home_release_notes_qt import RELEASE_SUMMARIES
+    text = RELEASE_SUMMARIES.get(version, text)
     sentence = re.split(r"(?<=[.!?])\s", text, maxsplit=1)[0].strip()
     return version, sentence or None
 
@@ -1735,7 +1737,9 @@ class HomePage(QWidget):
         col.setSpacing(8)  # 996: fit the update row without narrowing the card grid.
         col.addWidget(self._build_title())
         from samsara.ui.home_update_line_qt import HomeUpdateLine
-        col.addWidget(HomeUpdateLine(self._app, self._content))
+        from samsara.ui.home_release_notes_qt import WhatsNewButton
+        self._whats_new_button = WhatsNewButton(self)
+        col.addWidget(HomeUpdateLine(self._app, self._content, self._whats_new_button))
         col.addWidget(self._build_notice())
         col.addWidget(self._build_hint())
         col.addWidget(self._build_destinations())
@@ -1769,7 +1773,7 @@ class HomePage(QWidget):
         # 111: the Details disclosure sits in the chain where it sits on
         # screen -- after the slot's own action, before "Another suggestion"
         # -- so tabbing through the slot reaches it without a mouse.
-        chain = [self._notice_btn,
+        chain = [self._whats_new_button, self._notice_btn,
                  self._hint_action_btn, self._hint_details_btn,
                  self._hint_next_btn, self._hint_hide_btn,
                  *(w for c in self._cards for w in (c, *c.findChildren(QPushButton))), *self._guide_btns.values(),
@@ -1873,6 +1877,7 @@ class HomePage(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(12)
         heading = _section_label(WHERE_TO_GO)
+        self._destination_heading = heading
         heading.setStyleSheet(_label_css("section label", theme.ACCENT, 700))
         heading.setMinimumHeight(_px(22))
         lay.addWidget(heading)
@@ -2168,7 +2173,7 @@ class HomePage(QWidget):
     def _refresh_hint(self):
         """Fill the conditional slot, or collapse it to nothing.
 
-        Priority (89): a diagnostic hint, else the one-shot what's-new note,
+        Priority (1014): a diagnostic hint,
         else hidden -- and hidden means ZERO height, because a hidden widget
         takes neither a row nor the column's gap.
 
@@ -2176,6 +2181,7 @@ class HomePage(QWidget):
         sits open (82): the hub's poll keeps what the user is reading unless
         it stopped being eligible.
         """
+        self._whats_new_button.refresh()
         hints = self.eligible_diagnostics()
         hint = hints[self._hint_index % len(hints)] if hints else None
         if self._hint is not None and hint is not None and hint.id != self._hint.id:
@@ -2192,16 +2198,6 @@ class HomePage(QWidget):
                             more=len(hints) > 1,
                             details=hint.evidence)
             return
-        note = self._due_whats_new()
-        if note is not None:
-            version, sentence = note
-            self._whats_new = version
-            self._show_slot(SUGGESTION_HEADING["whatsnew"],
-                            f"Samsara {version}", sentence, CHANGELOG_LINK, more=False,
-                            hide_label=DISMISS)
-            self._hint_action_btn.setAccessibleDescription(CHANGELOG_URL)
-            # A release note has no working to show.
-            return
         self._whats_new = None
         self._hint_card.setVisible(False)
 
@@ -2212,30 +2208,27 @@ class HomePage(QWidget):
     def _show_slot(self, heading: str, text: str, subtext: str, action_label: str,
                    *, more: bool, hide_label: str = HIDE_SUGGESTION,
                    details: str = ""):
-        """Show a release band or a diagnostic; collapse Details on every change."""
+        """Show a diagnostic; collapse Details on every change."""
         self._hint_heading.setText(heading.upper())
         self._hint_card.setAccessibleName(heading)
-        release = self._whats_new is not None
-        self._hint_text.setStyleSheet(_label_css("section label" if release else "card title", theme.TEXT_SECONDARY if release else theme.TEXT_PRIMARY, 400) + (" font-style: italic;" if release else ""))
+        self._hint_text.setStyleSheet(_label_css("card title", theme.TEXT_PRIMARY, 400))
         self._hint_text.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         layout, actions = self._hint_card.layout(), self._hint_action_btn.parentWidget()
-        layout.setContentsMargins(GRID, _px(4 if release else 6), GRID, _px(4 if release else 6))
-        layout.setSpacing(0 if release else _px(6))
+        layout.setContentsMargins(GRID, _px(6), GRID, _px(6))
+        layout.setSpacing(_px(6))
         for widget in (self._hint_heading, self._hint_text, self._hint_sub, self._hint_evidence, actions):
             layout.removeWidget(widget)
-        layout.addWidget(self._hint_heading, 0, 0, 1, 1 if release else 2)
-        layout.addWidget(self._hint_text, 1, 0, 1, 1 if release else 2)
-        layout.addWidget(self._hint_sub, 2, 0, 1, 1 if release else 2)
+        layout.addWidget(self._hint_heading, 0, 0, 1, 2)
+        layout.addWidget(self._hint_text, 1, 0, 1, 2)
+        layout.addWidget(self._hint_sub, 2, 0, 1, 2)
         layout.addWidget(self._hint_evidence, 3, 0, 1, 2)
-        layout.addWidget(actions, 0 if release else 4, 1 if release else 0, 3 if release else 1, 1 if release else 2, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(actions, 4, 0, 1, 2, Qt.AlignmentFlag.AlignVCenter)
         layout.setColumnStretch(0, 1)
         for btn in (self._hint_action_btn, self._hint_hide_btn):
-            btn.setProperty("primary", btn is self._hint_action_btn and not release)
-            btn.setMinimumHeight(_px(30) if release else MIN_TARGET)
-            btn.setMaximumHeight(_px(30) if release else 16777215)
+            btn.setProperty("primary", btn is self._hint_action_btn)
+            btn.setMinimumHeight(MIN_TARGET)
+            btn.setMaximumHeight(16777215)
             btn.setStyleSheet(btn.property("diagnosticStyle"))
-            if release:
-                btn.setStyleSheet(self._hint_hide_btn.property("diagnosticStyle").replace(f"padding: {_px(8)}px {_px(14)}px", f"padding: 2px {_px(8)}px").replace(f"font-size: {_px(TYPE['button'])}px", f"font-size: {_px(theme.TYPE_MIN)}px"))
         self._hint_text.setText(text)
         self._hint_sub.setText(subtext)
         self._hint_sub.setVisible(bool(subtext))
@@ -2249,10 +2242,6 @@ class HomePage(QWidget):
         self._hint_next_btn.setVisible(more)
         self._hint_hide_btn.setText(hide_label)
         self._hint_hide_btn.setAccessibleName(hide_label)
-        actions.setMinimumWidth(sum(b.sizeHint().width() for b in (self._hint_action_btn, self._hint_hide_btn)) + _px(8) if release else 0)
-        actions.setMaximumWidth(actions.minimumWidth() if release else 16777215)
-        actions.setMinimumHeight(_px(30) if release else 0)
-        actions.setMaximumHeight(_px(30) if release else 16777215)
         self._hint_card.setVisible(True); self._relayout()
 
     def _on_toggle_details(self, checked: bool):
@@ -2272,8 +2261,6 @@ class HomePage(QWidget):
 
     def _on_hint_action(self):
         if self._hint is None:
-            if self._whats_new:
-                open_url(CHANGELOG_URL)
             return
         self._route(self._hint.action, self._hint.arg)
 
@@ -2284,15 +2271,11 @@ class HomePage(QWidget):
 
     def _on_hide_hint(self):
         """Durable: a dismissed suggestion does not come back, in this
-        session or the next one. Dismissing the what's-new note records the
-        version, so it is shown once per version and never again."""
+        session or the next one."""
         if self._hint is not None:
             self._dismissed.add(self._hint.id)
             self._save_dismissed()
             self._hint = None
-        elif self._whats_new:
-            self._settings.setValue(WHATS_NEW_SEEN_KEY, self._whats_new)
-            self._whats_new = None
         else:
             return
         self._refresh_hint()
@@ -2334,9 +2317,9 @@ class HomePage(QWidget):
         self._content.setFixedWidth(avail)
         from samsara.ui.home_notice_qt import layout_problem_notice
         layout_problem_notice(self._notice_card, self._notice_text, self._notice_btn, avail, GRID)
-        actions, grid = self._hint_action_btn.parentWidget(), self._hint_card.layout(); stacked = bool(self._whats_new and avail < self._hint_heading.minimumSizeHint().width() + self._hint_action_btn.parentWidget().minimumWidth() + 3 * GRID)
-        if self._whats_new and (grid.getItemPosition(grid.indexOf(actions))[1] == 0) != stacked: grid.removeWidget(actions); grid.addWidget(actions, 3 if stacked else 0, 0 if stacked else 1, 1 if stacked else 3, 1, Qt.AlignmentFlag.AlignVCenter)
         self._relayout_cards(avail); self._relayout_identity(avail)
+        from samsara.ui.home_compact_layout_qt import apply_compact_layout
+        apply_compact_layout(self, avail)
         if hasattr(self, '_footer'):
             self._footer.setFixedWidth(avail)
             footer_height = self._footer.heightForWidth(avail)
@@ -2353,7 +2336,7 @@ class HomePage(QWidget):
             self._footer.setFixedHeight(footer_height)
             self._footer_host.setVisible(not in_scroll)
             self._footer_host.setFixedHeight(footer_height + 12)
-            self._scroll.widget().layout().setContentsMargins(28, 24, 28, 12)
+            self._scroll.widget().layout().setContentsMargins(28, 12 if self._compact_layout else 24, 28, 12)
 
     def resizeEvent(self, e):
         super().resizeEvent(e)

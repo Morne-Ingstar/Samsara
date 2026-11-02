@@ -753,6 +753,8 @@ class _MainWindow(QMainWindow):
         if len(mic_name) > 36:
             mic_name = mic_name[:35] + '...'
         primary, wake, ava = talk_instructions(self._app)
+        if getattr(self._app, '_speech_model_phase', '') == 'downloading':
+            primary = 'Downloading speech model'  # PLACEHOLDER COPY (1014): details stay in Home's banner.
         self._lbl_mode.setText(primary + (f" \u00b7 {ava}" if ava else ""))  # PLACEHOLDER COPY (824)
         self._lbl_wake.setText(wake)
         self._lbl_mic.setText(mic_name)

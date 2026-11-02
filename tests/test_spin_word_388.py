@@ -7,7 +7,7 @@ import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QFont, QFontMetrics
 from PySide6.QtTest import QSignalSpy, QTest
-from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QStyle, QStyleOptionButton, QWidget
+from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QStyle, QStyleOptionButton, QPushButton, QWidget
 
 from samsara import config_schema
 from samsara.ui import ava_captions_qt, home_qt, home_signals, splash_qt, theme
@@ -254,19 +254,20 @@ def test_release_action_opens_changelog_and_dismiss_stays_separate(page, monkeyp
     monkeypatch.setattr(home_qt, "open_url", opened.append)
     p = page()
     try:
-        action = p._hint_action_btn
-        assert action.isVisibleTo(p)
-        assert action.text() == action.accessibleName() == home_qt.CHANGELOG_LINK
-        assert action.accessibleDescription() == home_qt.CHANGELOG_URL
-        assert action.height() == home_qt._px(30) and "underline" not in action.styleSheet()
-        assert p.tab_chain.index(action) < p.tab_chain.index(p._hint_hide_btn)
-        action.click()
-        assert opened == [home_qt.CHANGELOG_URL]
-        assert p._whats_new == "9.9.9" and p._hint_card.isVisibleTo(p)
+        # 1014: open notes first; Full changelog is inside the dialog.
+        action = p._whats_new_button
+        assert action.isVisibleTo(p) and action.accessibleName() == "What's new"
+        assert action.height() >= 44 and "underline" not in action.styleSheet()
+        assert not p._hint_card.isVisibleTo(p)
         assert not p._settings.value(home_qt.WHATS_NEW_SEEN_KEY, "")
-        assert p.destinations()[home_qt.CHANGELOG_LINK] == ("url", home_qt.CHANGELOG_URL)
-        p._hint_hide_btn.click()
+        action.click()
+        dialog = action.dialog
+        full = next(b for b in dialog.findChildren(QPushButton) if b.text() == home_qt.CHANGELOG_LINK)
+        full.click()
+        assert opened == [home_qt.CHANGELOG_URL]
         assert p._settings.value(home_qt.WHATS_NEW_SEEN_KEY) == "9.9.9"
+        assert p.destinations()[home_qt.CHANGELOG_LINK] == ("url", home_qt.CHANGELOG_URL)
+        dialog.close()
         assert not p._hint_card.isVisibleTo(p)
     finally:
         p.hide()
@@ -292,14 +293,9 @@ def test_release_version_is_distinct_and_diagnostic_style_returns(page, monkeypa
     monkeypatch.setattr(home_qt, "whats_new_note", lambda *a, **k: ("9.9.9", "New."))
     p = page()
     try:
-        assert p._hint_text.text() == "Samsara 9.9.9"
-        assert p._hint_text.font().italic()
-        assert not p._hint_sub.font().italic()
-        assert theme.TEXT_SECONDARY in p._hint_sub.styleSheet()
-        assert p._hint_card.layout().spacing() == 0
-        qapp.processEvents()
-        gap = p._hint_sub.y()-p._hint_text.y()-p._hint_text.height()
-        assert gap == 0
+        # 1014: no release band styling is left on the diagnostic slot.
+        assert not p._hint_card.isVisibleTo(p)
+        assert p._whats_new_button.isVisibleTo(p)
         hint = home_signals.Hint("diag.misses", home_signals.TIER_DIAGNOSTIC, "Missed things.", "View commands", "cheatsheet", "", evidence="3/8 were misses")
         monkeypatch.setattr(home_signals, "diagnostic_hints", lambda app: [hint])
         p._refresh_hint()
@@ -333,28 +329,13 @@ def test_release_band_is_at_most_one_fifth_with_version_below_heading(qapp, monk
             qapp.processEvents()
         p = win._panel_cache["Home"]
         assert win.width() == 900 and win.height() == 650
-        # 888b / 843: the footer now lives outside the scroll viewport.
-        assert p._hint_card.height() * 5 <= p.height()
-        heading, version, sentence = p._hint_heading, p._hint_text, p._hint_sub
-        assert version.x() == heading.x() == sentence.x()
-        assert version.y() >= heading.y() + heading.height()
-        assert sentence.y() >= version.y() + version.height()
-        assert heading.y() - 1 == p._hint_card.height() - 1 - sentence.y() - sentence.height()
-        assert version.alignment() & Qt.AlignmentFlag.AlignLeft
-        assert version.font().italic() and version.font().pixelSize() == home_qt._px(theme.TYPE_SECTION_LABEL)
+        # 1014: the small header control replaces the release band entirely.
+        assert not p._hint_card.isVisibleTo(p)
+        button = p._whats_new_button
+        assert button.isVisibleTo(p) and button.height() >= 44
+        assert button.width() < p.content_widget.width() / 3
+        assert "text-decoration: underline" not in button.styleSheet()
         action, dismiss = p._hint_action_btn, p._hint_hide_btn
-        for btn, label in ((action, home_qt.CHANGELOG_LINK), (dismiss, home_qt.DISMISS)):
-            assert btn.text() == btn.accessibleName() == label
-            assert btn.height() == home_qt._px(30)
-            assert btn.font().pixelSize() == home_qt._px(theme.TYPE_MIN)
-            assert not btn.property("primary")
-            assert "text-decoration: underline" not in btn.styleSheet()
-            point = btn.mapTo(p._hint_card, QPoint())
-            assert point.x() >= sentence.x() + sentence.width()
-            assert abs((point.y() + btn.height()/2) - p._hint_card.height()/2) <= 1
-            assert point.y() - 1 >= home_qt._px(theme.SPACE_2)
-            assert p._hint_card.height() - 1 - point.y() - btn.height() >= home_qt._px(theme.SPACE_2)
-        assert action.mapTo(p._hint_card, QPoint()).x() < dismiss.mapTo(p._hint_card, QPoint()).x()
         # 888b / 843: enlarged text reflows the content column to two cards.
         assert p._cards_cols == (3 if scale == 1 else 2)
         assert home_qt.overflowing_widgets(p) == []
@@ -457,10 +438,11 @@ def test_release_buttons_leave_clear_space_below_the_card_border(page, monkeypat
     p = page()
     try:
         qapp.processEvents()
-        for button in (p._hint_action_btn, p._hint_hide_btn):
-            top = button.mapTo(p._hint_card, QPoint()).y()
-            clear_below = p._hint_card.height() - 1 - top - button.height()
-            assert clear_below >= home_qt._px(theme.SPACE_2)
-            assert abs((top - 1) - clear_below) <= 1
+        # 1014: the header button is fully within the row instead of a bordered card.
+        button = p._whats_new_button
+        assert not p._hint_card.isVisibleTo(p)
+        assert button.y() >= 0
+        assert button.y() + button.height() <= button.parentWidget().height()
+        assert button.x() + button.width() <= button.parentWidget().width()
     finally:
         p.hide()

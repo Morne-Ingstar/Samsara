@@ -107,7 +107,9 @@ def test_home_explains_readiness_and_hides_repair_actions(
     with qt_widget_scope(_hub(qapp, monkeypatch, app=app)) as window:
         panel = window._panel_cache['Home']
         assert panel._notice_card.isVisibleTo(window)
-        assert panel._notice_text.text() == window._lbl_mode.text() == message
+        assert panel._notice_text.text() == message
+        # 1014: detailed download readiness stays in the banner; the status bar is short.
+        assert window._lbl_mode.text() == ('Downloading speech model' if phase == 'downloading' else message)
         assert panel._notice_btn.parentWidget().isHidden()
         assert window._badge.text() == 'Getting ready'
         assert window._badge.toolTip() == message

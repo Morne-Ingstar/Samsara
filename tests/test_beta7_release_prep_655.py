@@ -31,7 +31,7 @@ def test_release_stamps_and_derived_consumers_agree():
     assert "f'Samsara-GestureControl-v{__version__}.zip'" in spec
 
 
-def test_beta7_release_note_is_first_and_home_uses_its_lead():
+def test_beta7_release_note_is_first_and_home_uses_its_lead(qapp, monkeypatch, qt_widget_scope):
     from samsara.ui.home_qt import changelog_summary
 
     changelog = (ROOT / 'CHANGELOG.md').read_text(encoding='utf-8')
@@ -42,8 +42,22 @@ def test_beta7_release_note_is_first_and_home_uses_its_lead():
     lead = section.splitlines()[2]
     assert lead and not lead.startswith(('#', '-', '<'))
     assert lead.endswith('.') and 'Stand-in' not in lead
-    current_lead = changelog.split('## [0.40.3]', 1)[1].splitlines()[2]
-    assert changelog_summary(ROOT / 'CHANGELOG.md') == ('0.40.3', current_lead)
+    # 1014: release history stays above; the corrected lead is opened in What's new.
+    from PySide6.QtWidgets import QLabel
+    from samsara.ui import home_qt, home_signals
+    from tests.test_home_qt import _app, _FakeSettings
+
+    expected = '0.40.3 - a more forgiving microphone setup, and a safer uninstall.'
+    assert changelog_summary(ROOT / 'CHANGELOG.md') == ('0.40.3', expected)
+    monkeypatch.setattr(home_qt, 'QSettings', _FakeSettings)
+    monkeypatch.setattr(home_qt, '_user_word_count', lambda app: 0)
+    monkeypatch.setattr(home_signals, 'corrections_waiting', lambda app: 0)
+    monkeypatch.setattr(home_signals, 'diagnostic_hints', lambda app: [])
+    with qt_widget_scope(home_qt.HomePage(_app())) as home:
+        home._whats_new_button.click()
+        dialog = home._whats_new_button.dialog
+        assert dialog.isVisible()
+        assert dialog.findChild(QLabel, 'releaseSummary').text() == expected
     for title in ('Updates', 'Setup and help', 'Ava and selected text', 'Listening display'):
         assert f'### {title}\n\n-' in section
 
