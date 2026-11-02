@@ -340,7 +340,9 @@ class RealPipeline:
         audio = self.production.resample_audio(audio, rate, self.model_rate)
         params = self.params()
         started = time.perf_counter()
-        segments, info = self.model.transcribe(audio, **params)
+        from samsara.hallucination_filter import transcribe_without_outro
+        segments, info = transcribe_without_outro(self.model, audio, params, rate=self.model_rate,
+                                                  enabled=self.config.get('apply_post_gates', False))
         self.last_info = info
         segs = list(segments)
         if self.config.get("apply_post_gates", False):

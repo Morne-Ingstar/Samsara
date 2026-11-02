@@ -59,20 +59,9 @@ _COMPRESSION_RATIO_THRESHOLD = 2.4
 # catches variants not explicitly listed (Amara.org crowd-subtitles the
 # phrase on many different source videos/languages).
 #
-# 2026-07-10: added the ENGLISH "thank you for watching" family -- every
-# non-English variant of this exact staple (Japanese/Chinese/Ukrainian/
-# Spanish below) was already covered, but the English original was missing
-# entirely. An 11.7s blank hotkey hold delivered "Thank you for watching!"
-# verbatim because of that gap (see _is_quality_exhausted for the other half
-# of that fix -- the decode had ALSO exhausted every quality threshold).
-# Matching is via the existing lowercase-substring + dominance-ratio check
-# below (case/punctuation-insensitive by construction: text is lowercased
-# and only whitespace-normalized, so trailing "!"/"." on the transcript
-# doesn't prevent the bare phrase from still dominating the ratio). No other
-# hallucination staples added here -- stay scoped to this exact family.
+# 1021: English outros are screened at the decode boundary, with the actual
+# final segment and PCM. Text dominance alone could delete spoken wording.
 _HALLUCINATION_STRING_BLACKLIST = (
-    "thank you for watching",
-    "thanks for watching",
     "untertitel der amara.org-community",
     "sous-titrage st' 501",
     "ご視聴ありがとうございました",
@@ -95,8 +84,8 @@ def _is_hallucinated_segments(seg_list, text):
     output-text heuristic is a cheap last-resort net for whatever slips
     through those, not the primary defense -- avoid extending the
     repetition-based signatures (A/B/D); the fixed-string blacklist
-    (Signature E) is a deliberate, bounded exception since those exact
-    strings are never legitimate dictation regardless of language.
+    (Signature E) remains for historical subtitle-credit signatures.
+    English outros require final-segment/audio evidence at the decode seam.
 
     Uses telemetry Whisper already computed; no re-inference. Conservative:
     only fires on clear signatures so real speech is never dropped."""

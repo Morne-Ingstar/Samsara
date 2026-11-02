@@ -90,7 +90,8 @@ def test_the_gates_still_run_through_the_dictation_path():
     binding and not a stale copy."""
     import dictation
 
-    assert dictation._is_hallucinated_segments([], "Thank you for watching!") is True
+    # 1021: the context-free blacklist no longer rejects English outro words.
+    assert dictation._is_hallucinated_segments([], "Thank you for watching!") is False
     assert dictation._trim_trailing_garbage_run("the " + "_" * 20) == "the"
     assert dictation._drop_trailing_garbage_segments([]) == []
     assert dictation._context_words('"Fuck, no."') == ["fuck", "no"]

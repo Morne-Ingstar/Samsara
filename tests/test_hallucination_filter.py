@@ -2,6 +2,7 @@
 
 from samsara.hallucination_filter import (
     SIGNOFF_PHRASES,
+    _outro_is_unsupported,
     SignoffContext,
     is_signoff_hallucination,
 )
@@ -50,7 +51,7 @@ def test_phrase_concatenation_is_a_whole_signoff():
 
 def test_short_audio_is_a_corrobator_even_with_clean_segment_scores():
     assert is_signoff_hallucination(
-        "Subscribe", _context(duration=1.49),
+        "Bye", _context(duration=1.49),  # 1021: video outros moved to final-segment policy.
     ) == (True, "audio<1.5s")
 
 
@@ -91,9 +92,8 @@ def test_measured_owner_signoff_fixture_drops():
           "start": 0.0, "end": 2.0}],
         audio_duration_s=0.740,
     )
-    assert is_signoff_hallucination("Thanks for watching!", context) == (
-        True, "all_no_speech>=0.5",
-    )
+    # 1021: the same measured evidence is checked at the final segment seam.
+    assert _outro_is_unsupported(dict(context.segments[0], text="Thanks for watching!"), None, 16000)
 
 
 def test_measured_owner_mixed_output_fixture_is_kept():

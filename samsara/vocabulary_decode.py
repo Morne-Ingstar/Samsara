@@ -113,4 +113,8 @@ def transcribe_with_vocabulary(app, audio, *, path, **params):
             state['paths'].add(path)
             logger.debug('[VOCAB] path=%s terms=%d prompt_tokens=%d budget=223',
                          path, count, _token_count(app.model, effective.get('initial_prompt')))
-    return app.model.transcribe(audio, **effective)
+    from samsara.hallucination_filter import transcribe_without_outro
+    from samsara.config_defaults import cfg_get
+    return transcribe_without_outro(app.model, audio, effective,
+        rate=getattr(app, 'model_rate', 16000), enabled=path not in ('hold_partial', 'handsfree_preview')
+        and cfg_get(getattr(app, 'config', {}) or {}, 'dictation.signoff_filter'))

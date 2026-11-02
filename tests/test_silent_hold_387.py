@@ -256,4 +256,5 @@ def test_existing_batch_backstop_still_distinguishes_real_and_repetitive_speech(
     assert transcript_gates._is_hallucinated_segments([_segment()], 'An ordinary sentence.') is False
     assert transcript_gates._is_hallucinated_segments([_segment(compression_ratio=18.4)],
                                                      'Repeated output.') is True
-    assert transcript_gates._is_hallucinated_segments([], 'Thank you for watching!') is True
+    # 1021: English outro rejection requires final-segment/audio evidence.
+    assert transcript_gates._is_hallucinated_segments([], 'Thank you for watching!') is False

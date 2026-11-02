@@ -1,8 +1,7 @@
 """Conservative final screen for short Whisper sign-off hallucinations.
 
-This module is deliberately pure.  It needs only the text Whisper returned
-and the telemetry already attached to its segments; it never loads a model or
-imports the application.
+Policies use decoder telemetry and optional PCM; the decode adapter never
+loads a model or imports the application.
 """
 
 from __future__ import annotations
@@ -17,15 +16,9 @@ from typing import Mapping, Sequence
 # output from the prompt-contamination corpus; the audio corroboration below
 # is mandatory for every entry, especially that one-word entry.
 SIGNOFF_PHRASES = (
-    "thank you for watching",
-    "thanks for watching",
     "thank you",
     "thanks",
-    "like and subscribe",
-    "subscribe",
-    "see you next time",
     "goodbye",
-    "the end",
     "bye",
     "you",
 )
@@ -209,3 +202,94 @@ def signoff_failure_reason(text, segments, duration_s=None, config=None, *, user
                              enabled=cfg_get(config or {}, "dictation.signoff_filter")),
     )
     return "signoff:" + reason if dropped else None
+
+
+# 1021: English video outros need final-segment and acoustic evidence.
+OUTRO_PHRASES = (
+    "thank you for watching", "thanks for watching", "like and subscribe",
+    "subscribe", "see you next time", "the end",
+)
+_OUTRO_TOKENS = {tuple(re.findall(r"\w+", phrase)) for phrase in OUTRO_PHRASES}
+
+
+def _finite_number(value):
+    from math import isfinite
+    try:
+        value = float(value)
+        return value if isfinite(value) else None
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _outro_is_unsupported(segment, audio, rate):
+    """Whole known phrase plus a silent span or failed confidence; fail open.
+
+    Measure the loudest 20 ms frame so a short spoken word cannot disappear
+    into a long quiet timestamp span. Clear speech overrides weak scores.
+    """
+    import numpy as np
+
+    tokens = tuple(re.findall(r"\w+", (_value(segment, "text") or "").casefold()))
+    if tokens not in _OUTRO_TOKENS:
+        return False
+    start = _finite_number(_value(segment, "start"))
+    end = _finite_number(_value(segment, "end"))
+    if audio is not None:
+        span = None
+        if start is not None and end is not None and 0 <= start < end <= len(audio) / rate:
+            span = audio[int(start * rate):int(end * rate)]
+        elif audio.size and np.max(np.abs(audio)) <= .0001:
+            # Even missing timestamps cannot hide an entirely silent capture.
+            span = audio
+        if span is not None and span.size:
+            width = max(1, round(rate * .02))
+            squares = np.square(span.astype(np.float64))
+            level = float(np.sqrt(max(np.mean(squares[i:i + width])
+                                     for i in range(0, len(span), width))))
+            if level > DECODER_SPEECH_FLOOR:
+                return False
+            if level <= .0001:
+                return True
+    no_speech = _finite_number(_value(segment, "no_speech_prob"))
+    logprob = _finite_number(_value(segment, "avg_logprob"))
+    return ((no_speech is not None and no_speech >= .5)
+            or (logprob is not None and logprob <= -1.0))
+
+
+def transcribe_without_outro(model, audio, params, *, rate=16000, enabled=True):
+    """Decode once, shorten digital silence, and screen only the final segment.
+
+    Never threshold-trim quiet speech. Only an exact-zero suffix >=800 ms
+    is shortened, retaining 300 ms padding and all nonzero samples. A
+    bounded one-segment lookahead preserves lazy decoding/cancellation.
+    """
+    import numpy as np
+
+    pcm = None
+    if isinstance(audio, np.ndarray) and audio.ndim == 1 and audio.dtype.kind == 'f':
+        rate = _finite_number(rate)
+        if rate is not None and rate > 0 and np.isfinite(audio).all():
+            pcm = audio
+    if not enabled:
+        return model.transcribe(audio, **params)
+    if pcm is not None:
+        nonzero = np.flatnonzero(pcm)
+        # All-silent captures stay on the decoder's native silence policy.
+        if nonzero.size and len(pcm) - nonzero[-1] - 1 >= rate * .8:
+            audio = pcm[:min(len(pcm), int(nonzero[-1] + 1 + rate * .3))]
+    segments, info = model.transcribe(audio, **params)
+
+    def screened():
+        pending = None
+        for segment in segments:
+            if pending is not None:
+                yield pending
+            pending = segment
+        if pending is not None:
+            if _outro_is_unsupported(pending, pcm, rate):
+                import logging
+                logging.getLogger('Samsara').info('[HALLUCINATION] dropped final outro (audio/confidence)')
+            else:
+                yield pending
+
+    return screened(), info

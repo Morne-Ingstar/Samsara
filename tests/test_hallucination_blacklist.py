@@ -35,7 +35,9 @@ class TestHallucinationStringBlacklist:
         "Thanks for watching",
     ])
     def test_known_hallucination_strings_are_detected(self, text):
-        assert dictation._is_hallucinated_segments([_seg()], text) is True
+        # 1021: English outros require the audio-aware final-segment guard.
+        expected = text not in ("Thank you for watching!", "Thanks for watching")
+        assert dictation._is_hallucinated_segments([_seg()], text) is expected
 
     def test_english_thank_you_for_watching_regression(self):
         """The exact production incident (2026-07-10): an 11.7s blank
@@ -44,12 +46,12 @@ class TestHallucinationStringBlacklist:
         the gap."""
         assert dictation._is_hallucinated_segments(
             [_seg()], "Thank you for watching!",
-        ) is True
+        ) is False  # 1021: text alone cannot reject spoken English outros.
 
     def test_english_thanks_for_watching_variant(self):
         assert dictation._is_hallucinated_segments(
             [_seg()], "Thanks for watching",
-        ) is True
+        ) is False  # 1021: the decode boundary now owns this acoustic check.
 
     def test_case_insensitive_match(self):
         assert dictation._is_hallucinated_segments(
