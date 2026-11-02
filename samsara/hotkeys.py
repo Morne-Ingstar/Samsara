@@ -15,6 +15,7 @@ import keyboard
 from samsara import ai_preferences, config_defaults, flight_recorder, listening_display, hold_key_rules
 from samsara.constants import DEFAULT_CONTINUOUS_COMMIT_HOTKEY, DEFAULT_CONTINUOUS_COMMIT_TRIGGER
 from samsara.runtime import thread_registry
+from samsara.recovery_notifications import notice_for
 from samsara.session_modes import SessionMode
 
 logger = logging.getLogger("Samsara")
@@ -867,6 +868,9 @@ class HotkeyCluster:
             def recovered():
                 # Recovery is silent; retain the same hook and saved bindings.
                 if getattr(self, '_mouse_hook', None) is hook:
+                    notice = getattr(self, '_mouse_recovery_notice', None)
+                    if notice is not None:
+                        notice.recovered()
                     self._main_hotkey_override = None
                     self._mouse_hotkey_disabled_reason = None
                     self._mouse_hook_released_bindings = None
@@ -877,6 +881,7 @@ class HotkeyCluster:
                 # getattr: partial app stand-ins (tests) may not carry it.
                 on_hook_failed=getattr(self, '_on_mouse_hook_failed', None),
                 on_hook_recovered=recovered,
+                on_hook_interrupted=getattr(self, '_on_mouse_hook_failed', None),
             )
             hook = self._mouse_hook
             self._mouse_hook.start()
@@ -945,6 +950,9 @@ class HotkeyCluster:
             except Exception as e:
                 logger.exception(f"[MOUSE] Mouse hook stop failed: {e}")
             self._mouse_hook = None
+        notice = getattr(self, '_mouse_recovery_notice', None)
+        if notice is not None:
+            notice.recovered()
         self._install_mouse_listener()
 
     def _on_mouse_hook_failed(self, reason):
@@ -980,20 +988,20 @@ class HotkeyCluster:
         self._mouse_fallback_to_keyboard("mouse buttons released", "released from the tray")
 
     def _mouse_fallback_to_keyboard(self, why, reason=''):
-        """The mouse hook is gone. Loud and reversible (35):
+        """Use a reversible keyboard fallback while the mouse hook is gone:
 
         - a mouse main hotkey runs on the default keyboard hotkey through a
           RUNTIME override (_main_hotkey_override); config['hotkey'] still
           says mouse4, so Settings shows the user's choice and never saves
           the fallback;
         - a mouse-held recording is stopped (its release will never arrive);
-        - an outcome chip, a tray balloon, the tray menu ("Re-enable mouse
-          hotkey") and the Settings hotkey row (mouse_hotkey_status) all say
-          the mouse hotkey is disabled and why.
+        - automatic recovery gets notification grace; disabled hooks show an
+          immediate chip and balloon. Tray/Settings status remains truthful.
         """
         hook = getattr(self, '_mouse_hook', None)
         recovering = (getattr(hook, 'retries_automatically', False)
-                      and getattr(hook, 'recovering', False))
+                      and getattr(hook, 'recovering', False)
+                      and not getattr(hook, 'install_error', ''))
         hotkey = str(self.config.get('hotkey', config_defaults.DEFAULTS['hotkey']) or '').strip().lower()
         fallback = config_defaults.DEFAULTS['hotkey']
         self._mouse_hotkey_disabled_reason = f"{why}: {reason}" if reason else why
@@ -1007,15 +1015,17 @@ class HotkeyCluster:
             if getattr(self, '_main_hotkey_source', 'key') == 'mouse' and getattr(self, 'recording', False):
                 self._main_hotkey_source = 'key'
                 thread_registry.spawn('stop-rec', self.stop_recording, daemon=True)
-        try:
-            # PLACEHOLDER COPY (867)
-            label = ("mouse hotkey interrupted - retrying automatically" if recovering
-                     else f"mouse hotkey off - using {fallback}")
-            self._show_outcome_chip(label, "warning")
-        except Exception as e:
-            logger.debug(f"[MOUSE] fallback chip failed: {e}")
-        notify = getattr(getattr(self, 'tray_icon', None), 'notify_warning', None)
-        if callable(notify):
+        def show_warning():
+            try:
+                # PLACEHOLDER COPY (867)
+                label = ("mouse hotkey interrupted - retrying automatically" if recovering
+                         else f"mouse hotkey off - using {fallback}")
+                self._show_outcome_chip(label, "warning")
+            except Exception as e:
+                logger.debug(f"[MOUSE] fallback chip failed: {e}")
+            notify = getattr(getattr(self, 'tray_icon', None), 'notify_warning', None)
+            if not callable(notify):
+                return False
             try:
                 if recovering:
                     # PLACEHOLDER COPY (867)
@@ -1028,6 +1038,18 @@ class HotkeyCluster:
                            f"Tray menu > Re-enable mouse hotkey to try again.")
             except Exception as e:
                 logger.debug(f"[MOUSE] fallback balloon failed: {e}")
+                return False
+            return True
+
+        notice = notice_for(self, '_mouse_recovery_notice')
+        if recovering:
+            notice.interrupted(show_warning, lambda: (
+                getattr(self, '_mouse_hook', None) is hook
+                and getattr(hook, 'recovering', False)
+                and not getattr(hook, 'install_error', '')))
+        else:
+            notice.recovered()
+            show_warning()  # A disabled hook/install error is a real failure.
 
     def mouse_hotkey_status(self):
         """{'state': 'n/a' | 'active' | 'recovering' | 'disabled', 'reason', 'fallback', 'buttons'}

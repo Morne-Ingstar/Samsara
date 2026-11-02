@@ -12,6 +12,7 @@ import threading
 import time
 
 from samsara.audio_engine import device_resolver
+from samsara.recovery_notifications import notice_for
 
 log = logging.getLogger('Samsara')
 # Stand-in wording (550), reviewed in ASK.json.
@@ -165,6 +166,32 @@ def set_state(app, lost, *, notify=False):
     changed = getattr(app, '_no_microphone', None) != bool(lost)
     deferred = _boot_grace(app, lost, notify)
     app._no_microphone = bool(lost)
+    # Start alongside boot grace, not after it; runtime endpoint flaps get the
+    # same policy. Only tray balloons wait; availability/chips stay immediate.
+    condition = ('missing' if lost else
+                 'fallback' if getattr(app, '_using_default_mic', False) else None)
+    for other in ('missing', 'fallback'):
+        if other != condition:
+            previous = getattr(app, f'_mic_{other}_notice', None)
+            if previous is not None:
+                previous.recovered()
+    if condition is not None:
+        notice = notice_for(app, f'_mic_{condition}_notice')
+        def show_warning():
+            tray = getattr(app, 'tray_icon', None)
+            if tray is None:
+                return False
+            if condition == 'missing':
+                tray.notify_warning('No microphone', MISSING_MESSAGE)
+                app._mic_warning_shown = True
+            else:
+                tray.notify_warning('Microphone', FALLBACK_MESSAGE)
+                app._mic_fallback_shown = True
+            return True
+
+        notice.interrupted(show_warning, lambda: (
+            app._no_microphone if condition == 'missing' else
+            not app._no_microphone and getattr(app, '_using_default_mic', False)))
     if deferred:
         return  # Keep actual availability; defer only startup warning surfaces.
     indicator = getattr(app, 'listening_indicator', None)
@@ -180,14 +207,6 @@ def set_state(app, lost, *, notify=False):
             tray.title = 'Samsara - Using system default microphone; chosen microphone not connected'
         elif changed:
             app._update_tray_tooltip()
-        # One tray warning per outage; every deliberate hold still gets a chip.
-        if lost and not getattr(app, '_mic_warning_shown', False):
-            tray.notify_warning('No microphone', MISSING_MESSAGE)
-            app._mic_warning_shown = True
-        elif not lost and getattr(app, '_using_default_mic', False):
-            if not getattr(app, '_mic_fallback_shown', False):
-                tray.notify_warning('Microphone', FALLBACK_MESSAGE)
-                app._mic_fallback_shown = True
     if not lost:
         app._mic_warning_shown = False
     if not getattr(app, '_using_default_mic', False):

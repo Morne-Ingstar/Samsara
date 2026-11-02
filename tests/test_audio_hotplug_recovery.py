@@ -12,6 +12,7 @@ import pytest
 
 from samsara.audio_engine.engine import AudioCaptureEngine
 from samsara.audio_engine import device_resolver
+from tests.test_mouse_blip_quiet_1019 import notice_clock  # noqa: F401 - fake timer fixture
 
 ROOT = Path(__file__).resolve().parents[1]
 MIC = 'Microphone (Jabra EVOLVE LINK)'
@@ -448,21 +449,29 @@ def test_endpoint_registration_covers_input_arrival_and_state_changes(monkeypatc
     close_com.assert_not_called()  # The watcher owns COM lifetime.
 
 
-def test_missing_feedback_persists_and_only_one_tray_warning_per_outage():
+def test_missing_feedback_persists_and_only_one_tray_warning_per_outage(notice_clock):
     from samsara import microphone_recovery as recovery
     app = types.SimpleNamespace(config={}, listening_indicator=Mock(), tray_icon=Mock(),
         _schedule_ui=lambda fn, *args: fn(*args), _show_outcome_chip=Mock(), _update_tray_tooltip=Mock())
     for _ in range(3):
         recovery.set_state(app, True, notify=True)
     assert app._show_outcome_chip.call_count == 3
+    # 1019: deliberate-attempt chips stay immediate; automatic balloons wait.
+    app.tray_icon.notify_warning.assert_not_called()
+    notice_clock.advance(5)
     app.tray_icon.notify_warning.assert_called_once()
     assert app.tray_icon.title == 'Samsara - No microphone'
+    notice_clock.advance(600)
+    recovery.set_state(app, True)
+    app.tray_icon.notify_warning.assert_called_once()  # Still the same outage.
     recovery.set_state(app, False)
     recovery.set_state(app, True)
+    app.tray_icon.notify_warning.assert_called_once()
+    notice_clock.advance(5)  # A later real outage is still explained.
     assert app.tray_icon.notify_warning.call_count == 2
 
 
-def test_fallback_is_explained_without_overwriting_the_saved_choice():
+def test_fallback_is_explained_without_overwriting_the_saved_choice(notice_clock):
     from samsara import microphone_recovery as recovery
     app = types.SimpleNamespace(config={'microphone': 9, 'microphone_name': MIC},
         _using_default_mic=True, tray_icon=Mock(),
@@ -470,8 +479,12 @@ def test_fallback_is_explained_without_overwriting_the_saved_choice():
     recovery.set_state(app, False)
     recovery.set_state(app, False)
     assert 'chosen microphone not connected' in app.tray_icon.title
+    # 1019: fallback explanation/saved choice stay; its balloon gets grace.
+    app.tray_icon.notify_warning.assert_not_called()
+    notice_clock.advance(5)
     app.tray_icon.notify_warning.assert_called_once()
     assert app.config['microphone'] == 9
+    assert app.config['microphone_name'] == MIC
 
 
 def test_slow_duck_is_bounded_and_late_completion_releases_only_its_token():

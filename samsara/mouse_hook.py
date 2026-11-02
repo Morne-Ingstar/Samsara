@@ -267,12 +267,17 @@ class MouseHook:
             Recovery continues until stop()/release().
         on_hook_recovered: called on the dispatcher thread to clear fallback;
             recovery is logged, without a user notification.
+        on_hook_interrupted: optional app state callback for each recovered
+            blip and install-error escalation; replaces the legacy notice.
     """
 
     def __init__(self, on_button_event, suppress_buttons=None, *, suppress_button='mouse4',
-                 on_hook_failed=None, on_hook_recovered=None):
+                 on_hook_failed=None, on_hook_recovered=None, on_hook_interrupted=None):
         self.on_button_event = on_button_event
         self.on_hook_failed = on_hook_failed
+        self.on_hook_interrupted = on_hook_interrupted
+        self._interruption_reported = False
+        self._interruption_install_failed = False
         self.on_hook_recovered = on_hook_recovered
         self.suppress_buttons = _coerce_suppress_buttons(
             suppress_button if suppress_buttons is None else suppress_buttons
@@ -574,6 +579,8 @@ class MouseHook:
         self._confirm_due = _perf() + SILENT_CHECKS * LIVENESS_CHECK_S
         if not self.installed:
             logger.error(f"[MOUSE HOOK] reinstall failed: {self.install_error or 'unknown reason'}")
+            if self.install_error:
+                self._begin_recovery(self.install_error)
             self._schedule_retry(self.install_error or 'hook thread not ready', install_failed=True)
 
     def _schedule_retry(self, reason: str, *, install_failed=False) -> None:
@@ -587,7 +594,19 @@ class MouseHook:
         self.suppress_buttons = frozenset()  # first: never eat a click while unhealthy
         self.recovering = True
         self._healthy_since = None
-        if not self._episode_notified and self.on_hook_failed is not None:
+        install_failed = bool(self.install_error)
+        if self.on_hook_interrupted is not None:
+            # App state must follow every loss, independently of the legacy
+            # callback's full-healthy-minute suppression and retry backoff.
+            if (not self._interruption_reported
+                    or (install_failed and not self._interruption_install_failed)):
+                self._interruption_reported = True
+                self._interruption_install_failed = install_failed
+                try:
+                    self.on_hook_interrupted(reason)
+                except Exception:
+                    logger.exception('[MOUSE HOOK] interruption callback raised')
+        elif not self._episode_notified and self.on_hook_failed is not None:
             self._episode_notified = True
             try:
                 self.on_hook_failed(reason)
@@ -600,6 +619,10 @@ class MouseHook:
         self.recovering = False
         self._retry_due = None
         self.install_error = ''
+        # 1019: app state follows each recovered blip; legacy notice/backoff
+        # still reset only after a full healthy minute.
+        self._interruption_reported = False
+        self._interruption_install_failed = False
         self.suppress_buttons = self.requested_suppress_buttons
         self._healthy_since = _perf()
         logger.info("[MOUSE HOOK] recovered; suppression restored")
@@ -628,6 +651,8 @@ class MouseHook:
         self._backoff_step = 0
         self._reinstalls.clear()
         self._episode_notified = False
+        self._interruption_reported = False
+        self._interruption_install_failed = False
         self._healthy_since = None
         self._recovery_count = self.callback_count
         self.suppress_buttons = self.requested_suppress_buttons

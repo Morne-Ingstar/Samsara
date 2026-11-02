@@ -9,6 +9,7 @@ import pytest
 import samsara.mouse_hook as mh
 from samsara.mouse_hook import MouseHook
 from tests.test_mouse_hook import fallback_app  # noqa: F401 - shared isolated app fixture
+from tests.test_mouse_blip_quiet_1019 import notice_clock  # noqa: F401 - fake timer fixture
 
 
 class Clock:
@@ -276,7 +277,7 @@ def test_starved_old_thread_is_not_overlapped(monkeypatch):
     spawn.assert_not_called()
 
 
-def test_app_retains_retrying_hook_and_silently_clears_fallback(fallback_app, recovery, monkeypatch):
+def test_app_retains_retrying_hook_and_silently_clears_fallback(fallback_app, recovery, monkeypatch, notice_clock):
     app, s = fallback_app, recovery
     s.hook.on_hook_failed = app._on_mouse_hook_failed
 
@@ -292,7 +293,9 @@ def test_app_retains_retrying_hook_and_silently_clears_fallback(fallback_app, re
         lose(s)
         assert app._mouse_hook is s.hook and app._main_hotkey_override == 'ctrl+shift'
         assert app.mouse_hotkey_status()['state'] == 'recovering'
-        assert len(app.balloons) == 1 and 'automatically' in app.balloons[0][1]
+        # 1019: an automatically recovered blip has no immediate balloon/chip.
+        assert app.balloons == [] and app.calls == []
+        notice_clock.advance(4.999)
         app.refresh_mouse_hook(rearm=False)
         assert app._mouse_hook is s.hook
         before = list(app.calls)
@@ -300,7 +303,8 @@ def test_app_retains_retrying_hook_and_silently_clears_fallback(fallback_app, re
         s.hook.watchdog_tick()
         assert app.mouse_hotkey_status()['state'] == 'active'
         assert app._main_hotkey_override is None and app._mouse_hotkey_disabled_reason is None
-        assert app.calls == before and len(app.balloons) == 1
+        notice_clock.advance(600)
+        assert app.calls == before and app.balloons == []
         assert app.config['hotkey'] == 'mouse4'
     finally:
         s.hook.stop()

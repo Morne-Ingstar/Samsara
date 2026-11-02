@@ -10,6 +10,7 @@ from samsara import microphone_recovery as recovery
 from samsara.audio_engine import device_resolver
 from samsara.audio_engine.engine import AudioCaptureEngine
 from samsara.portaudio_guard import StreamGuard
+from tests.test_mouse_blip_quiet_1019 import notice_clock  # noqa: F401 - fake timer fixture
 
 MIC = 'Analogue 1 + 2 (Focusrite USB Audio)'
 
@@ -249,12 +250,16 @@ def test_persistent_absence_reports_once_after_five_seconds(monkeypatch, fallbac
             app._ace_engine.stop()
 
 
-def test_later_disconnect_has_no_grace(monkeypatch):
-    monkeypatch.setattr(recovery.time, 'monotonic', lambda: 0.0)
+def test_later_disconnect_has_no_grace(notice_clock):
     app = application()
     recovery.set_state(app, False)
     recovery.set_state(app, True)
     app.listening_indicator.set_device_lost.assert_called_with(True)
+    # 1019: only the automatic balloon gets grace; real loss stays visible.
+    app.tray_icon.notify_warning.assert_not_called()
+    notice_clock.advance(4.999)
+    app.tray_icon.notify_warning.assert_not_called()
+    notice_clock.advance(.001)
     app.tray_icon.notify_warning.assert_called_once_with('No microphone', recovery.MISSING_MESSAGE)
 
 
