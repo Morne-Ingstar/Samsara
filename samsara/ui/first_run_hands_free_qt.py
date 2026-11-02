@@ -12,6 +12,7 @@ class HandsFreeOffer(QWidget):
         from samsara.ui.first_run_pages_qt import SetupSegmentedChoice, label
 
         self.config = config
+        self._button = config_defaults.cfg_get(config, 'command_mode.button')
         column = QVBoxLayout(self)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(theme.SPACE_1)
@@ -33,11 +34,17 @@ class HandsFreeOffer(QWidget):
         column.addLayout(row)
         self.description = label('')
         column.addWidget(self.description)
-        self.refresh(config_defaults.cfg_get(config, 'command_mode.button'))
+        self.combo.currentIndexChanged.connect(lambda _: self.refresh(self._button))
+        self.refresh(self._button)
 
     def refresh(self, button):
         from samsara.ui.settings.shared_qt import _readable_hotkey
 
+        self._button = button
+        if not self.combo.currentData():
+            # PLACEHOLDER COPY (1006): explain the control on this page.
+            self.description.setText('Hands-free is off. Choose Yes above to turn it on.')
+            return
         key = _readable_hotkey(button)
         action = (f'Tap {key} to start and tap it again to stop'
                   if config_defaults.cfg_get(self.config, 'command_mode.mode') == 'toggle'

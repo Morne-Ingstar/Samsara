@@ -6,11 +6,11 @@ import os
 import weakref
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QLocale, QObject, QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QLocale, QObject, QRect, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QApplication, QAbstractButton, QButtonGroup, QCheckBox, QComboBox, QFrame,
-    QHBoxLayout, QLabel, QLayout, QPushButton, QScrollArea, QRadioButton, QSizePolicy, QVBoxLayout, QWidget,
+    QHBoxLayout, QLabel, QLayout, QPushButton, QScrollArea, QRadioButton, QSizePolicy, QStyle, QStyleOptionButton, QVBoxLayout, QWidget,
 )
 
 from samsara import autostart, config_defaults, session_modes
@@ -26,6 +26,14 @@ from samsara.ui.settings.calm_controls import SegmentedChoice
 from samsara.ui.listening_display_page import ListeningDisplayPage
 
 logger = get_logger(__name__)
+
+
+def mark_setup_version_seen():
+    """Introduce this release on successful setup, retaining Home's update rule."""
+    from samsara.ui import home_qt
+    settings = home_qt.QSettings(home_qt.SETTINGS_ORG, home_qt.SETTINGS_APP)
+    settings.setValue(home_qt.WHATS_NEW_SEEN_KEY, home_qt.__version__)
+    settings.sync()
 
 
 class SetupSegmentedChoice(SegmentedChoice):
@@ -226,12 +234,44 @@ def page(owner):
 
 
 class _DetailsButton(QPushButton):
+    # 1006: Qt exposes checkable push buttons as checkboxes. Expansion is UI
+    # state, while the accessible action remains a named button.
+    _expanded = False
+
+    def isChecked(self):
+        return self._expanded
+
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self.click()
             event.accept()
             return
         super().keyPressEvent(event)
+
+
+class SetupCheckBox(QCheckBox):
+    """Native checkbox semantics with a visible indicator in either theme."""
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        option = QStyleOptionButton()
+        self.initStyleOption(option)
+        bounds = self.style().subElementRect(QStyle.SubElement.SE_CheckBoxIndicator, option, self)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        box = QRectF(bounds).adjusted(1, 1, -1, -1)
+        painter.fillRect(bounds, theme.qcolor(theme.BG0))
+        painter.setPen(QPen(theme.qcolor(theme.TEXT_PRIMARY), 2))
+        painter.setBrush(theme.qcolor(theme.ACCENT if self.isChecked() else theme.BG1))
+        painter.drawRoundedRect(box, 3, 3)
+        if self.isChecked():
+            path = QPainterPath()
+            path.moveTo(box.left() + box.width() * .2, box.center().y())
+            path.lineTo(box.left() + box.width() * .43, box.bottom() - box.height() * .23)
+            path.lineTo(box.right() - box.width() * .15, box.top() + box.height() * .23)
+            painter.setPen(QPen(theme.qcolor(theme.TEXT_ON_ACCENT), 2))
+            painter.drawPath(path)
+        painter.end()
 
 
 class Decisions(QObject):
@@ -279,7 +319,7 @@ class Decisions(QObject):
                 watched.setMaximumWidth(watched.fontMetrics().horizontalAdvance(watched.text()) + 2)
             elif event.type() == QEvent.Type.Resize:
                 # The help target must not cap a wrapped heading at 44px.
-                watched.setMinimumHeight(watched.heightForWidth(watched.width()))
+                self.fit_question(watched)
         if event.type() == QEvent.Type.LayoutRequest and watched.property('setupFitContent'):
             QTimer.singleShot(0, self, self.refit_page)
         if self.closed:
@@ -301,12 +341,23 @@ class Decisions(QObject):
                         candidate.setFocus()
                         return True
         if event.type() == QEvent.Type.KeyPress and event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if watched is self.owner._tutorial_btn:
+                watched.click()  # explicit Learn still works with Enter as a secondary action
+                return True
             if getattr(watched, '_capturing', False) or watched.property('walkthrough_detail'):
                 return False
             if self.owner._next_btn.isEnabled():
                 self.owner._go_next()
             return True
         return False
+
+    @staticmethod
+    def fit_question(question):
+        # 1006: QLabel.heightForWidth includes its old minimum, retaining a
+        # narrow construction width even after the question has room to fit.
+        question.setMinimumHeight(question.fontMetrics().boundingRect(
+            QRect(0, 0, question.width(), 100000), Qt.TextFlag.TextWordWrap, question.text()).height())
+        question.updateGeometry()
 
     def fit_progress(self):
         if self.closed:
@@ -397,7 +448,7 @@ class Decisions(QObject):
         heading.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.detail(heading, text_column, title, lambda: details(combo.currentData()) or '')
         help_button, expanded = self.details[-1]
-        help_button.setAccessibleName(title)
+        help_button.setAccessibleName(f'Help: {title}')
         row.addWidget(text_area, 1)
         combo = QComboBox()
         for value, text, _ in rows:
@@ -437,9 +488,8 @@ class Decisions(QObject):
     def detail(self, row, column, title, text):
         # Small visual help beside its label, retaining a 44px keyboard/tap target.
         button = _DetailsButton('?')
-        button.setAccessibleName(button.text())
+        button.setAccessibleName(f'Help: {title}')
         button.setAccessibleDescription(title)
-        button.setCheckable(True)
         button.setProperty('walkthrough_detail', True)
         button.setObjectName('helpButton')
         button.setStyleSheet(f'QPushButton{{background:transparent;border:none;padding:0;color:{theme.TEXT_SECONDARY};}}'
@@ -449,7 +499,12 @@ class Decisions(QObject):
         expanded.hide()
         column.addWidget(expanded)
         row.addWidget(button)
-        button.clicked.connect(lambda opened: (expanded.setText(text()), expanded.setVisible(opened)))
+        def toggle_detail():
+            button._expanded = not button._expanded
+            expanded.setText(text())
+            expanded.setVisible(button._expanded)
+            button.toggled.emit(button._expanded)
+        button.clicked.connect(toggle_detail)
         self.details.append((button, expanded))
 
     def mode_detail(self, mode):
@@ -585,11 +640,6 @@ class Decisions(QObject):
             self.detail(heading, column, title, lambda: self.mode_detail('hands_free'))
         heading.addStretch()
         row.addLayout(heading, 1)
-        if action == 'command_mode.button' and not config_defaults.cfg_get(self.owner._config, 'command_mode.enabled'):
-            note = label(COPY['talking.session_off'])
-            self.session_off_note = note
-            note.setStyleSheet(f'color:{theme.TEXT_SECONDARY};font-size:{theme.TYPE_BODY}px;')
-            text_column.addWidget(note)
         button = _HotkeyBtn(config_value(self.owner._config, action, HOLD_DEFAULTS[action][1]))
         owner_ref = self._owner_ref
         button.configure_hold(action, lambda: owner_ref()._config,
@@ -625,9 +675,6 @@ class Decisions(QObject):
         layout.addWidget(self.hands_free_offer)
         self.hands_free = self._hold_key(layout, 'command_mode.button', COPY['talking.hands_free'])
         self.hands_free.bindingChanged.connect(self.hands_free_offer.refresh)
-        if hasattr(self, 'session_off_note'):
-            self.hands_free_offer.combo.currentIndexChanged.connect(
-                lambda _: self.session_off_note.setVisible(not self.hands_free_offer.combo.currentData()))
         self.row_separator(layout)
         self.wake = self.choices(layout, COPY['talking.wake'],
             [(True, COPY['talking.on'], self.mode_detail('wake_word').split('. ')[0] + '.'),
@@ -750,17 +797,17 @@ class Decisions(QObject):
         card = QFrame()
         theme.style_card(card)
         rows = QVBoxLayout(card)
-        for _ in range(10):
+        for _ in range(11):
             item = label('')
             self.owner._summary_labels.append(item)
             rows.addWidget(item)
         layout.addWidget(card)
-        self.launch = QCheckBox(COPY['complete.startup'])
+        self.launch = SetupCheckBox(COPY['complete.startup'])
         self.launch.setAccessibleName(self.launch.text())
         self.launch.setChecked(self.owner._config['launch_at_login'])
         self.launch.installEventFilter(self)
         layout.addWidget(self.launch)
-        self.include_beta_updates = QCheckBox('Include beta updates')
+        self.include_beta_updates = SetupCheckBox('Include beta updates')
         self.include_beta_updates.setObjectName('includeBetaUpdatesCheckbox')
         self.include_beta_updates.setAccessibleName(self.include_beta_updates.text())
         self.include_beta_updates.setAccessibleDescription('Beta updates are experimental and less tested. This does not enable automatic checks.')
@@ -813,13 +860,24 @@ class Decisions(QObject):
             f'Recognition: {str(cfg["model_size"]).title()}', f'Language: {dict((code, name) for name, code in LANGUAGES).get(cfg["language"], cfg["language"])}',
             f'Recording: {COPY.get("talking." + cfg["mode"], cfg["mode"])} · {_pretty_key_combo(cfg["hotkey"])}',
             f'Hands-free: {"On" if config_defaults.cfg_get(cfg, "command_mode.enabled") else "Off"} · {_pretty_button(config_defaults.cfg_get(cfg, "command_mode.button")).replace(" (default)", "")}',
-            f'Wake word: {COPY["talking.on"] if cfg["wake_word_enabled"] else COPY["talking.off"]} · {config_defaults.cfg_get(cfg, "wake_word_config.phrase")}',
-            f'Music: {dict((value, title) for value, title, _ in music_choices())[config_defaults.cfg_get(cfg, "ducking.recording_mode")]}',
-            f'Voice feedback: {FEEDBACK_LEVEL_CHOICES[config_defaults.cfg_get(cfg, "tts.feedback_level")][0]}',
-            f'Voice: {COPY["voice.local"] if config_defaults.cfg_get(cfg, "tts.engine") == "winrt" else COPY["voice.network"]}',
-            f'Listening display: {self.owner._listening_display_page.group.checkedButton().text()}']
+            ('Wake word: ' + (config_defaults.cfg_get(cfg, 'wake_word_config.phrase')
+                             if cfg['wake_word_enabled'] else COPY['talking.off']))]
+        visited = self.owner._visited_steps
+        if 'Music' in visited:
+            lines.append(f'Music: {dict((value, title) for value, title, _ in music_choices())[config_defaults.cfg_get(cfg, "ducking.recording_mode")]}')
+        if 'Voice' in visited:
+            lines.append(f'Voice feedback: {FEEDBACK_LEVEL_CHOICES[config_defaults.cfg_get(cfg, "tts.feedback_level")][0]}')
+            if config_defaults.cfg_get(cfg, 'tts.feedback_level') != 'silent':
+                lines.append(f'Voice: {COPY["voice.local"] if config_defaults.cfg_get(cfg, "tts.engine") == "winrt" else COPY["voice.network"]}')
+        if 'Listening display' in visited:
+            lines.append(f'Listening display: {self.owner._listening_display_page.group.checkedButton().text()}')
+        lines.append('Other defaults can be changed in Settings.')  # PLACEHOLDER COPY (1006)
+        for widget in self.owner._summary_labels:
+            widget.clear()
+            widget.hide()
         for widget, text in zip(self.owner._summary_labels, lines):
             widget.setText(text)
+            widget.show()
 
     def finish_to_destination(self, kind, target):
         app = self.owner._samsara_app
@@ -920,47 +978,80 @@ class Decisions(QObject):
         page = self.owner._current_page
         if self.closed or page is None or not page.isVisible():
             return
-        layout = page.widget().layout()
-        signature = (page, self.owner.width(), layout.minimumSize().height(),
-                     layout.totalHeightForWidth(self.owner.width()))
+        signature = (self.owner.width(), tuple(
+            (widget.widget().layout().minimumSize().height(),
+             widget.widget().layout().totalHeightForWidth(self.owner._stack.width()))
+            for widget in self.owner._page_by_name.values()))
         if signature != getattr(self, '_fit_signature', None):
             self._fit_signature = signature
             self.owner._fit_available_screen()
 
     def fit_content(self, width, height):
-        """Use available height before scrolling; retain 502's frame placement."""
+        """1006: reserve the tallest page, retaining 519's expansion and fit."""
         owner = self.owner
-        page = owner._current_page
-        if page is None:
+        if owner._current_page is None:
             return min(760, height)
         root = owner.centralWidget().layout()
         header, title, nav = (root.itemAt(i).widget() for i in (0, 4, 7))
-        root.itemAt(2).spacerItem().changeSize(0, 12, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        from samsara.ui.listening_display_page import STEP_LABEL_GAP
+        root.itemAt(2).spacerItem().changeSize(0, STEP_LABEL_GAP, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         header.setFixedHeight(64)
         title.setMinimumHeight(60)
         title.layout().setContentsMargins(28, 14, 28, 8)
         nav.setFixedHeight(theme.HIT_TARGET_MIN + 24)
         nav.layout().setContentsMargins(28, 12, 28, 12)
-        content = page.widget()
-        content.ensurePolished()
-        layout = content.layout()
-        layout.setContentsMargins(content._setup_margins)
-        layout.activate()
-        needed = max(layout.minimumSize().height(), layout.totalHeightForWidth(width))
-        chrome = lambda: sum(root.itemAt(i).sizeHint().height() for i in range(root.count()) if i != 5)
+
+        # Populate Ready before its first visit, and measure hidden pages at
+        # their eventual viewport width rather than their construction width.
+        self.summary()
+        def required(compact=False):
+            tallest = 0
+            for name, page in owner._page_by_name.items():
+                content = page.widget()
+                content.ensurePolished()
+                layout = content.layout()
+                margins = content._setup_margins
+                layout.setContentsMargins(margins.left(), margins.top(), margins.right(),
+                                          min(4, margins.bottom()) if compact else margins.bottom())
+                content.resize(width, max(layout.minimumSize().height(), layout.totalHeightForWidth(width)))
+                for child in [content] + content.findChildren(QWidget):
+                    child.ensurePolished()
+                    if child.layout() is not None:
+                        child.layout().setGeometry(child.rect())
+                for question in content.findChildren(QLabel):
+                    if question.property('setupChoiceQuestion'):
+                        self.fit_question(question)
+                for nested in reversed(content.findChildren(QLayout)):
+                    nested.invalidate()
+                    nested.activate()
+                layout.invalidate()
+                layout.activate()
+                page_height = max(layout.minimumSize().height(), layout.totalHeightForWidth(width))
+                if name == 'Complete':
+                    # Reserve optional summary rows without displaying choices
+                    # the user has not made, or growing on the return to Ready.
+                    page_height += sum(item.fontMetrics().height() + item.parentWidget().layout().spacing()
+                                       for item in owner._summary_labels if item.isHidden())
+                tallest = max(tallest, page_height)
+            return tallest
+
+        def chrome():
+            return sum(max(root.itemAt(i).minimumSize().height(), root.itemAt(i).heightForWidth(owner.width()))
+                       if root.itemAt(i).hasHeightForWidth() else root.itemAt(i).sizeHint().height()
+                       for i in range(root.count()) if i != 5)
+        needed = required()
         if needed + chrome() > height:
-            # Minimums: strip gap 2, header 36, title 8/4, footer/page bottom 4.
-            root.itemAt(2).spacerItem().changeSize(0, 2, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+            # Preserve the stage-title gap while reclaiming header/footer space.
             header.setFixedHeight(max(36, owner._step_lbl.sizeHint().height() + 8))
             title.setMinimumHeight(0)
             title.layout().setContentsMargins(28, 8, 28, 4)
             nav.setFixedHeight(theme.HIT_TARGET_MIN + 8)
             nav.layout().setContentsMargins(28, 4, 28, 4)
-            margins = content._setup_margins
-            layout.setContentsMargins(margins.left(), margins.top(), margins.right(), min(4, margins.bottom()))
-            layout.activate()
-            needed = max(layout.minimumSize().height(), layout.totalHeightForWidth(width))
+            needed = required(compact=True)
         root.invalidate()
+        # Hidden children's layout requests settle after their first geometry.
+        # Recheck all pages before the first navigation, not only the open one.
+        QTimer.singleShot(0, self, self.refit_page)
         return min(height, max(min(760, height), needed + chrome()))
 
     def prepare_step(self, name):

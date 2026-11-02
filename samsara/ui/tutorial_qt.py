@@ -301,6 +301,24 @@ def show_tutorial(app) -> None:
     always constructed on the correct thread.
     """
     from_setup = getattr(app, '_tutorial_start_from_setup', False)
+    shell_ready = getattr(app, '_startup_shell_ready', None)
+    if from_setup and shell_ready is not None and not shell_ready.is_set():
+        # 1006: startup queues Home before setting this barrier. Raising the
+        # tutorial earlier lets Home cover it again moments later.
+        if getattr(app, '_setup_tutorial_timer', None) is None:
+            timer = QTimer(QApplication.instance())
+            app._setup_tutorial_timer = timer
+            timer.setInterval(100)
+            def open_when_ready():
+                if not shell_ready.is_set():
+                    return
+                timer.stop()
+                timer.deleteLater()
+                app._setup_tutorial_timer = None
+                show_tutorial(app)
+            timer.timeout.connect(open_when_ready)
+            timer.start()
+        return
     app._tutorial_start_from_setup = False
     win = TutorialWindow(app, from_setup=from_setup)
     app._tutorial_window = win  # Retain the top-level window after this call returns.
@@ -312,6 +330,8 @@ def show_tutorial(app) -> None:
             screen.center().x() - win.width() // 2,
             screen.center().y() - win.height() // 2,
         )
+    from samsara.ui.window_activation import surface_requested
+    surface_requested(win)
 
 
 # ---------------------------------------------------------------------------

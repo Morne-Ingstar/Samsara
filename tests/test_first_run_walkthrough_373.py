@@ -19,6 +19,8 @@ from samsara.ui import network_voice_notice
 
 @pytest.fixture
 def make_window(qapp, tmp_path, monkeypatch):
+    # 1006: setup completion now remembers the version; keep registry isolated.
+    monkeypatch.setattr(pages, 'mark_setup_version_seen', lambda: None)
     monkeypatch.setattr(wizard.thread_registry, 'spawn', lambda *a, **k: None)
     monkeypatch.setattr(pages, 'cuda_chosen', lambda _: False)
     # 935: preserve 919's real calibration separately; choice tests use no audio.
@@ -642,7 +644,7 @@ def test_revealed_parts_stay_above_next_hairline(make_window, qapp):
     assert d.phrase.parentWidget().layout().contentsMargins().top() + d.wake._row.layout().spacing() == window._current_page.widget().layout().spacing()
     assert not any(w.property('walkthrough_row_separator') for w in d.wake._row.findChildren(QWidget))
     separators = [w for w in window._current_page.findChildren(QWidget) if w.property('walkthrough_row_separator')]
-    hands_free_note = next(w for w in window._current_page.findChildren(QLabel) if w.text() == pages.COPY['talking.session_off'])
+    hands_free_note = d.hands_free_offer.description  # 1006: one full-width live hint.
     parent = window._current_page.widget()
     from PySide6.QtCore import QPoint
     assert hands_free_note.mapTo(parent, QPoint()).y() + hands_free_note.height() < separators[-1].mapTo(parent, QPoint()).y()
@@ -796,8 +798,9 @@ def test_cancel_first_launch_reopen_finish_matches_ready_display(
         reopened._go_next()
     assert reopened._step_name == 'Complete'
     expected = display or 'full'
-    assert f'Listening display: {expected.title()}' in [
-        label.text() for label in reopened._summary_labels]
+    # 1006: preserved optional defaults are not presented as wizard answers.
+    assert not any(label.text().startswith('Listening display:')
+                   for label in reopened._summary_labels)
     assert path.read_bytes() == before
 
     result = finish(reopened)

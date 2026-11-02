@@ -1487,8 +1487,8 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 # Wizard was cancelled; keep fresh-profile setup incomplete
                 logger.info("Setup wizard cancelled - using default settings")
             # No splash after wizard - user already saw UI
-            # Auto-launch tutorial after wizard (first run only)
-            self._launch_tutorial_after_wizard = True
+            # 1006: only Learn Samsara requests the tutorial after setup.
+            self._launch_tutorial_after_wizard = bool(wizard_result and getattr(self, '_tutorial_start_from_setup', False))
         _boot.begin_thread(); _bdiag_tp[0] = time.perf_counter()  # 1008: exclude setup from config timing.
         logger.info("[INIT] Loading config...")
         self.update_splash(
@@ -1997,10 +1997,10 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             )
         self._schedule_ui(_init_cheatsheet)
 
-        # Tutorial — auto-launch on first run (after wizard), on Qt thread.
-        # On subsequent startups tutorial_complete is True so this is a no-op.
-        if getattr(self, '_launch_tutorial_after_wizard', False) and \
-                not self.config.get('tutorial_complete', False):
+        # Tutorial — open only for an explicit Learn Samsara setup choice.
+        # A later startup has no request, even if the tutorial is unfinished.
+        # Keep this behind initialization so its capture hooks are ready.
+        if getattr(self, '_launch_tutorial_after_wizard', False):
             def _init_tutorial():
                 try:
                     from samsara.ui.tutorial_qt import show_tutorial

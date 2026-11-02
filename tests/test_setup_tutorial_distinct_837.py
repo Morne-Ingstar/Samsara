@@ -14,6 +14,8 @@ from samsara.ui.widgets.indicator_place import IndicatorPlacePicker
 
 @pytest.fixture
 def windows(qapp, tmp_path, monkeypatch):
+    # 1006: setup completion now remembers the version; keep registry isolated.
+    monkeypatch.setattr('samsara.ui.first_run_pages_qt.mark_setup_version_seen', lambda: None)
     monkeypatch.setattr(setup.thread_registry, 'spawn', lambda *a, **k: None)
     monkeypatch.setattr(setup._WizardWindow, '_start_meter', lambda self: None)
     made = []
@@ -37,9 +39,10 @@ def windows(qapp, tmp_path, monkeypatch):
 
 def test_titles_and_flow_labels_differ(windows):
     first, learn = windows('setup'), windows('tutorial')
-    assert first.windowTitle() == first._title_lbl.text() == 'Set up Samsara'
+    assert first.windowTitle() == 'Set up Samsara'
+    assert first._title_lbl.text() == 'Welcome'  # 1006: one setup title.
     assert learn.windowTitle() == learn._title_lbl.text() == 'Learn Samsara'
-    assert first._step_lbl.text().endswith('\nSetup')
+    assert first._step_lbl.text() == 'Step 1 of 5'  # 1006: no repeated Setup.
     assert learn._step_lbl.text() == 'Step 1 of 4'  # 940: four core tutorial pages.
     assert learn._step_indicator.variant == 'C'
     assert first._step_indicator.variant == 'A'

@@ -28,8 +28,8 @@ def test_offer_yes_no_survives_back_and_finish(make_window, enable):
     offer = window._decisions.hands_free_offer
     assert offer.combo.currentData() is False
     assert window._config['command_mode']['mode'] == 'toggle'
-    assert 'Tap Right Ctrl' in offer.description.text()
-    assert 'again to stop' in offer.description.text()
+    assert 'Hands-free is off' in offer.description.text()  # 1006: hint follows No.
+    assert 'Choose Yes above' in offer.description.text()
     index = offer.combo.findData(enable)
     button = offer.segments.buttons[index]
     button.setFocus()
@@ -53,8 +53,10 @@ def test_rerun_preserves_saved_session_and_other_settings(make_window, mode, ena
     visit(window, 'Talking')
     offer = window._decisions.hands_free_offer
     assert offer.combo.currentData() is enabled
-    assert ('Hold' if mode == 'hold' else 'Tap') in offer.description.text()
-    assert 'Mouse 5' in offer.description.text()
+    # 1006: disabled sessions explain Yes instead of an unavailable start action.
+    assert (('Hold' if mode == 'hold' else 'Tap') if enabled else 'Hands-free is off') in offer.description.text()
+    if enabled:
+        assert 'Mouse 5' in offer.description.text()
     before = deepcopy(window._config)
     result = finish(window)
     assert result['command_mode'] == before['command_mode']
@@ -66,8 +68,8 @@ def test_rebound_key_updates_offer_and_persists(make_window):
     decisions = window._decisions
     decisions.hands_free._combo = 'f8'
     decisions.hands_free.bindingChanged.emit('f8')
+    decisions.hands_free_offer.segments.buttons[0].click()  # 1006: enable before start hint.
     assert 'F8' in decisions.hands_free_offer.description.text()
-    decisions.hands_free_offer.segments.buttons[0].click()
     result = finish(window)
     assert result['command_mode']['button'] == 'f8'
     assert result['command_mode']['enabled'] is True

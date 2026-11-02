@@ -261,7 +261,7 @@ class _WizardChoiceIndicator(QRadioButton):
 
 # Stable identities are independent of the short progress labels. PLACEHOLDER COPY (935).
 _STEPS = [
-    ("Welcome", "Set up Samsara"),
+    ("Welcome", "Welcome"),  # PLACEHOLDER COPY (1006): setup title appears once.
     ("Microphone", "Select Your Microphone"),
     ("Recognition", "Recognition and readiness"),
     ("Talking", "How to start talking"),
@@ -568,6 +568,7 @@ class _WizardWindow(QMainWindow):
         self.result = None
         self._step = 0
         self._optional_step = None
+        self._visited_steps = set()
         self._config, self._existing_config = initial_config(_DEFAULTS, config_path)
         if samsara_app is not None and not getattr(samsara_app, 'model_loaded', False):
             from samsara.setup_model_download import SetupModelDownload
@@ -591,7 +592,7 @@ class _WizardWindow(QMainWindow):
 
         self.setWindowTitle("Set up Samsara")  # PLACEHOLDER COPY (837)
         self.setMinimumSize(720, 480)
-        self.resize(860, 760)
+        self.resize(860, 700)
         self.setStyleSheet(theme.build_stylesheet())
 
         central = QWidget()
@@ -713,8 +714,8 @@ class _WizardWindow(QMainWindow):
         nl.addStretch()
 
         self._tutorial_btn = QPushButton("Learn Samsara")  # PLACEHOLDER COPY (935)
-        self._tutorial_btn.setAutoDefault(True)
-        theme.make_primary(self._tutorial_btn)
+        self._tutorial_btn.setAutoDefault(False)
+        theme.make_secondary(self._tutorial_btn)
         self._tutorial_btn.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         self._tutorial_btn.setProperty('walkthrough_detail', True)
         self._tutorial_btn.clicked.connect(self._finish_and_learn)
@@ -736,6 +737,10 @@ class _WizardWindow(QMainWindow):
         theme.apply_design_scale(self)
         self._decisions.prepare_navigation()
         self._show_step()
+        # 1006: reserve every page before display, using real frame margins.
+        self.ensurePolished()
+        self.winId()
+        self._fit_available_screen()
 
     # ------------------------------------------------------------------
     # Pages
@@ -941,10 +946,11 @@ class _WizardWindow(QMainWindow):
         self._current_page = page
 
         name = self._step_name
+        self._visited_steps.add(name)
         title = dict(_STEPS + _OPTIONAL_STEPS)[name]
         # PLACEHOLDER COPY (837)
-        self._step_lbl.setText("Optional settings\nSetup" if self._optional_step else
-                               f"Step {self._step + 1} of {len(_STEPS)}\nSetup")  # PLACEHOLDER COPY (935)
+        self._step_lbl.setText("Optional settings" if self._optional_step else
+                               f"Step {self._step + 1} of {len(_STEPS)}")  # PLACEHOLDER COPY (1006)
         self._title_lbl.setText(title)
 
         self._step_indicator.set_progress(self._step)
@@ -954,7 +960,7 @@ class _WizardWindow(QMainWindow):
         self._back_btn.setEnabled(self._step > 0)
         is_last = name == "Complete"
         self._tutorial_btn.setVisible(is_last)
-        (theme.make_secondary if is_last else theme.make_primary)(self._next_btn)
+        theme.make_primary(self._next_btn)
         self._next_btn.setText("Back to Ready" if self._optional_step else
                                "Start Samsara" if is_last else "Next")  # PLACEHOLDER COPY (935)
         self._decisions.prepare_step(name)
@@ -1034,9 +1040,12 @@ class _WizardWindow(QMainWindow):
         if self._no_hints_cb is not None and self._no_hints_cb.isChecked():
             self._config['hints_enabled'] = False
         self.result = _finalize_config(self._config)
-        if learn and self._samsara_app is not None:
+        if not self._existing_config.get('first_run_complete'):
+            from samsara.ui.first_run_pages_qt import mark_setup_version_seen
+            mark_setup_version_seen()
+        if self._samsara_app is not None:
             # Startup already schedules the tutorial after config/audio are ready.
-            self._samsara_app._tutorial_start_from_setup = True
+            self._samsara_app._tutorial_start_from_setup = learn
         self.close()
 
     def closeEvent(self, event):
