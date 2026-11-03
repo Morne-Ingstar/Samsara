@@ -1,0 +1,89 @@
+{
+  "assets": {
+    "speech_0": {
+      "sha256": "4e25e22555cd16e90edb0a3b49fdcf1fe652b2a1250ab643634db33895c75b41",
+      "bytes": 120041,
+      "id": "1272-128104-0000",
+      "license": "CC-BY-4.0"
+    },
+    "speech_1": {
+      "sha256": "46a9d58622b4675b29564da2d9ba73e702241c5fa969f12c387cad4aa984276a",
+      "bytes": 101672,
+      "id": "1272-128104-0001",
+      "license": "CC-BY-4.0"
+    },
+    "speech_2": {
+      "sha256": "59bf7bb1129c11734a8dd362ad52b4e10ae31c03f0879fc92f7107ecd513513f",
+      "bytes": 255853,
+      "id": "1272-128104-0002",
+      "license": "CC-BY-4.0"
+    },
+    "speech_3": {
+      "sha256": "60d72657439cd3092fc2313efe0fabd31f0cd2f28f8ca46a21380c290b2e031d",
+      "bytes": 196122,
+      "id": "1272-128104-0003",
+      "license": "CC-BY-4.0"
+    },
+    "speech_4": {
+      "sha256": "07244790e9a8300bfcbf12c28ac5230792e75238d03b2ac167a72bf3943c5404",
+      "bytes": 572784,
+      "id": "1272-128104-0004",
+      "license": "CC-BY-4.0"
+    },
+    "speech_5": {
+      "sha256": "870faa0669d19ca8416b9923cdf722ba9fd6ccce766a50583fa9c0f808b39eba",
+      "bytes": 182093,
+      "id": "1272-128104-0005",
+      "license": "CC-BY-4.0"
+    },
+    "speech_6": {
+      "sha256": "12475ade3c01c9f750bfc95e1c5a5dd05afcfe30141a0f5464da59f0c01d26e4",
+      "bytes": 112599,
+      "id": "1272-128104-0006",
+      "license": "CC-BY-4.0"
+    },
+    "speech_7": {
+      "sha256": "84998a43cb534e09801f5522b9ed0aa58e88035c9727bc8e4d362a7bc158d0b6",
+      "bytes": 177422,
+      "id": "1272-128104-0007",
+      "license": "CC-BY-4.0"
+    },
+    "speech_14": {
+      "sha256": "5e7e3b96d975c74c952209a4d3a0731ec57019689685e1cf5f3c73a76f6f8a36",
+      "bytes": 46388,
+      "id": "1272-128104-0014",
+      "license": "CC-BY-4.0"
+    },
+    "room": {
+      "sha256": "561b49bedf4fbfec6fd0abe14cf12f717aafbd6a42083d8d8c38f0c6b442b8c0",
+      "bytes": 1303100,
+      "license": "CC0-1.0",
+      "creator": "Soapuel",
+      "title": "Room Tone.wav",
+      "source_page": "https://freesound.org/people/Soapuel/sounds/489443/",
+      "url": "https://cdn.freesound.org/previews/489/489443_10448599-lq.ogg",
+      "original_sha256": "c6720595ffb6d26db923395d64a095167c9bba14787245051ce1cba1ddc22dbe",
+      "processing": "public Ogg preview decoded, mono mix, resample 16000 Hz, PCM16 FLAC",
+      "duration_s": 130.67225
+    },
+    "cue_start": {
+      "sha256": "4e07f97a9cd45b17af5d8cc58819536f4c82db4564a1ff6f352fa0d2ecd43c8c",
+      "bytes": 10628,
+      "license": "repository licence",
+      "path": "sounds/start.wav"
+    }
+  },
+  "text": {
+    "0": "MISTER QUILTER IS THE APOSTLE OF THE MIDDLE CLASSES AND WE ARE GLAD TO WELCOME HIS GOSPEL",
+    "1": "NOR IS MISTER QUILTER'S MANNER LESS INTERESTING THAN HIS MATTER",
+    "2": "HE TELLS US THAT AT THIS FESTIVE SEASON OF THE YEAR WITH CHRISTMAS AND ROAST BEEF LOOMING BEFORE US SIMILES DRAWN FROM EATING AND ITS RESULTS OCCUR MOST READILY TO THE MIND",
+    "3": "HE HAS GRAVE DOUBTS WHETHER SIR FREDERICK LEIGHTON'S WORK IS REALLY GREEK AFTER ALL AND CAN DISCOVER IN IT BUT LITTLE OF ROCKY ITHACA",
+    "4": "LINNELL'S PICTURES ARE A SORT OF UP GUARDS AND AT EM PAINTINGS AND MASON'S EXQUISITE IDYLLS ARE AS NATIONAL AS A JINGO POEM MISTER BIRKET FOSTER'S LANDSCAPES SMILE AT ONE MUCH IN THE SAME WAY THAT MISTER CARKER USED TO FLASH HIS TEETH AND MISTER JOHN COLLIER GIVES HIS SITTER A CHEERFUL SLAP ON THE BACK BEFORE HE SAYS LIKE A SHAMPOOER IN A TURKISH BATH NEXT MAN",
+    "5": "IT IS OBVIOUSLY UNNECESSARY FOR US TO POINT OUT HOW LUMINOUS THESE CRITICISMS ARE HOW DELICATE IN EXPRESSION",
+    "6": "ON THE GENERAL PRINCIPLES OF ART MISTER QUILTER WRITES WITH EQUAL LUCIDITY",
+    "7": "PAINTING HE TELLS US IS OF A DIFFERENT QUALITY TO MATHEMATICS AND FINISH IN ART IS ADDING MORE FACT",
+    "14": "BY HARRY QUILTER M A"
+  },
+  "corpus_url": "https://huggingface.co/datasets/hf-internal-testing/librispeech_asr_dummy/resolve/main/clean/validation-00000-of-00001.parquet",
+  "corpus_sha256": "4e69a06fa5edc90921e5e7e39a7084881f8b3ed9c805c574f4f39c6fde27c603"
+}
