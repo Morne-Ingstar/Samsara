@@ -16,6 +16,7 @@ import re
 import traceback
 
 from samsara.config_defaults import DEFAULTS
+from samsara.paths import samsara_home_dir
 
 logger = logging.getLogger(__name__)
 KEYS = ('model_size', 'performance_mode', 'compute_type')
@@ -56,6 +57,12 @@ def _read(path):
         return None
 
 
+def _config_path(app):
+    path = Path(app.config_path)
+    # 1042b: lightweight hosts must not put guard state under the process cwd.
+    return path if path.is_absolute() else samsara_home_dir() / path
+
+
 class ModelGuard:
     def __init__(self, app, defaults=None):
         self.app = app
@@ -66,8 +73,9 @@ class ModelGuard:
         self.notice_sink = None
         self.restored = False
         self.started = False
-        self.checkpoint = Path(app.config_path).parent / 'config_backups/model_guard.json'
-        self.profile = hashlib.sha256(str(Path(app.config_path).resolve()).casefold().encode()).hexdigest()
+        config_path = _config_path(app)
+        self.checkpoint = config_path.parent / 'config_backups/model_guard.json'
+        self.profile = hashlib.sha256(str(config_path.resolve()).casefold().encode()).hexdigest()
 
     def project(self, config):
         return choices(config, self.defaults)
@@ -170,7 +178,7 @@ def protect_save(app, merged):
         # the last loaded snapshot, never from already-mutated memory.
         baseline = getattr(app, '_config_last_disk_snapshot', None)
         if not isinstance(baseline, dict) or not any(key in baseline for key in KEYS):
-            baseline = _read(Path(app.config_path))
+            baseline = _read(_config_path(app))
         if not isinstance(baseline, dict) or not any(key in baseline for key in KEYS):
             return merged
         guard = app._model_guard = ModelGuard(app)

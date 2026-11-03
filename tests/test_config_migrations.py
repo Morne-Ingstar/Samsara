@@ -22,10 +22,11 @@ import dictation
 LEGACY_KEYS = ("wake_targets", "command_mode_enabled", "ai_command_mode")
 
 
-def _legacy_config():
+def _legacy_config(config_path):
     """A settled current config plus the three orphaned legacy keys the live
     profile still carries."""
-    app = _new_app(Path("unused-missing.json"))
+    # 1042b: finish_load writes a model-guard checkpoint even with save stubbed.
+    app = _new_app(config_path)
     app.save_config = lambda: None
     app.load_config()
     cfg = json.loads(json.dumps(app.config))
@@ -63,7 +64,7 @@ def _boot_load(config_path):
 def home(tmp_path, monkeypatch):
     monkeypatch.setattr(dictation, "samsara_home_dir", lambda: tmp_path)
     path = tmp_path / "config.json"
-    path.write_text(json.dumps(_legacy_config(), indent=2), encoding="utf-8")
+    path.write_text(json.dumps(_legacy_config(tmp_path / "unused-missing.json"), indent=2), encoding="utf-8")
     return path
 
 
