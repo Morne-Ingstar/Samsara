@@ -175,7 +175,7 @@ def resolve_backend(app) -> "str | None":
 
 
 def rewrite(text: str, instruction: str, app=None, *, backend=None,
-            call_fn=None) -> tuple:
+            call_fn=None, before_submit=None) -> tuple:
     """Ask the configured model to rewrite `text` per `instruction`.
 
     Returns (raw_reply, None) when a model answered, or (None, reason) for
@@ -210,6 +210,10 @@ def rewrite(text: str, instruction: str, app=None, *, backend=None,
         def call(_app, user_message, timeout_s):
             return call_fn(user_message)
 
+    # Resolution can block on a provider probe. Revalidate request authority
+    # after that latency, before giving any source to the chosen transport.
+    if before_submit is not None and not before_submit():
+        return None, "the text changed"
     user_message = build_user_message(source, instruction)
     started = time.monotonic()
     try:

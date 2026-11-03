@@ -489,6 +489,20 @@ def grab_selection_block(timeout_s: float = _SELECTION_POLL_TIMEOUT_S) -> "str |
     return _grab_selection_text(timeout_s, validate, require_sequence=True)
 
 
+def grab_selection_block_result(timeout_s: float = _SELECTION_POLL_TIMEOUT_S):
+    """Expose the existing preserved transaction without inventing emptiness.
+
+    A no-op Ctrl+C is failed/unknown, not verified_empty. Callers need a safe
+    control/range adapter before using this on a speculative router turn.
+    """
+    from samsara.ava_edit.targets import SelectionCapture
+    try:
+        text = grab_selection_block(timeout_s)
+    except Exception:
+        return SelectionCapture('failed')
+    return SelectionCapture('selected', text) if text else SelectionCapture('failed')
+
+
 def _grab_selection_text(timeout_s, transform, *, require_sequence=False):
     """Grab the CURRENTLY SELECTED/HIGHLIGHTED text (not the clipboard's
     existing content) by sending Ctrl+C and reading what changed, then

@@ -227,7 +227,7 @@ def deterministic_cleanup(text: str) -> str:
 
 def should_capture(app, instruction: str) -> bool:
     request = intent.selection_request(instruction)
-    return request == "selection" or (request == "bare" and not session.source_text(app))
+    return request in {"selection", "bare"}
 
 
 def _target_matches(target) -> bool:
@@ -245,6 +245,109 @@ def capture():
     if not _target_matches(target):
         return None, None
     return original, target
+
+
+def capture_result(app=None):
+    """Safe passive snapshot; unsupported controls are explicitly unknown.
+
+    Only ordinary Win32 Edit controls have a reviewed native adapter here.
+    Rich/custom/terminal controls refuse until a safe range adapter is supplied.
+    There is no speculative Ctrl+C and no inferred empty selection on timeout.
+    """
+    from samsara import clipboard
+    from samsara.ava_edit.targets import SelectionCapture
+    target = clipboard._paste_target()
+    if not target or not target[0] or not target[2]:
+        return SelectionCapture()
+    try:
+        draft = _draft_selection(app, target)
+        if draft is not None:
+            return draft
+        return _native_selection(target)
+    except Exception:
+        return SelectionCapture('failed', target=target)
+
+
+def _draft_selection(app, target):
+    """Reuse the revisioned Full/Compact correction selection, when focused."""
+    import ctypes
+    import os
+    from samsara import clipboard
+    from samsara.ava_edit.targets import SelectionCapture
+    if app is None or clipboard._user32 is None:
+        return None
+    pid = ctypes.c_ulong()
+    clipboard._user32.GetWindowThreadProcessId(target[0], ctypes.byref(pid))
+    if pid.value != os.getpid():
+        return None
+    manager = getattr(app, '_session_mode_manager', None)
+    if manager is None:
+        return None
+    pending = manager.pending_word_correction()
+    coords = pending.get('selection') if pending else None
+    if not coords:
+        return None
+    from samsara.session_corrections import _selection_text
+    document = manager.draft_document
+    text = _selection_text(document, coords)
+    if text is None:
+        return SelectionCapture('failed', target=target)
+    start = 0
+    for segment in document.segments:
+        if segment.id == coords['segment_id']:
+            start += coords['start']
+            break
+        start += len(segment.text)
+    return SelectionCapture('selected', text, target, draft_range=(start, start + len(text)))
+
+
+def _native_selection(target):
+    import ctypes
+    from samsara import clipboard
+    from samsara.injection_safety import window_integrity
+    from samsara.ava_edit.targets import SelectionCapture
+    api = clipboard._user32
+    if api is None:
+        return SelectionCapture(target=target)
+    focus = target[2]
+    label = ctypes.create_unicode_buffer(256)
+    if not api.GetClassNameW(focus, label, len(label)) or label.value.lower() != 'edit':
+        return SelectionCapture(target=target)
+    if not window_integrity(focus).confirmed_ok:
+        return SelectionCapture(target=target)
+    # ES_PASSWORD / ES_READONLY. Do not read protected or non-editable fields.
+    from ctypes import wintypes
+    get_style = api.GetWindowLongW
+    get_style.argtypes, get_style.restype = [wintypes.HWND, ctypes.c_int], ctypes.c_long
+    if get_style(focus, -16) & (0x20 | 0x800):
+        return SelectionCapture(target=target)
+
+    def send(message, wparam=0, lparam=0):
+        if not _target_matches(target):
+            raise RuntimeError('source changed')
+        result = ctypes.c_size_t()
+        if not api.SendMessageTimeoutW(focus, message, wparam, lparam, 0x23, 200,
+                                       ctypes.byref(result)):
+            raise RuntimeError('source unavailable')
+        return result.value
+
+    start, end = ctypes.c_ulong(), ctypes.c_ulong()
+    send(0xB0, ctypes.addressof(start), ctypes.addressof(end))  # EM_GETSEL
+    if start.value == end.value:
+        return SelectionCapture('verified_empty', target=target, span=(start.value, end.value))
+    length = send(0xE)  # WM_GETTEXTLENGTH (UTF-16 units)
+    if length > 20_000 or end.value > length:
+        return SelectionCapture('failed', target=target)
+    buffer = ctypes.create_unicode_buffer(length + 1)
+    copied = send(0xD, length + 1, ctypes.addressof(buffer))  # WM_GETTEXT
+    after_start, after_end = ctypes.c_ulong(), ctypes.c_ulong()
+    send(0xB0, ctypes.addressof(after_start), ctypes.addressof(after_end))
+    if (copied != length or (start.value, end.value) != (after_start.value, after_end.value)
+            or not _target_matches(target)):
+        return SelectionCapture('failed', target=target)
+    raw = buffer.value.encode('utf-16-le')
+    text = raw[start.value * 2:end.value * 2].decode('utf-16-le')
+    return SelectionCapture('selected', text, target, (start.value, end.value))
 
 
 def propose_and_stage(app, instruction: str) -> bool:
@@ -272,18 +375,16 @@ def propose_and_stage(app, instruction: str) -> bool:
             read_back(app, original)
             return True
         return _transform(app, original, target, operation, argument)
-    cleanup = intent._first_word(instruction) in _CLEANUP_VERBS
+    # Preserve the explicit capture API used by existing selection callers.
+    # Both request routes use actions; this adapter retains its clipboard
+    # capture contract and the same authorized proposal/stage engine (1036b).
+    cleanup, instruction = intent.cleanup_instruction(instruction)
     if not cleanup and (not session.enabled(app) or model.resolve_backend(app) is None):
         _notice(app, "This edit needs Ava. Turn Ava on and choose a model first.")
         return False
-    instruction = DEFAULT_INSTRUCTION if cleanup else instruction
     session._chip(app, "edit_thinking")
-    proposal = session.propose(
-        original, instruction, app,
-        # 823: staged-draft availability does not describe a captured selection.
-        offline=cleanup and not session.enabled(app),
-        cleanup=cleanup,
-    )
+    proposal = session.propose(original, instruction, app,
+        offline=cleanup and not session.enabled(app), cleanup=cleanup)
     return session.stage(app, proposal, selection_target=target)
 
 
@@ -319,6 +420,12 @@ def _paste(staged) -> bool:
     def prepare():
         if not _target_matches(target) or session.pending() is not staged:
             return False
+        if staged.request is not None:
+            from samsara.ava_edit import targets
+            app = session._worker_app
+            if (app is None or not targets.request_valid(app, staged.request.snapshot)
+                    or not targets.source_valid(app, staged.bound_target)):
+                return False
         if staged.selection_mode == "below":
             import pyautogui
             # Collapse at the selection's right edge even for backward ranges,

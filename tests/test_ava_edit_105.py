@@ -170,9 +170,13 @@ def _staged(app, rewrite=BETTER):
 
 
 @pytest.fixture(autouse=True)
-def _clean_slot():
+def _clean_slot(monkeypatch):
     """The staged slot is module-level, like execution_policy's pending
     operation. A leaked proposal would make the next test lie."""
+    from samsara.ava_edit import selection, targets
+    # 1036b: this fixture models a verified empty foreground selection.
+    monkeypatch.setattr(selection, 'capture_result', lambda *_: targets.SelectionCapture('verified_empty'))
+    monkeypatch.setattr(session.thread_registry, 'timer', lambda *_a, **_k: None)
     session.clear()
     yield
     session.clear()
@@ -296,12 +300,13 @@ class TestNothingAppliesWithoutTheWord:
         assert result == {"applied": False, "reason": "nothing staged", "chars": 0}
         assert window.text == SRC
 
-    def test_an_edit_request_with_no_session_buffer_is_not_claimed(self):
-        """No dictated text means there is nothing to edit, so the utterance
-        is not an edit request at all and must reach Ava untouched."""
+    def test_an_edit_request_with_no_session_buffer_is_not_claimed(self, monkeypatch):
+        """1036b: a recognized request reports the same no-source refusal as the model door."""
         app, _manager, _window = _build(chunk="")
+        monkeypatch.setattr(session.thread_registry, 'spawn', lambda _name, fn, **_: fn())
         assert session.is_available(app) is False
-        assert session.handle_utterance(app, "make that shorter") is False
+        assert session.handle_utterance(app, "make that shorter") is True
+        assert session.pending() is None
 
     def test_no_session_manager_at_all_falls_through_to_ava(self):
         app = _App(manager=None, window=_Window())

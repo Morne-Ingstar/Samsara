@@ -2,7 +2,7 @@
 
 Selection requests match the whole utterance after leading fillers, in Ava
 or command mode. Explicit selection words use the teaching vocabulary. Bare
-references prefer the staged draft and otherwise select the capture path.
+references use the shared selection-first resolver.
 Other staged edit instructions retain detect_stage_reference's existing rule:
 an opening edit verb plus a reference to the staged dictation.
 
@@ -88,13 +88,17 @@ def is_edit_request(text: str) -> bool:
     Both conditions, never one: an edit verb in first position (after
     fillers) AND session_modes' own stage-reference test.
     """
-    if not (text or "").strip():
+    if not (text or "").strip() or _is_quoted(text):
         return False
     # Reading captures the selection but is not an edit request.
     if selection_instruction(text) == "read selection":
         return False
-    return selection_request(text) is not None or (
-        _first_word(text) in EDIT_VERBS and detect_stage_reference(text))
+    if selection_request(text) is not None:
+        return True
+    # Cleanup aliases are whole requests. The broad stage-reference rule must
+    # not reclaim a rejected suffix such as "clean this up later" (1036b).
+    return (_first_word(text) in EDIT_VERBS - {"clean", "tidy", "punctuate"}
+            and detect_stage_reference(text))
 
 
 def selection_phrases() -> dict[str, tuple[str, ...]]:
@@ -238,3 +242,38 @@ def is_discard_utterance(text: str) -> bool:
     if _is_quoted(text):
         return False
     return _normalize(text) in DISCARD_UTTERANCES
+
+
+def explicit_target(text):
+    """Target words only; this does not broaden deterministic edit matching."""
+    normalized = _normalize(text)
+    if re.search(r'\blast sentence\b', normalized):
+        return 'last_sentence'
+    if re.search(r'\b(what i just said|last dictation|just dictated)\b', normalized):
+        return 'last_dictation'
+    if re.search(r'\b(draft|whole draft|everything)\b', normalized):
+        return 'draft'
+    from samsara.teach_patterns import _SOURCE_KEYWORD_TO_KIND
+    if any(re.search(r'\b' + re.escape(key) + r'\b', normalized)
+           for key, kind in _SOURCE_KEYWORD_TO_KIND.items() if kind == 'selection'):
+        return 'selection'
+    return None
+
+
+def edit_target(text):
+    return explicit_target(text) or 'auto'
+
+
+def cleanup_instruction(text):
+    """One conservative normalizer. Specific instructions stay verbatim.
+
+    Only the bounded cleanup aliases may use 747's homophone/pause floor.
+    Punctuation-only/tone/translation instructions must never inherit it.
+    """
+    canonical = selection_instruction(text)
+    cleanup = (canonical is not None and _first_word(text) in {'clean', 'tidy', 'fix', 'correct', 'punctuate'}
+               and selection_edit_parts(text) is None)
+    if not cleanup:
+        return False, text
+    from samsara.ava_edit.selection import DEFAULT_INSTRUCTION
+    return True, DEFAULT_INSTRUCTION

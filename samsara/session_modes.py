@@ -3170,24 +3170,20 @@ class SessionModeManager(UtteranceUndoMixin):
         return item
 
     def apply_edit(self, rewritten: str, *, before_delete_s: float = 0.0,
-                   after_delete_s: float = 0.0, dwell_fn=None) -> dict:
+                   after_delete_s: float = 0.0, dwell_fn=None, source_guard=None) -> dict:
         """Replace the most recent dictation chunk with `rewritten`, as ONE
         unit of work that ONE "scratch that" reverses exactly.
 
         Returns {"applied": bool, "reason": str, "chars": int}.
 
-        Atomicity, and the honest limit of it. The stack is mutated only
-        AFTER the window has accepted both halves of the change, so every
-        refusal below leaves the text and the stack exactly as they were and
-        "scratch that" still means the original chunk. The one case this
-        cannot make atomic is an OS-level deletion that stops part-way (the
-        user alt-tabs mid-backspace, the target refuses input): the
-        characters already gone are gone. That is the same exposure
-        _do_scratch_that has carried since queue 50 -- inherent to driving
-        another process's text box by keystrokes, not something this path
-        adds -- and it is reported as "the deletion was interrupted" rather
-        than dressed up as a success. The deletion is ONE call, so the window
-        for it is as small as the primitive allows.
+        The stack changes only after both deletion and replacement succeed.
+        Driving another process by keystrokes cannot guarantee atomicity:
+        a deletion can stop part-way, or authority can expire after deletion.
+        Report interrupted/unknown delivery honestly; never retry it here.
+        Before each destructive step, recheck the request source guard after
+        any pacing delay. That guard supplements the existing process/window
+        checks below; it never retargets the edit. On a refusal before deletion,
+        the text and stack stay unchanged. Undo uses the existing chunk stack.
 
         The two focus checks are the same fail-closed pair _do_scratch_that
         uses, in the same order, for the same reason: applying an edit when
@@ -3218,11 +3214,15 @@ class SessionModeManager(UtteranceUndoMixin):
         dwell = dwell_fn if dwell_fn is not None else time.sleep
         if before_delete_s:
             dwell(before_delete_s)
+        if source_guard is not None and not source_guard():
+            return {"applied": False, "reason": "the text changed", "chars": 0}
         if self._remove_chars_fn(len(original)) is False:
             log.error("[AVA-EDIT] apply stopped: the deletion was interrupted")
             return {"applied": False, "reason": "the deletion was interrupted", "chars": 0}
         if after_delete_s:
             dwell(after_delete_s)
+        if source_guard is not None and not source_guard():
+            return {"applied": False, "reason": "delivery unknown after deletion", "chars": 0}
         if self._raw_inject_fn(rewritten) is False:
             log.error("[AVA-EDIT] apply stopped: the rewrite was not delivered")
             return {"applied": False, "reason": "the rewrite was not delivered", "chars": 0}

@@ -37,12 +37,14 @@ PROPOSAL_TTL_S = 120.0
 
 _lock = threading.RLock()
 _pending: "PendingProposal | None" = None
+_worker_app = None
 
 
 class PendingProposal:
     """A proposal that has been shown and not yet answered."""
 
-    __slots__ = ("proposal", "created_at", "_clock", "selection_target", "selection_mode", "draft_target")
+    __slots__ = ("proposal", "created_at", "_clock", "selection_target", "selection_mode", "draft_target",
+                 "bound_target", "request", "proposal_id")
 
     def __init__(self, proposal: Proposal, clock=time.monotonic, selection_target=None,
                  selection_mode="replace"):
@@ -52,9 +54,14 @@ class PendingProposal:
         self.selection_target = selection_target
         self.selection_mode = selection_mode
         self.draft_target = None
+        self.bound_target = self.request = None
+        from uuid import uuid4
+        self.proposal_id = uuid4().hex
 
     def expired(self) -> bool:
-        return (self._clock() - self.created_at) > PROPOSAL_TTL_S
+        return ((self._clock() - self.created_at) > PROPOSAL_TTL_S
+                or (self.request is not None and (self.request.snapshot.released
+                    or self.request.snapshot.clock() - self.request.snapshot.created_at > PROPOSAL_TTL_S)))
 
 
 # ---------------------------------------------------------------------------
@@ -130,8 +137,13 @@ def pending() -> "PendingProposal | None":
 
 
 def clear() -> None:
-    global _pending
+    global _pending, _worker_app
     with _lock:
+        if _worker_app is not None:
+            _worker_app._ava_edit_epoch = getattr(_worker_app, '_ava_edit_epoch', 0) + 1
+            _worker_app = None
+        if _pending is not None and _pending.request is not None:
+            _pending.request.snapshot.release()
         _pending = None
 
 
@@ -189,7 +201,7 @@ def is_available(app) -> bool:
 
 
 def propose(text: str, instruction: str, app, *, offline=False, cleanup=False,
-            transform="") -> Proposal:
+            transform="", before_submit=None) -> Proposal:
     """Ask the model for the full rewrite, compute the diff locally, and gate
     the result through the sanitizer.
 
@@ -226,7 +238,8 @@ def propose(text: str, instruction: str, app, *, offline=False, cleanup=False,
         from samsara.ava_edit.selection import deterministic_cleanup
         raw, reason = deterministic_cleanup(original), None
     else:
-        raw, reason = model.rewrite(original, instruction, app)
+        guard = {'before_submit': before_submit} if before_submit is not None else {}
+        raw, reason = model.rewrite(original, instruction, app, **guard)
         if cleanup and raw is None and reason == "no model available":
             path = "offline"
             from samsara.ava_edit.selection import deterministic_cleanup
@@ -248,7 +261,8 @@ def propose(text: str, instruction: str, app, *, offline=False, cleanup=False,
     return finish(Proposal.build(original, sanitize.clean(raw), instruction=instruction))
 
 
-def stage(app, proposal: Proposal, *, selection_target=None, selection_mode="replace", draft_target=None) -> bool:
+def stage(app, proposal: Proposal, *, selection_target=None, selection_mode="replace", draft_target=None,
+          bound_target=None, request=None) -> bool:
     """Show the proposal and leave it standing. Applies NOTHING.
 
     Returns True when a proposal is now staged and waiting for the word.
@@ -258,7 +272,8 @@ def stage(app, proposal: Proposal, *, selection_target=None, selection_mode="rep
         _say(app, proposal.describe())
         logger.info(f"[AVA-EDIT] not staged: {proposal.reason}")
         return False
-    _stage(proposal, selection_target, selection_mode, draft_target)
+    staged = _stage(proposal, selection_target, selection_mode, draft_target)
+    staged.bound_target, staged.request = bound_target, request
     _chip(app, "edit_proposed", {"changes": proposal.change_count})
     description = proposal.describe()
     if draft_target is not None:
@@ -273,40 +288,17 @@ def stage(app, proposal: Proposal, *, selection_target=None, selection_mode="rep
 def propose_and_stage(app, instruction: str) -> bool:
     """The whole propose half, for a caller that has only the instruction.
     Blocking -- run it off the utterance thread."""
-    from samsara.ava_edit import selection
-    if selection.should_capture(app, instruction):
+    from samsara.ava_edit import actions, selection, targets
+    if isinstance(instruction, targets.EditRequest):
+        return actions.propose_and_stage(app, instruction)
+    parts = intent.selection_edit_parts(instruction)
+    if intent.selection_action(instruction) or (parts and not parts[1]):
         return selection.propose_and_stage(app, instruction)
-    manager = getattr(app, "_session_mode_manager", None)
-    document = getattr(manager, "draft_document", None)
-    if document is not None and document.text:
-        return _propose_draft(app, instruction, manager)
-    if intent.selection_request(instruction) == "draft":
-        return False
-    original = source_text(app)
-    if not original:
-        return False
-    _chip(app, "edit_thinking")
-    return stage(app, propose(original, instruction, app))
+    return actions.propose_and_stage(app, actions.from_utterance(app, instruction))
 
 
 def _propose_draft(app, instruction, manager):
-    import re
-    from samsara.ava_edit.selection import DEFAULT_INSTRUCTION
-
-    with manager._dispatch_lock:
-        document = manager.draft_document
-        original = document.text
-        target = (manager, document.document_id, document.revision, original)
-    scope = intent.draft_cleanup_scope(instruction)
-    start = 0
-    if scope == "last sentence":
-        boundaries = list(re.finditer(r'[.!?]["\x27\u201d\u2019]*\s+(?=\S)', original.rstrip()))
-        start = boundaries[-1].end() if boundaries else 0
-    source = original[start:]
-    _chip(app, "edit_thinking")
-    proposal = propose(source, DEFAULT_INSTRUCTION if scope else instruction, app,
-                       offline=bool(scope) and not enabled(app), cleanup=bool(scope))
-    return stage(app, proposal, draft_target=(*target, start))
+    return propose_and_stage(app, instruction)
 
 
 # ---------------------------------------------------------------------------
@@ -325,11 +317,18 @@ def apply(app) -> dict:
     if staged is None:
         _chip(app, "edit_refused", {"reason": "nothing staged"})
         return {"applied": False, "reason": "nothing staged", "chars": 0}
+    if staged.request is not None:
+        from samsara.ava_edit import targets
+        if (not targets.request_valid(app, staged.request.snapshot)
+                or (staged.bound_target.kind != 'selection'
+                    and not targets.source_valid(app, staged.bound_target))):
+            return {"applied": False, "reason": "the text changed", "chars": 0}
     if staged.selection_target is not None:
         from samsara.ava_edit import selection
         return selection.apply(app, staged)
     if staged.draft_target is not None:
-        manager, document_id, revision, original, start = staged.draft_target
+        manager, document_id, revision, original, start, *tail = staged.draft_target
+        end = tail[0] if tail else len(original)
         if getattr(app, "_session_mode_manager", None) is not manager:
             return {"applied": False, "reason": "the session changed", "chars": 0}
         with manager._dispatch_lock:
@@ -340,7 +339,7 @@ def apply(app) -> dict:
                 from copy import deepcopy
                 from samsara.session_modes import StackItem
                 before = deepcopy(document)
-                document.replace_text(original[:start] + staged.proposal.rewritten, edited=True)
+                document.replace_text(original[:start] + staged.proposal.rewritten + original[end:], edited=True)
                 manager._clear_draft_undo.drop()
                 manager._last_dictate_ended_terminal = None
                 manager._stack.push(StackItem(kind="draft_edit_apply", payload=document.text,
@@ -357,8 +356,6 @@ def apply(app) -> dict:
             preview._render("")
         return {"applied": valid, "reason": "" if valid else "the text changed",
                 "chars": len(staged.proposal.rewritten) if valid else 0}
-    clear()
-
     manager = getattr(app, "_session_mode_manager", None)
     if manager is None:
         _chip(app, "edit_refused", {"reason": "nothing staged"})
@@ -369,7 +366,8 @@ def apply(app) -> dict:
     # proposal and the word, the user may have dictated more, scratched, or
     # had an edit applied -- and rewriting a DIFFERENT chunk with this
     # rewrite would be the worst failure this feature could have.
-    if source_text(app) != proposal.original:
+    bound = staged.bound_target
+    if (bound is None and source_text(app) != proposal.original):
         _chip(app, "edit_refused", {"reason": "the text changed"})
         _say(app, "The text changed, so I did not apply that edit.")
         logger.info("[AVA-EDIT] apply refused: the session buffer moved under the proposal")
@@ -377,11 +375,14 @@ def apply(app) -> dict:
 
     _wire_raw_injector(app, manager)
     pace = pacing.resolve(app)
-    result = manager.apply_edit(
-        proposal.rewritten,
-        before_delete_s=pace.before_delete_s,
-        after_delete_s=pace.after_delete_s,
-    )
+    kwargs = dict(before_delete_s=pace.before_delete_s, after_delete_s=pace.after_delete_s)
+    if bound is not None:
+        kwargs['source_guard'] = lambda: (pending() is staged
+            and targets.request_valid(app, staged.request.snapshot)
+            and targets.source_valid(app, bound))
+    result = manager.apply_edit(bound.replacement(proposal.rewritten) if bound else proposal.rewritten,
+                                **kwargs)
+    clear()
     if result.get("applied"):
         n = proposal.change_count
         _chip(app, "edit_applied", {"changes": n})
@@ -395,6 +396,7 @@ def discard(app) -> bool:
     """Throw the staged proposal away. Nothing was applied, so there is
     nothing to undo -- the text is byte-identical to before the proposal."""
     if pending() is None:
+        clear()  # Also revoke an in-flight worker, before it owns a proposal.
         return False
     clear()
     _chip(app, "edit_discarded")
@@ -474,7 +476,7 @@ def handle_utterance(app, text: str) -> bool:
             # the utterance goes to Ava. Not claimed.
             return False
 
-        if capture or (intent.is_edit_request(text) and is_available(app)):
+        if capture or intent.is_edit_request(text):
             _propose_off_thread(app, text)
             return True
     except Exception as exc:
@@ -488,9 +490,17 @@ def handle_utterance(app, text: str) -> bool:
 def _propose_off_thread(app, instruction: str) -> None:
     """The model call blocks; the utterance thread must not. Daemon thread,
     same fire-and-forget posture the Ava agent dispatch itself uses."""
+    from samsara.ava_edit import actions
+    global _worker_app
+    parts = intent.selection_edit_parts(instruction)
+    special = intent.selection_action(instruction) or (parts and not parts[1])
+    request = None if special else actions.from_utterance(app, instruction)
+    if request is not None:
+        _worker_app = app
+
     def _run():
         try:
-            propose_and_stage(app, instruction)
+            propose_and_stage(app, request or instruction)
         except Exception as exc:
             logger.warning(f"[AVA-EDIT] proposal failed: {exc}")
             _chip(app, "edit_refused", {"reason": "it failed"})

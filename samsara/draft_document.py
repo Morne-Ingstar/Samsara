@@ -50,6 +50,7 @@ class DraftDocument:
         self.document_id = uuid4().hex
         self.revision = 0
         self._segments: list[DraftSegment] = []
+        self._dictation_origins: dict[str, str] = {}
         self._transactions: list[_Transaction] = []
         self.manual_commit = False
         self.kept_session = False
@@ -80,6 +81,7 @@ class DraftDocument:
             return None
         segment = DraftSegment(uuid4().hex, str(text))
         self._segments.append(segment)
+        self._dictation_origins[segment.id] = segment.text
         self._transactions.append(_Transaction("append", segment.id))
         self.revision += 1
         return segment.id
@@ -87,9 +89,21 @@ class DraftDocument:
     def replace_text(self, text: str, *, edited: bool = False) -> None:
         """Compatibility bridge for legacy callers; creates one stable segment."""
         self._segments = [DraftSegment(uuid4().hex, str(text))] if text else []
+        self._dictation_origins.clear()
         self._transactions.clear()
         self.edited = self.edited or edited
         self.revision += 1
+
+    @property
+    def latest_dictation_range(self):
+        """Latest append still has its exact preimage, else provenance is unknown."""
+        if not self._segments:
+            return None
+        segment = self._segments[-1]
+        if self._dictation_origins.get(segment.id) != segment.text:
+            return None
+        start = sum(len(part.text) for part in self._segments[:-1])
+        return start, start + len(segment.text)
 
     def edit(self, document_id: str, revision: int, segment_id: str,
              start: int, end: int, replacement: str, *, end_segment_id: str | None = None) -> EditResult:
@@ -159,6 +173,7 @@ class DraftDocument:
     def clear(self) -> int:
         chars = self.chars
         self._segments.clear()
+        self._dictation_origins.clear()
         self._transactions.clear()
         self.manual_commit = False
         self.kept_session = False

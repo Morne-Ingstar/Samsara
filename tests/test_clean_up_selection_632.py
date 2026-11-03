@@ -5,7 +5,7 @@ import sys
 import pytest
 
 from samsara import clipboard as cb, teach_patterns as tp
-from samsara.ava_edit import intent, model, sanitize, selection, session
+from samsara.ava_edit import intent, model, sanitize, selection, session, targets
 from samsara.ava_edit.proposal import Proposal
 
 SOURCE = "I went to the. Store and. Bought some milk."
@@ -68,7 +68,15 @@ def rig(monkeypatch):
     monkeypatch.setattr(cb, "time", clock)
     monkeypatch.setattr(session.thread_registry, "spawn", lambda _name, fn, **_: fn())
     monkeypatch.setattr(session, "enabled", lambda _: False)
-    monkeypatch.setattr(model, "rewrite", lambda *_: pytest.fail("unexpected model call"))
+    # 1036b: safe control adapter exposes outcomes; native UI is never probed.
+    def native(target):
+        # Native range reads are passive, including inside paste preparation.
+        return targets.SelectionCapture('selected' if state.selected.strip() else 'verified_empty',
+                                        state.selected, target)
+    monkeypatch.setattr(selection, '_native_selection', native)
+    monkeypatch.setattr(selection, '_draft_selection', lambda *_: None)
+    monkeypatch.setattr(session.thread_registry, 'timer', lambda *_a, **_k: None)
+    monkeypatch.setattr(model, "rewrite", lambda *_, **_kwargs: pytest.fail("unexpected model call"))
     session.clear()
     yield state
     session.clear()
@@ -154,6 +162,9 @@ def test_genuinely_empty_original_is_restored_by_real_empty_restore_branch(rig, 
 
 def test_restore_failure_prevents_staging(rig, app, monkeypatch):
     monkeypatch.setattr(cb, "restore_clipboard", lambda _: False)
+    # 1036b: exercise the clipboard result adapter explicitly; passive native
+    # range capture needs no clipboard transaction in the first place.
+    monkeypatch.setattr(selection, '_native_selection', lambda _: tp.grab_selection_block_result())
     assert session.handle_utterance(app, "clean up selection")
     assert session.pending() is None
     assert not rig.pasted
@@ -204,19 +215,21 @@ def test_bare_reference_prefers_existing_staged_draft(rig, app, monkeypatch, tex
     monkeypatch.setattr(session, "enabled", lambda _: True)
     app._session_mode_manager = SimpleNamespace(top_dictation_chunk=lambda: SimpleNamespace(payload=SOURCE))
     calls = []
-    monkeypatch.setattr(session, "propose", lambda original, instruction, _app:
+    monkeypatch.setattr(session, "propose", lambda original, instruction, _app, **_:
                         calls.append((original, instruction)) or Proposal.build(original, RESULT))
     assert session.handle_utterance(app, text)
-    assert calls == [(SOURCE, text)]
-    assert session.pending().selection_target is None
-    assert not rig.keys
+    # 1036b intentionally changes bare precedence to verified selection first.
+    assert calls == [(SOURCE, selection.DEFAULT_INSTRUCTION)]
+    assert session.pending().selection_target == TARGET
+    assert not rig.keys  # 1036b: passive range capture sends no copy keystrokes.
 
 
 def test_explicit_selection_overrides_draft_and_uses_default_instruction(rig, app, monkeypatch):
     monkeypatch.setattr(session, "enabled", lambda _: True)
     app._session_mode_manager = SimpleNamespace(top_dictation_chunk=lambda: SimpleNamespace(payload="different draft"))
     seen = []
-    monkeypatch.setattr(model, "rewrite", lambda original, instruction, _app:
+    # 1036b: retain the fake rewrite while accepting the submission guard.
+    monkeypatch.setattr(model, "rewrite", lambda original, instruction, _app, **_:
                         (seen.append((original, instruction)) or RESULT, None))
     assert session.handle_utterance(app, "clean up selection")
     assert seen == [(SOURCE, selection.DEFAULT_INSTRUCTION)]
@@ -228,7 +241,7 @@ def test_explicit_selection_overrides_draft_and_uses_default_instruction(rig, ap
 def test_sanitizer_and_cleanup_similarity_reject_rewrites(rig, app, monkeypatch, raw):
     monkeypatch.setattr(session, "enabled", lambda _: True)
     monkeypatch.setattr(session, "is_available", lambda _: True)
-    monkeypatch.setattr(model, "rewrite", lambda *_: (raw, None))
+    monkeypatch.setattr(model, "rewrite", lambda *_, **_kwargs: (raw, None))
     assert session.handle_utterance(app, "clean up selection")
     assert session.pending() is None
     assert app.chips[-1][1] == "warning"
@@ -239,7 +252,7 @@ def test_sanitizer_and_cleanup_similarity_reject_rewrites(rig, app, monkeypatch,
 def test_model_unavailable_uses_same_sanitized_offline_floor(rig, app, monkeypatch):
     monkeypatch.setattr(session, "enabled", lambda _: True)
     monkeypatch.setattr(session, "is_available", lambda _: True)
-    monkeypatch.setattr(model, "rewrite", lambda *_: (None, "no model available"))
+    monkeypatch.setattr(model, "rewrite", lambda *_, **_kwargs: (None, "no model available"))
     assert session.handle_utterance(app, "clean up selection")
     assert session.pending().proposal.rewritten == RESULT
 
@@ -290,7 +303,8 @@ def test_apply_and_discard_share_slot_and_preserve_clipboard(rig, app):
     assert rig.pasted == [RESULT]
     assert session.pending() is None
     assert rig.text == "original clipboard"
-    assert len(rig.restored) == 3  # capture, revalidate selection, paste
+    # 1036b: source snapshot is passive; revalidation copy and paste restore.
+    assert len(rig.restored) == 2
     rig.selected = SOURCE
     assert session.handle_utterance(app, "clean up selection")
     assert session.handle_utterance(app, "discard")

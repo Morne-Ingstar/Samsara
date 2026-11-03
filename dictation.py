@@ -4638,10 +4638,10 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         _try_edit = getattr(self, '_try_ava_edit', None)
         if _try_edit is not None and _try_edit(text):
             return
-        payload_text = f"STAGED TEXT:\n{context}\n\n{text}" if context else text
+        from samsara.ava_edit.actions import ingress_payload  # 1036b: request-local source binding
+        payload_text = ingress_payload(self, text, context)
         # Request identity: captured at the moment the user spoke. Queue
-        # items are (generation, text), never bare strings -- see
-        # _on_ava_session_request_done, which skips stale ones.
+        # Items retain their source snapshot with the request, including while queued.
         from samsara import execution_policy  # noqa: PLC0415
         request = (execution_policy.current_generation(self), payload_text)
 
