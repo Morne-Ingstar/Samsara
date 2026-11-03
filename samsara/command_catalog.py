@@ -20,7 +20,8 @@ hand-maintained. No behaviour change: nothing in the app reads this file.
         description      handler docstring first sentence, else the
                          commands.json description, else the phrase
         risk             read | ui | write | destructive (see classify_risk)
-        undoable         best guess (see guess_undoable)
+        undoable         explicit declaration only; never a rollback guarantee
+        undoable_source  provenance or reason no recovery claim is made
         source           "path:line" of the handler def / the commands.json key
         whole_utterance  the phrase is a reserved whole-utterance control word
                          in samsara.session_modes
@@ -46,6 +47,8 @@ from dataclasses import asdict, dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, Optional
+
+from samsara.command_recovery import recovery_hint
 
 ROOT = Path(__file__).resolve().parent.parent
 USER_ALIASES_FILENAME = "user_aliases.json"
@@ -96,6 +99,7 @@ CATALOG_SCHEMA = {
                     "precondition": {"type": "string"},
                     "risk": {"type": "string", "enum": list(RISKS)},
                     "undoable": {"type": "boolean"},
+                    "undoable_source": {"type": "string", "minLength": 1},
                     "source": {"type": "string", "minLength": 1},
                     "whole_utterance": {"type": "boolean"},
                     "pack": {"type": "string", "minLength": 1},
@@ -135,7 +139,8 @@ class CommandSpec:
     aliases: list = field(default_factory=list)
     description: str = ""
     risk: str = "ui"
-    undoable: bool = True
+    undoable: bool = False
+    undoable_source: str = "undeclared: no verified recovery"
     source: str = ""
     whole_utterance: bool = False
     pack: str = "core"
@@ -390,16 +395,13 @@ def classify_risk(kind: str, phrase: str, declared: Optional[str], builtin_data:
     return "ui"
 
 
-_UNDOABLE_WRITE_VERBS = {"type", "paste", "insert", "dictate", "undo", "redo", "new", "add", "mark", "note", "log"}
+def guess_undoable(risk: str, phrase: str, metadata=None) -> bool:
+    """Compatibility bool; recovery_hint exposes the evidence behind it.
 
-
-def guess_undoable(risk: str, phrase: str) -> bool:
-    verb = (normalize_phrase(phrase).split() or [""])[0]
-    if risk in ("read", "ui"):
-        return True
-    if risk == "write":
-        return verb in _UNDOABLE_WRITE_VERBS
-    return verb == "close"      # a closed window can be reopened; deletes cannot
+    Neither a verb nor WRITE/UI risk establishes recovery. Catalog records
+    expose undoable_source so declarations cannot masquerade as guarantees.
+    """
+    return recovery_hint(risk, normalize_phrase(phrase), metadata)[0]
 
 
 # Phrase -> argument spec for handlers that consume a remainder without a
@@ -785,6 +787,7 @@ def build_catalog(executor=None) -> list:
         if declared == "unknown":
             declared = None
         risk = classify_risk(kind, phrase, declared, data)
+        undoable, undoable_source = recovery_hint(risk, phrase, data if kind == "builtin" else entry.metadata)
         description = _first_sentence(getattr(func, "__doc__", None)) if func is not None else ""
         description = _DESCRIPTION_OVERRIDES.get(phrase) or description or _first_sentence(entry.description) or phrase
         if kind == "builtin":
@@ -801,7 +804,7 @@ def build_catalog(executor=None) -> list:
             plugin=plugin, verb=tokens[0] if tokens else phrase, object="_".join(tokens[1:]),
             args=infer_args(kind, phrase, entry.param_schema or None, func),
             aliases=sorted(aliases), description=description, risk=risk,
-            undoable=guess_undoable(risk, phrase), source=source,
+            undoable=undoable, undoable_source=undoable_source, source=source,
             whole_utterance=phrase in reserved, pack=entry.pack or "core", kind=kind,
             scope=entry.scope.to_json() if getattr(entry, "scope", None) is not None else None,
             examples=spoken_help(phrase)[0], precondition=spoken_help(phrase)[1],
@@ -912,6 +915,8 @@ def validate_catalog(doc: dict) -> list:
             problems.append(f"{c['canonical_id']}: examples must be nonempty spoken strings")
         if not isinstance(c.get("precondition", ""), str):
             problems.append(f"{c['canonical_id']}: precondition must be a string")
+        if "undoable_source" in c and (not isinstance(c["undoable_source"], str) or not c["undoable_source"]):
+            problems.append(f"{c['canonical_id']}: undoable_source must be a nonempty string")
         for a in c["args"]:
             if a.get("type") not in ARG_TYPES:
                 problems.append(f"{c['canonical_id']}: arg type {a.get('type')!r}")
@@ -1006,6 +1011,8 @@ def catalog_from_registry_rows(rows, builtin_commands: Optional[dict] = None,
             declared = None
         data = builtin_commands.get(phrase) if kind == "builtin" else None
         tokens = canonical.split()
+        undoable, undoable_source = recovery_hint(classify_risk(kind, phrase, declared, data),
+                                                  canonical, data if kind == "builtin" else metadata)
         records.append({
             "canonical_id": cid,
             "plugin": plugin,
@@ -1018,6 +1025,7 @@ def catalog_from_registry_rows(rows, builtin_commands: Optional[dict] = None,
             "args": [asdict(a) for a in infer_args(kind, phrase, row.get("param_schema") or None, None)],
             "description": _DESCRIPTION_OVERRIDES.get(canonical) or _first_sentence(row.get("description")) or canonical,
             "risk": classify_risk(kind, phrase, declared, data),
+            "undoable": undoable, "undoable_source": undoable_source,
             "whole_utterance": canonical in reserved,
             "pack": row.get("pack") or "core",
             "kind": kind,
@@ -1150,8 +1158,8 @@ def pick_examples(records, count: int = 3, *, enabled_packs: Optional[set] = Non
 # Nothing below changes a CommandSpec, commands_catalog.json or any runtime
 # path. It answers the questions the grammar / resolver / macro work needs
 # answered first: the spoken canonical form with its slots, whether undo is
-# DECLARED (never guessed -- `undoable` above is 09a's heuristic and is left
-# as-is for its readers), which phrases do not resolve to exactly one
+# DECLARED (never guessed; undoable_source above records its provenance),
+# which phrases do not resolve to exactly one
 # command, and which aliases of different commands sound alike.
 
 UNKNOWN_UNDO = "unknown"
@@ -1295,7 +1303,8 @@ def render_markdown(specs: list) -> str:
         "",
         "Columns: canonical id; every phrase the registry maps to it; args as name:type (* = required); "
         "spoken examples and prerequisites; "
-        "risk (read / ui / write / destructive); undoable; whole-utterance control word (session_modes); source. "
+        "risk (read / ui / write / destructive); undo hint and its provenance (a declaration is not verified rollback); "
+        "whole-utterance control word (session_modes); source. "
         "A scoped command's description ends with when it is live (samsara.command_scope); every other command "
         "is live everywhere.",
         "",
@@ -1314,7 +1323,7 @@ def render_markdown(specs: list) -> str:
                 desc += f" *(Live {parse_scope(s.scope).describe()}.)*".replace("|", "\\|")
             examples = "<br>".join(f"`{e}`" for e in s.examples).replace("|", "\\|") or "-"
             precondition = s.precondition.replace("|", "\\|") or "-"
-            lines.append(f"| `{s.canonical_id}` | {phrases} | {args} | {examples} | {precondition} | {s.risk} | {'yes' if s.undoable else 'no'} | "
+            lines.append(f"| `{s.canonical_id}` | {phrases} | {args} | {examples} | {precondition} | {s.risk} | {'yes' if s.undoable else 'no'} ({s.undoable_source}) | "
                          f"{'yes' if s.whole_utterance else ''} | {desc} | `{s.source}` |")
         lines.append("")
     return "\n".join(lines)

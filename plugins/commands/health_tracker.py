@@ -335,8 +335,7 @@ def handle_export_health(app, remainder="", **kwargs):
     "undo health log",
     aliases=["undo health", "remove last health", "delete last health",
              "undo health entry"],
-    pack="health", risk_class="destructive",
-)
+    pack="health", risk_class="destructive", reversible=False, side_effects=["data_delete"])
 def handle_undo_health(app, remainder="", **kwargs):
     """Deletes the last thing you logged."""
     entries = health_store.get_all()
@@ -355,8 +354,7 @@ def handle_undo_health(app, remainder="", **kwargs):
     "clear health log",
     aliases=["delete health log", "wipe health log", "reset health log"],
     pack="health",
-    risk_class="destructive",
-)
+    risk_class="destructive", reversible=False, side_effects=["data_delete"])
 def handle_clear_health(app, remainder="", **kwargs):
     """Deletes every entry in your health log.
 

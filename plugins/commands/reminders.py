@@ -224,7 +224,8 @@ def handle_read_reminders(app, remainder="", **kwargs):
 @command(
     "cancel reminder",
     aliases=["remove reminder", "delete reminder"],
-    pack="utilities",
+    pack="utilities", risk_class="destructive", reversible=False,
+    side_effects=["data_delete"],
 )
 def handle_cancel_reminder(app, remainder="", **kwargs):
     """Cancels the reminder you name."""
@@ -269,7 +270,8 @@ def handle_cancel_reminder(app, remainder="", **kwargs):
 @command(
     "cancel all reminders",
     aliases=["clear reminders", "remove all reminders", "clear all reminders"],
-    pack="utilities",
+    pack="utilities", risk_class="destructive", reversible=False,
+    side_effects=["data_delete"],
 )
 def handle_cancel_all_reminders(app, remainder="", **kwargs):
     """Cancels every reminder you have set."""

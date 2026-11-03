@@ -149,91 +149,91 @@ def _selection_call(app, action: Callable[[object], object]) -> tuple[bool, obje
     return False, None
 
 
-@command("font bigger", pack="word", risk_class="ui", reversible=True,
+@command("font bigger", pack="word", risk_class="write", reversible=True,
          side_effects=["keystrokes"], preconditions=["word_focused"])
 def font_bigger(app, remainder=""):
     """Increases the selected Word text's font size."""
     return _shortcut(app, "ctrl", "]")
 
 
-@command("font smaller", pack="word", risk_class="ui", reversible=True,
+@command("font smaller", pack="word", risk_class="write", reversible=True,
          side_effects=["keystrokes"], preconditions=["word_focused"])
 def font_smaller(app, remainder=""):
     """Decreases the selected Word text's font size."""
     return _shortcut(app, "ctrl", "[")
 
 
-@command("bold that", pack="word", risk_class="ui", reversible=True,
+@command("bold that", pack="word", risk_class="write", reversible=True,
          side_effects=["keystrokes"], preconditions=["word_focused"])
 def bold_that(app, remainder=""):
     """Toggles bold for the selected Word text."""
     return _shortcut(app, "ctrl", "b")
 
 
-@command("italic that", pack="word", risk_class="ui", reversible=True,
+@command("italic that", pack="word", risk_class="write", reversible=True,
          side_effects=["keystrokes"], preconditions=["word_focused"])
 def italic_that(app, remainder=""):
     """Toggles italics for the selected Word text."""
     return _shortcut(app, "ctrl", "i")
 
 
-@command("underline that", pack="word", risk_class="ui", reversible=True,
+@command("underline that", pack="word", risk_class="write", reversible=True,
          side_effects=["keystrokes"], preconditions=["word_focused"])
 def underline_that(app, remainder=""):
     """Toggles underline for the selected Word text."""
     return _shortcut(app, "ctrl", "u")
 
 
-@command("single spacing", pack="word", risk_class="ui", reversible=True,
+@command("single spacing", pack="word", risk_class="write", reversible=True,
          side_effects=["keystrokes"], preconditions=["word_focused"])
 def single_spacing(app, remainder=""):
     """Applies single line spacing in Word."""
     return _shortcut(app, "ctrl", "1")
 
 
-@command("one and a half spacing", pack="word", risk_class="ui", reversible=True,
+@command("one and a half spacing", pack="word", risk_class="write", reversible=True,
          side_effects=["keystrokes"], preconditions=["word_focused"])
 def one_and_a_half_spacing(app, remainder=""):
     """Applies one-and-a-half line spacing in Word."""
     return _shortcut(app, "ctrl", "5")
 
 
-@command("double spacing", pack="word", risk_class="ui", reversible=True,
+@command("double spacing", pack="word", risk_class="write", reversible=True,
          side_effects=["keystrokes"], preconditions=["word_focused"])
 def double_spacing(app, remainder=""):
     """Applies double line spacing in Word."""
     return _shortcut(app, "ctrl", "2")
 
 
-@command("align left", pack="word", risk_class="ui", reversible=True,
+@command("align left", pack="word", risk_class="write", reversible=True,
          side_effects=["keystrokes"], preconditions=["word_focused"])
 def align_left(app, remainder=""):
     """Aligns the current Word paragraph left."""
     return _shortcut(app, "ctrl", "l")
 
 
-@command("align center", pack="word", risk_class="ui", reversible=True,
+@command("align center", pack="word", risk_class="write", reversible=True,
          side_effects=["keystrokes"], preconditions=["word_focused"])
 def align_center(app, remainder=""):
     """Centers the current Word paragraph."""
     return _shortcut(app, "ctrl", "e")
 
 
-@command("align right", pack="word", risk_class="ui", reversible=True,
+@command("align right", pack="word", risk_class="write", reversible=True,
          side_effects=["keystrokes"], preconditions=["word_focused"])
 def align_right(app, remainder=""):
     """Aligns the current Word paragraph right."""
     return _shortcut(app, "ctrl", "r")
 
 
-@command("justify text", pack="word", risk_class="ui", reversible=True,
+@command("justify text", pack="word", risk_class="write", reversible=True,
          side_effects=["keystrokes"], preconditions=["word_focused"])
 def justify_text(app, remainder=""):
     """Justifies the current Word paragraph."""
     return _shortcut(app, "ctrl", "j")
 
 
-@command("bullet list", pack="word", risk_class="ui", reversible=True,
+@command("bullet list", pack="word", risk_class="write", reversible=True,
          side_effects=["keystrokes"], preconditions=["word_focused"])
 def bullet_list(app, remainder=""):
     """Toggles the selected Word paragraphs as a bulleted list."""
@@ -247,21 +247,21 @@ def select_paragraph(app, remainder=""):
     return _shortcut(app, "ctrl", "shift", "down")
 
 
-@command("undo in word", pack="word", risk_class="ui", reversible=True,
+@command("undo in word", pack="word", risk_class="write", reversible=True,
          side_effects=["keystrokes"], preconditions=["word_focused"])
 def undo_in_word(app, remainder=""):
     """Undoes the last Word edit without invoking Samsara dictation history."""
     return _shortcut(app, "ctrl", "z")
 
 
-@command("redo in word", pack="word", risk_class="ui", reversible=True,
+@command("redo in word", pack="word", risk_class="write", reversible=True,
          side_effects=["keystrokes"], preconditions=["word_focused"])
 def redo_in_word(app, remainder=""):
     """Redoes the last Word edit without invoking Samsara dictation history."""
     return _shortcut(app, "ctrl", "y")
 
 
-@command("numbered list", pack="word", risk_class="ui", reversible=True,
+@command("numbered list", pack="word", risk_class="write", reversible=True,
          side_effects=["word_com"], preconditions=["word_focused"])
 def numbered_list(app, remainder=""):
     """Toggles numbering on the current Word selection."""
@@ -275,7 +275,7 @@ def numbered_list(app, remainder=""):
     return ok
 
 
-@command("font size", pack="word", risk_class="ui", reversible=True,
+@command("font size", pack="word", risk_class="write", reversible=True,
          side_effects=["word_com"], preconditions=["word_focused"],
          param_schema={"remainder": {"type": "str", "required": True, "max_len": 120}})
 def font_size(app, remainder=""):
@@ -292,7 +292,7 @@ def font_size(app, remainder=""):
 _SPACING_RULES = {"1": 0, "1.0": 0, "1.5": 1, "2": 2, "2.0": 2}
 
 
-@command("line spacing", pack="word", risk_class="ui", reversible=True,
+@command("line spacing", pack="word", risk_class="write", reversible=True,
          side_effects=["word_com"], preconditions=["word_focused"],
          param_schema={"remainder": {"type": "str", "required": True, "max_len": 120}})
 def line_spacing(app, remainder=""):
@@ -309,7 +309,7 @@ def line_spacing(app, remainder=""):
     return ok
 
 
-@command("set font", pack="word", risk_class="ui", reversible=True,
+@command("set font", pack="word", risk_class="write", reversible=True,
          side_effects=["word_com"], preconditions=["word_focused"],
          param_schema={"remainder": {"type": "str", "required": True, "max_len": 120}})
 def set_font(app, remainder=""):
@@ -367,7 +367,7 @@ def select_word(app, remainder=""):
     return _select_unit(app, 2)  # wdWord
 
 
-@command("word count", pack="word", risk_class="ui", reversible=True,
+@command("word count", pack="word", risk_class="read", reversible=False,
          side_effects=["word_com"], preconditions=["word_focused"])
 def word_count(app, remainder=""):
     """Speaks the word count of the current Word selection."""

@@ -106,7 +106,7 @@ def _parse_temps(resp):
 
 @command("start print", aliases=[
     "start printing", "begin print", "begin printing", "print file"
-], pack="3d-printing", risk_class="destructive")
+], pack="3d-printing", risk_class="ui", reversible=False, side_effects=["printer_motion"])
 def handle_start_print(app, remainder):
     """Starts printing the file you name.
 
@@ -134,7 +134,7 @@ def handle_start_print(app, remainder):
 @command("printer status", aliases=[
     "print status", "printer state", "how is the print",
     "print progress", "is the printer done", "check the printer"
-], pack="3d-printing")
+], pack="3d-printing", risk_class="read", reversible=False, side_effects=["printer_status"])
 def handle_status(app, remainder):
     """Reads out the printer's state, temperatures and progress."""
     status = _parse_status(_send(app, "M119"))
@@ -168,7 +168,7 @@ def handle_status(app, remainder):
 
 @command("pause print", aliases=[
     "pause printing", "pause the print", "hold the print"
-], pack="3d-printing")
+], pack="3d-printing", risk_class="ui", reversible=False, side_effects=["printer_pause"])
 def handle_pause(app, remainder):
     """Pauses the print the printer is running."""
     resp = _send(app, "M25")
@@ -178,7 +178,7 @@ def handle_pause(app, remainder):
 
 @command("resume print", aliases=[
     "resume printing", "continue print", "continue printing"
-], pack="3d-printing")
+], pack="3d-printing", risk_class="ui", reversible=False, side_effects=["printer_motion"])
 def handle_resume(app, remainder):
     """Resumes the print you paused."""
     resp = _send(app, "M24")
@@ -188,7 +188,7 @@ def handle_resume(app, remainder):
 
 @command("cancel print", aliases=[
     "cancel printing", "stop print", "stop printing", "abort print"
-], pack="3d-printing")
+], pack="3d-printing", risk_class="ui", reversible=False, side_effects=["printer_stop"])
 def handle_cancel(app, remainder):
     """Cancels the print the printer is running."""
     resp = _send(app, "M26")
@@ -213,7 +213,7 @@ def handle_light(app, remainder):
 @command("list print files", aliases=[
     "what can i print", "show print files",
     "available prints", "printer files"
-], pack="3d-printing")
+], pack="3d-printing", risk_class="read", reversible=False, side_effects=["printer_status"])
 def handle_list_files(app, remainder):
     """Reads out the files stored on the printer."""
     resp = _send(app, "M20")

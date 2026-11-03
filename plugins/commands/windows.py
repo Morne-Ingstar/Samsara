@@ -1162,8 +1162,7 @@ def handle_list_layouts(app, remainder):
 @command("delete layout",
          aliases=["forget layout", "remove layout"],
          pack="window-management",
-         risk_class="destructive", param_schema={"name": {"type": "text", "required": False}},
-)
+         risk_class="destructive", param_schema={"name": {"type": "text", "required": False}}, reversible=False, side_effects=["data_delete"])
 def handle_delete_layout(app, remainder):
     """Deletes the saved window layout you name."""
     if not _WINDOWS_AVAILABLE:

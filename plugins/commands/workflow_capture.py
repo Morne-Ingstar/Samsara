@@ -577,7 +577,7 @@ def analyze_cloud(summary: str, app) -> str:
 
 @command("start capture",
          aliases=["begin capture", "capture workflow", "start workflow capture"],
-         pack="experimental", risk_class="destructive")
+         pack="experimental", risk_class="write", reversible=False, side_effects=["local_capture"])
 def handle_start_capture(app, remainder):
     """Starts recording which shortcuts and clicks you use, never what you type.
 
@@ -595,7 +595,7 @@ def handle_start_capture(app, remainder):
 
 @command("stop capture",
          aliases=["stop recording workflow", "end capture", "finish capture"],
-         pack="experimental")
+         pack="experimental", risk_class="ui", reversible=False, side_effects=["stop_capture"])
 def handle_stop_capture(app, remainder):
     """Stops recording your workflow and opens the review window."""
     events = stop_capture()
@@ -611,7 +611,7 @@ def handle_stop_capture(app, remainder):
 
 @command("capture status",
          aliases=["workflow capture status", "how many events"],
-         pack="experimental")
+         pack="experimental", risk_class="read", reversible=False, side_effects=["ui"])
 def handle_capture_status(app, remainder):
     """Says whether workflow capture is running and how much it has recorded."""
     state = "ACTIVE" if is_capturing() else "inactive"
@@ -621,7 +621,7 @@ def handle_capture_status(app, remainder):
 
 @command("review capture",
          aliases=["show capture review", "open capture review"],
-         pack="experimental")
+         pack="experimental", risk_class="ui", reversible=False, side_effects=["ui"])
 def handle_review_capture(app, remainder):
     """Reopens the review window showing the last workflow you captured."""
     with _lock:

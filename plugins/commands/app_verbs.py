@@ -378,7 +378,7 @@ def handle_open(app, remainder):
 @command(
     "close",
     pack="window-management",
-    risk_class="reversible",
+    risk_class="destructive", reversible=False, side_effects=["unsaved_close"],
     param_schema={"app_name": {"type": "app_name", "required": False}},
 )
 def handle_close(app, remainder):

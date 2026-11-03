@@ -8,7 +8,7 @@ from samsara import voice_memo
 from samsara.plugin_commands import command
 
 
-@command("voice memo", aliases=["capture memo"], pack="utilities")
+@command("voice memo", aliases=["capture memo"], pack="utilities", risk_class="ui", reversible=False, side_effects=["arm_capture"])
 def arm_voice_memo(app, remainder):
     """Gets ready to record a memo, which you then dictate as usual."""
     voice_memo.arm(app)
@@ -17,7 +17,7 @@ def arm_voice_memo(app, remainder):
     return True
 
 
-@command("cancel memo", pack="utilities")
+@command("cancel memo", pack="utilities", risk_class="ui", reversible=False, side_effects=["disarm_capture"])
 def cancel_voice_memo(app, remainder):
     """Cancels the memo you were about to record."""
     was_armed = voice_memo.disarm(app)

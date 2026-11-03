@@ -147,9 +147,8 @@ _DESTRUCTIVE_HOTKEYS = {
     ("shift", "delete"),           # permanent delete
 }
 _DESTRUCTIVE_NORMALIZED = {tuple(sorted(d[:-1])) + (d[-1],) for d in _DESTRUCTIVE_HOTKEYS}
-# Effect table: close can be reopened; quit/delete remain irreversible by default.
-_UNDOABLE_HOTKEYS = {("alt", "f4"), ("ctrl", "w"), ("ctrl", "f4"),
-                     ("ctrl", "shift", "w")}
+# Reopening a window does not recover unsaved content. No generic close
+# shortcut has a default undo guarantee (1031d).
 _SAFE_UNKNOWN_VERBS = {"lock computer": RISK_UI, "lock screen": RISK_UI}
 
 
@@ -472,9 +471,7 @@ def classify(command_id: str, *, executor=None, app=None, declared_only: bool = 
         if isinstance(table, dict):
             builtin = table.get(cid)
     if builtin is not None:
-        keys = _norm_keys(builtin.get("keys"))
-        normalized = tuple(sorted(keys[:-1])) + keys[-1:]
-        reversible = not _irreversible(builtin, normalized not in _UNDOABLE_HOTKEYS)
+        reversible = not _irreversible(builtin)
         # A commands.json entry's type fully determines what it does: it takes
         # no arguments by construction.
         return classify_builtin(builtin), reversible, NO_ARGS_SCHEMA

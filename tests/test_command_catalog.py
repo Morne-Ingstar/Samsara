@@ -145,10 +145,11 @@ class TestHeuristics:
         assert cc.classify_risk("builtin", "whatever", None, {"type": "press", "key": "enter"}) == "write"
 
     def test_undoable_guess(self):
-        assert cc.guess_undoable("ui", "switch window") is True
-        assert cc.guess_undoable("write", "type hello") is True
+        # 1031d: a verb or risk label cannot prove an undo path.
+        assert cc.guess_undoable("ui", "switch window") is False
+        assert cc.guess_undoable("write", "type hello") is False
         assert cc.guess_undoable("write", "send it") is False
-        assert cc.guess_undoable("destructive", "close window") is True
+        assert cc.guess_undoable("destructive", "close window") is False
         assert cc.guess_undoable("destructive", "delete file") is False
 
     def test_near_collisions_detects_whisper_pairs(self):

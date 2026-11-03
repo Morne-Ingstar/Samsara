@@ -484,15 +484,16 @@ def register_commands(module_name: str) -> None:
             return handle
 
         handler = make_handler(instruction)
+        risk = "read" if instruction == "read selection" else "ui" if instruction == "discard" else "write"
         command(instruction, aliases=list(aliases), pack="core", ai_visible=False,
-                risk_class="reversible", ai_composable=False,
+                risk_class=risk, ai_composable=False,
                 side_effects=["clipboard", "keystrokes", "ui"],
                 preconditions=[], voice_triggerable=True,
                 param_schema=({"remainder": {"type": "str", "required": instruction.split()[0]
                                in {"make", "change", "edit", "reformat", "rewrite", "reword", "rephrase"}}}
                               if instruction.split()[0] in intent.EDIT_VERBS
                               and instruction.endswith(" selection") else {}),
-                reversible=True, preview_template="")(handler)
+                reversible=instruction == "apply", preview_template="")(handler)
 
 
 def command_for_utterance(text: str) -> "str | None":

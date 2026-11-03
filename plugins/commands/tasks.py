@@ -200,8 +200,7 @@ def handle_complete_task(app, remainder="", **kwargs):
     "remove task",
     aliases=["delete task"],
     pack="tasks",
-    risk_class="destructive", param_schema={"task_number": {"type": "int", "required": False}},
-)
+    risk_class="destructive", param_schema={"task_number": {"type": "int", "required": False}}, reversible=False, side_effects=["data_delete"])
 def handle_remove_task(app, remainder="", **kwargs):
     """Deletes the task you name from the list."""
     pos = _parse_position(remainder)
@@ -223,8 +222,7 @@ def handle_remove_task(app, remainder="", **kwargs):
     "clear completed",
     aliases=["clear done tasks", "remove completed"],
     pack="tasks",
-    risk_class="destructive",
-)
+    risk_class="destructive", reversible=False, side_effects=["data_delete"])
 def handle_clear_completed(app, remainder="", **kwargs):
     """Deletes every task already marked as done."""
     count = tasks_store.clear_completed()
