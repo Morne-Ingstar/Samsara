@@ -44,7 +44,7 @@ import numpy as np
 
 from .frame import PREBUFFER_FRAMES, FRAME_MS
 from .ring import EMPTY
-from . import hold_capture
+from . import hold_capture, preduck
 from samsara.constants import (
     ADAPTIVE_SPEECH_FLOOR_RATIO,
     HOLD_RELEASE_TAIL_SPEECH_THRESHOLD,
@@ -208,6 +208,9 @@ class DictationSessionConsumer:
         start = frame.t_capture - FRAME_MS / 1000.0
         kept = ((before is None or start >= before)
                 and (after is None or frame.t_capture <= after))
+        if kept and preduck.excludes(self, frame):
+            # Preserve the timeline/VAD context; never mutate the ring view.
+            frame.pcm = np.zeros_like(frame.pcm)
         if self._capture_onset is not None:
             self._capture_onset.observe(start, kept, before)
         context = getattr(self, '_speech_presence_capture', None)

@@ -72,7 +72,7 @@ from typing import Any
 
 import numpy as np
 
-from . import device_resolver
+from . import device_resolver, preduck
 from .frame import FRAME_SIZE, PREBUFFER_FRAMES, SAMPLE_RATE
 from .ring import FrameBus, Reader
 from samsara.log import get_logger
@@ -386,6 +386,8 @@ class AudioCaptureEngine:
         self._open_stream(device)
         self._running = True
         self._device_lost = False
+        if preduck.enabled(self._config):
+            preduck.start_reference(self)
 
     def _open_stream(self, device) -> None:
         """Build the polyphase resample ratio for `device` and open the
@@ -514,6 +516,7 @@ class AudioCaptureEngine:
         self._reconnect_now.set()
         self._recovering = False
         self._teardown_stream_only()
+        preduck.stop_reference(self)
         logger.info("[ACE] Engine stopped.")
 
     def _teardown_stream_only(self) -> None:

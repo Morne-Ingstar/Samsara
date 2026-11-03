@@ -191,6 +191,49 @@ def build_fixtures(output):
     return cases
 
 
+def build_preduck_fixtures(output):
+    """1070: identical mic PCM with independent render references, two levels.
+
+    The last stream word is the unmodified 4.80..5.30 s 'gospel' from
+    public source 0. A simulated press occurs at .4 s, duck confirmation at
+    .5 s, and source 3 starts at .6 s. The controls deliberately relabel
+    that same opening word as the user's onset. Only the stream case has a
+    matching render waveform. The overlap control plays different speech;
+    a volume lease is not evidence of who spoke into the microphone.
+    """
+    output = Path(output)
+    output.mkdir(parents=True, exist_ok=True)
+    meta = json.loads((FIXTURES / 'sources.json').read_text(encoding='utf-8'))
+    audio = np.concatenate([source('speech_0')[round(4.8*RATE):round(5.3*RATE)],
+                            np.zeros(round(.1*RATE)), source('speech_3')])
+    audio = peak(audio, .995)
+    cases = []
+    for case, media, user_onset in [('1070', True, False),
+                                   ('1070_firstword', False, True),
+                                   ('1070_overlap', True, True)]:
+        for variant, gain in [('peak0995', 1.), ('peak_minus12', 10**(-12/20)/.995)]:
+            take = (audio * gain).astype(np.float32)
+            wav = output / (case + '_' + variant + '.wav')
+            sf.write(wav, take, RATE, subtype='PCM_16')
+            render = np.zeros_like(take)
+            if case == '1070':
+                render[:round(.5*RATE)] = take[:round(.5*RATE)] * .8
+            elif case == '1070_overlap':
+                render[:round(.5*RATE)] = peak(source('speech_1')[:round(.5*RATE)], .6)*gain
+            render_wav = output / (case + '_' + variant + '_render.wav')
+            sf.write(render_wav, render, RATE, subtype='FLOAT')
+            cases.append(dict(id=wav.stem, case=case, wav=str(wav.resolve()),
+                              render_wav=str(render_wav.resolve()),
+                              playback_only_blocks=5 if case == '1070' else 0,
+                              suppressed_prefix_blocks=4 if case == '1070' else 0,
+                              reference=('GOSPEL ' if user_onset else '') + meta['text']['3'],
+                              press_s=.4, duck_effective_s=.5, media_ducked=media,
+                              user_onset=user_onset, onset_word='gospel',
+                              duration_s=len(take)/RATE,
+                              sha256=hashlib.sha256(wav.read_bytes()).hexdigest()))
+    return cases
+
+
 class TraceModel:
     """Observe real lazy faster-whisper results without replacing any metric."""
     def __init__(self, model):
@@ -202,7 +245,8 @@ class TraceModel:
 
     def transcribe(self, audio, **params):
         started = time.perf_counter()
-        call = dict(audio_s=len(audio)/RATE, params=params, segments=[])
+        call = dict(audio_s=len(audio)/RATE, params=params, segments=[],
+                    audio_sha256=hashlib.sha256(np.asarray(audio).tobytes()).hexdigest())
         self.calls.append(call)
         segments, info = self.native.transcribe(audio, **params)
 
@@ -280,7 +324,7 @@ def wake_cue_probe(app):
                 method_sha256=hashlib.sha256(ast.dump(method).encode()).hexdigest())
 
 
-def run_case(case, model, output, *, device='cpu', partials=False):
+def run_case(case, model, output, *, device='cpu', partials=False, drop_playback_preroll=True):
     """Real FrameBus -> real consumer -> StreamingWorker -> session/history.
 
     Session construction substitutes only the UI/desktop boundary. All decode,
@@ -327,6 +371,23 @@ def run_case(case, model, output, *, device='cpu', partials=False):
     bus = FrameBus()
     engine = NS(register_consumer=bus.new_reader, _overflow_count=0)
     consumer = DictationSessionConsumer(engine, app)
+    timed_onset = 'duck_effective_s' in case
+    epoch = time.perf_counter() - case.get('duck_effective_s', 0.)
+    if timed_onset:
+        # 1070 is experimental/off in production; bench opts in explicitly.
+        config['dictation'] = {'drop_playback_preroll': drop_playback_preroll}
+        from samsara.hold_capture_onset import HoldOnset
+        from samsara.speech_presence import HoldEvidence
+        app._speech_presence_capture = HoldEvidence(epoch + case['press_s'])
+        app._hold_capture_duck_token = -1
+        app._hold_capture_duck_confirmed_at = epoch + case['duck_effective_s']
+        app._hold_capture_onset = HoldOnset(
+            -1, epoch + case['press_s'], app._hold_capture_duck_confirmed_at,
+            not case['media_ducked'], lambda *a, **kw: None)
+        render = read_audio(case['render_wav'])[:round(case['duck_effective_s']*RATE)]
+        # Substitute only the capture device: matching and policy are real.
+        engine._hold_render_reference = NS(snapshot=lambda: (
+            epoch + case['duck_effective_s'] + 1e-6, render.copy()))
     app._dictation_consumer = consumer
     session = StreamingSession.__new__(StreamingSession)
     session.app, session.start_time = app, time.time()
@@ -344,6 +405,16 @@ def run_case(case, model, output, *, device='cpu', partials=False):
     started = time.perf_counter()
     tail_thread, tail_errors = None, []
     try:
+        def write_block(start):
+            block = np.zeros(FRAME_SIZE, dtype=np.int16)
+            chunk = audio[start:start+FRAME_SIZE]
+            block[:len(chunk)] = np.round(np.clip(chunk, -1, 1)*32767).astype(np.int16)
+            stamp = epoch + (start+FRAME_SIZE)/RATE + 1e-6 if timed_onset else time.perf_counter()
+            bus.write(block, stamp, 0)
+
+        live_start = round(case['duck_effective_s']*RATE) if timed_onset else 0
+        for start in range(0, live_start, FRAME_SIZE):
+            write_block(start)
         if not consumer.activate_streaming():
             raise RuntimeError('fixture capture did not activate')
         checkpoints = sorted({x for x in [13., 30., 55., len(audio)/RATE-.5]
@@ -362,7 +433,7 @@ def run_case(case, model, output, *, device='cpu', partials=False):
             except Exception as exc:
                 tail_errors.append(exc)
 
-        for start in range(0, len(audio), FRAME_SIZE):
+        for start in range(live_start, len(audio), FRAME_SIZE):
             if start == release_index and case['case'] != '1042':
                 deadline = time.monotonic()+2
                 while consumer._reader._read_cursor < bus.write_cursor and time.monotonic() < deadline:
@@ -370,10 +441,7 @@ def run_case(case, model, output, *, device='cpu', partials=False):
                 tail_thread = threading.Thread(target=release_tail, name='fixture-release-tail')
                 tail_thread.start()
                 time.sleep(.02)
-            block = np.zeros(FRAME_SIZE, dtype=np.int16)
-            chunk = audio[start:start+FRAME_SIZE]
-            block[:len(chunk)] = np.round(np.clip(chunk, -1, 1)*32767).astype(np.int16)
-            bus.write(block, time.perf_counter(), 0)
+            write_block(start)
             # Bound replay bursts well below the ring capacity. A real drain
             # thread copies PCM; yielding lets it run without 75 seconds' sleep.
             if tail_thread is not None:
@@ -396,6 +464,10 @@ def run_case(case, model, output, *, device='cpu', partials=False):
             tail_thread.join(timeout=3)
             if tail_thread.is_alive() or tail_errors:
                 raise RuntimeError('release-tail policy did not complete: '+str(tail_errors))
+        if timed_onset:
+            # Accelerated audio time extends past wall time. Bound the capture
+            # at the replayed release, before finalize snapshots its PCM.
+            consumer._capture_not_after = epoch + np.ceil(len(audio)/FRAME_SIZE)*FRAME_SIZE/RATE + 2e-6
         if case['case'] == '1042':
             from samsara.mouse_hook import MouseHook
             from samsara.hotkeys import HotkeyCluster
@@ -449,6 +521,13 @@ def run_case(case, model, output, *, device='cpu', partials=False):
             verdicts['no_cue_while_recording'] = not cue_result['cue_while_recording'] and cue_result['wake_armed']
             verdicts['no_repeated_token_run'] = repeated_run(delivered) is None
             verdicts['speech_delivered'] = bool(delivered.strip())
+        elif timed_onset:
+            tokens = words(delivered)
+            if case['user_onset']:
+                verdicts['user_first_word_retained'] = bool(tokens) and tokens[0] == case['onset_word']
+            else:
+                verdicts['no_stream_word'] = case['onset_word'] not in tokens
+            verdicts['following_speech_retained'] = align(case['reference'], delivered)['recall'] >= .9
         else:
             before = case.get('before')
             verdicts['delivered_not_empty'] = bool(delivered.strip())
@@ -458,7 +537,14 @@ def run_case(case, model, output, *, device='cpu', partials=False):
         captured = getattr(session, '_stopped_audio_1042', None)
         expected = np.pad(np.round(np.clip(audio, -1, 1)*32767).astype(np.int16),
                           (0, (-len(audio)) % FRAME_SIZE)).astype(np.float32)/32767.
-        verdicts['complete_input_pcm_preserved'] = captured is not None and np.array_equal(captured, expected)
+        if timed_onset:
+            block_starts = epoch + np.arange(len(expected)//FRAME_SIZE)*FRAME_SIZE/RATE + 1e-6
+            allowed = block_starts >= consumer._capture_not_before
+            if drop_playback_preroll:
+                expected[:case['suppressed_prefix_blocks']*FRAME_SIZE] = 0
+            expected = expected.reshape(-1, FRAME_SIZE)[allowed].ravel()
+        pcm_check = 'selected_input_pcm_preserved' if timed_onset else 'complete_input_pcm_preserved'
+        verdicts[pcm_check] = captured is not None and np.array_equal(captured, expected)
         verdicts['delivery_completed'] = session._state == session.STATE_DONE
         result = dict(case=case, delivered_text=delivered, metrics=metric,
                       checks=verdicts, passed=all(verdicts.values()),
@@ -469,6 +555,12 @@ def run_case(case, model, output, *, device='cpu', partials=False):
                       cue_probe=cue_result, notices=notices,
                       final_state=session._state)
         result['release_tail'] = getattr(session, '_release_tail_signals', None)
+        if timed_onset:
+            result['capture_boundary_s'] = consumer._capture_not_before - epoch
+            prefix = consumer._playback_prefix
+            result['playback_prefix'] = dict(removed=prefix.removed if prefix else 0,
+                                            measurements=prefix.measurements if prefix else [],
+                                            enabled=drop_playback_preroll)
         (output / 'result.json').write_text(json.dumps(result, indent=2, default=str)+'\n', encoding='utf-8')
         return result
     finally:
@@ -503,7 +595,7 @@ def main(argv=None):
     parser.add_argument('--device', choices=['cpu', 'cuda'], default='cpu')
     parser.add_argument('--compute-type', default='int8')
     parser.add_argument('--partials', action='store_true', help='exercise real partials at fixed audio checkpoints, including on CPU')
-    parser.add_argument('--case', choices=['1026', '1043', '1042', '1051'], action='append')
+    parser.add_argument('--case', choices=['1026', '1043', '1042', '1051', '1070', '1070_firstword', '1070_overlap'], action='append')
     parser.add_argument('--variant', choices=['peak0995', 'peak_minus12'])
     parser.add_argument('--prepare-only', action='store_true')
     parser.add_argument('--revision', default='unspecified', help='source revision label supplied by the caller')
@@ -513,7 +605,7 @@ def main(argv=None):
     sys.path.insert(0, str(ROOT))
     logging.basicConfig(filename=args.output / 'bench.log', level=logging.INFO,
                         format='%(asctime)s %(name)s %(levelname)s %(message)s')
-    cases = build_fixtures(args.output / 'fixtures')
+    cases = build_fixtures(args.output / 'fixtures') + build_preduck_fixtures(args.output / 'fixtures')
     if args.prepare_only:
         print(f'Prepared {len(cases)} real-human audio WAVs in {args.output / "fixtures"}')
         return 0

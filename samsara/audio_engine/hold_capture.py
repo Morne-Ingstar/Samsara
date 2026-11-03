@@ -3,6 +3,7 @@ import math
 import time
 
 from .frame import FRAME_MS
+from . import preduck
 
 
 def begin(consumer):
@@ -10,6 +11,7 @@ def begin(consumer):
     consumer.dropped_frames = 0
     consumer._last_capture_seq = consumer._reader._read_cursor - 1
     consumer._capture_overflows = getattr(consumer._engine, '_overflow_count', 0)
+    preduck.begin(consumer)
 
 
 def observe(consumer, frame):
@@ -65,6 +67,7 @@ def boundary(consumer, fallback):
 
 
 def finish(consumer):
+    preduck.finish(consumer)
     consumer._previous_capture_end = consumer._capture_not_after or time.perf_counter()
     # Overflow can occur without a subsequent readable frame.
     if getattr(consumer._engine, '_overflow_count', 0) != consumer._capture_overflows:

@@ -362,6 +362,13 @@ SETTINGS_SCHEMA = {
         "tab": "general",
         "help": {"why": "This controls how much Samsara changes recognized words before delivery. Use a lighter mode when exact wording matters, or more cleanup when you prefer polished text. The default clean mode applies normal formatting, so review it if you dictate code or unusual names.", "docs": "https://morneis.com/samsara/docs/settings/#cleanup_mode"},
     },
+    # 1070: experimental playback-only pre-roll suppression; opt-in testing.
+    "dictation.drop_playback_preroll": {
+        "settings_ui": False,
+        "ui_less_reason": "Experimental render-correlated pre-roll filter for owner testing; off by default.",
+        "type": "bool", "default": False, "tab": "advanced",
+    },
+
     # Whole-capture audio presence gate; developer evaluation switch only.
     "dictation.speech_presence_gate": {
         "settings_ui": False,
