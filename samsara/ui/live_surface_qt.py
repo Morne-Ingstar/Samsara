@@ -188,7 +188,7 @@ class _Mark(QWidget):
 
 
 class _FeedbackBand(QWidget):
-    """A content row with at most two readable lines and full hover text."""
+    """A content row that expands to show persistent problems in full."""
     dismissed = Signal()
     question_dismissed = Signal()
     report_requested = Signal(object)
@@ -221,6 +221,9 @@ class _FeedbackBand(QWidget):
     def _action_width(self):
         return self._dismiss_width() + self._report_width()
 
+    def _max_lines(self):
+        return None if self._report_width() else 2
+
     def _dismiss_width(self):
         return 76 if self.notice and self.notice.purpose is FeedbackPurpose.QUESTION and self.notice.owner.startswith("suggestion:") else 0
 
@@ -237,7 +240,7 @@ class _FeedbackBand(QWidget):
         if not self.chip and notice and notice.feedback in (FeedbackKind.ERROR, FeedbackKind.WARNING, FeedbackKind.LIVE):
             message = KIND_WORDS[notice.feedback] + ": " + message
         self._message = message
-        lines, self.elided = message_lines(message, self.label.font(), max(1, self.width()-(42 if self.chip else 24)-self._action_width()))
+        lines, self.elided = message_lines(message, self.label.font(), max(1, self.width()-(42 if self.chip else 24)-self._action_width()), max_lines=self._max_lines())
         set_result_label(self.label, '\n'.join(lines), theme.TEXT_PRIMARY)
         if notice and notice.owner == 'capture_clipping':
             from html import escape
@@ -255,7 +258,7 @@ class _FeedbackBand(QWidget):
     def required_height(self, width):
         if not self.notice or not self.notice.message:
             return 0
-        return max(36 if self._action_width() else 0, message_height(self._message, self.label.font(), width-(42 if self.chip else 24)-self._action_width()))
+        return max(36 if self._action_width() else 0, message_height(self._message, self.label.font(), width-(42 if self.chip else 24)-self._action_width(), max_lines=self._max_lines()))
 
     def desired_width(self):
         return self.label.fontMetrics().horizontalAdvance(self.notice.message) + 42 + self._action_width() if self.notice else 0
@@ -1154,7 +1157,7 @@ class LiveSurfaceWidget(QWidget):
             if self._dragging:
                 self._dragging=False; self.setGeometry(self._drag_restore); event.accept(); return
             if self._selection is not None or self._picker_active or self._word_menu.learning:self._cancel_correction()
-            else:self._transcript.setFocus()
+            else:self.dismiss_feedback_requested.emit()
             event.accept(); return
         if event.key() in (Qt.Key.Key_Return,Qt.Key.Key_Enter) and event.modifiers() & Qt.KeyboardModifier.ControlModifier: self.commit_requested.emit(); event.accept(); return
         if event.key()==Qt.Key.Key_Delete and event.modifiers() & Qt.KeyboardModifier.AltModifier: self.clear_requested.emit(); event.accept(); return

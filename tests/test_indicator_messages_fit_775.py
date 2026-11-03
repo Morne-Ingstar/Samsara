@@ -49,10 +49,12 @@ def displays(qapp, monkeypatch):
         controller._connect_intents()
         full.refresh(view, animate=False); controller._place_widget(); full.show()
         compact = ListeningIndicator(); compact.set_idle_animation(False)
+        clock = [0]
+        monkeypatch.setattr(compact, '_now_ms', lambda: clock[0])  # 1038: independent geometry cases.
         compact._custom_position = {'screen':fake.name(),'cx':.5,'cy':.5,'edge':edge.value,'t':t}
         compact.show()
         created.extend([full, compact])
-        return SimpleNamespace(area=area,full=full,compact=compact,controller=controller,view=view)
+        return SimpleNamespace(area=area,full=full,compact=compact,controller=controller,view=view,clock=clock)
     yield make
     for w in created:
         w.hide()
@@ -72,6 +74,8 @@ def test_inventory_fits_both_displays_and_every_dock(displays, qapp, scale, edge
         notice = Notice(NoticeKind.INFORMATION,message,None,feedback=feedback)
         d.full.refresh(replace(d.view,notice=notice),animate=False)
         d.controller._place_widget()
+        d.clock[0] += 11000  # 1038: finish preceding independent message case.
+        d.compact.dismiss_error(next_action=True); d.compact.clear_outcome()
         d.compact.show_outcome(message,kind if kind in ('success','error','warning','accent','pending','live') else 'pending',None,
             _feedback=Feedback(feedback, FeedbackPurpose.RUNNING, 'synthetic') if feedback is FeedbackKind.RUNNING else None)
         qapp.processEvents()
@@ -93,6 +97,8 @@ def test_inventory_fits_both_displays_and_every_dock(displays, qapp, scale, edge
     for message in ('Short result', 'A longer replacement result with words '*4):
         d.full.refresh(replace(d.view,notice=Notice(NoticeKind.SUCCESS,message,8)),animate=False)
         d.controller._place_widget()
+        d.clock[0] += 11000  # 1038: a separate geometry case.
+        d.compact.dismiss_error(next_action=True); d.compact.clear_outcome()
         d.compact.show_outcome(message,'success')
         for w in (d.full,d.compact):
             bounds=w.geometry()
@@ -105,16 +111,21 @@ def test_inventory_fits_both_displays_and_every_dock(displays, qapp, scale, edge
 @pytest.mark.parametrize('token', ['many words ' * 120, 'x'*1200, 'line one\nline two\nline three'])
 def test_only_text_beyond_two_lines_is_elided_with_full_hover(displays,qapp,token):
     d=displays(Edge.BOTTOM,0,1.5)
-    d.full.refresh(replace(d.view,notice=Notice(NoticeKind.ERROR,token,8)),animate=False)
+    d.full.refresh(replace(d.view,notice=Notice(NoticeKind.ERROR,token,8,feedback=FeedbackKind.ERROR)),animate=False)
     d.controller._place_widget()
     d.compact.show_outcome(token,'error'); qapp.processEvents()
     band=d.full._chip or d.full._band
-    assert band.elided and band.label.text().endswith('…')
-    assert len(band.label.text().splitlines())==2
+    # 1038 FINISH IT 2: persistent errors expand instead of eliding at line two.
+    assert not band.elided
+    visible = token if band.chip else 'error: ' + token
+    assert ''.join(band.label.text().split()) == ''.join(visible.split())
+    assert len(band.label.text().splitlines()) >= 3
     assert band.toolTip()==band.label.toolTip()==token
     rect=d.compact._layout()[3]
-    lines,elided=message_lines(token,d.compact._chip_font(),rect.width()-24)
-    assert len(lines)==2 and elided and lines[-1].endswith('…')
+    lines,elided=message_lines(token,d.compact._chip_font(),rect.width()-24-d.compact._report_width(),max_lines=None)
+    assert len(lines)>=3 and not elided
+    assert ''.join(''.join(lines).split()) == ''.join(token.split())
+    assert rect.height() >= len(lines)*QFontMetrics(d.compact._chip_font()).lineSpacing()
     assert d.compact._message_window.toolTip()==token
     assert d.area.contains(d.full.geometry()) and d.area.contains(d.compact.geometry())
 
@@ -130,7 +141,7 @@ def test_errors_clear_on_next_utterance_and_click_but_device_fault_survives(disp
         d.compact.show_outcome('Synthetic failure','error',None)
         qapp.processEvents()
     error()
-    assert model.view().notice.expires_at==2.5  # 899 / 591: shared reading formula.
+    assert model.view().notice.expires_at is None  # 1038: persistent result errors.
     QTest.mouseClick(d.full._chip.label,Qt.MouseButton.LeftButton)
     QTest.mouseClick(d.compact._message_window,Qt.MouseButton.LeftButton)
     assert not model.view().notice.message and not d.compact._chip_label
@@ -143,10 +154,11 @@ def test_errors_clear_on_next_utterance_and_click_but_device_fault_survives(disp
     model.consume(SurfaceEvent(EventKind.CAPTURE_CHANGED,capture=CaptureState.RECORDING))
     assert not model.view().notice.message
     error()
-    clock[0]=2.5  # 899 / 591: expiry follows the shared reading formula.
+    clock[0]=600  # 1038: even a stray timer cannot dismiss a problem.
     d.compact._chip_deadline=0
     d.compact._clear_outcome()
-    assert not model.view().notice.message and not d.compact._chip_label
+    assert model.view().notice.message == 'Synthetic failure' and d.compact._chip_label == 'Synthetic failure'
+    model.dismiss_error(); d.compact.dismiss_error()
     model.consume(SurfaceEvent(EventKind.DEVICE_CHANGED,device_lost=True))
     d.compact.set_device_lost(True)
     model.dismiss_error(); d.compact.dismiss_error()

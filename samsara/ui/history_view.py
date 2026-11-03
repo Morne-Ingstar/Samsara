@@ -53,6 +53,7 @@ from samsara import outcome_ring
 from samsara.message_durations import ReceiptDwell, message_duration_ms, restore_receipt_text as _safe_set_text
 from samsara.ui import theme
 from samsara.ui.history_source import _elide_plain, row_context
+from samsara.ui.history_status import summary_text, SCOPE_LAST_7_DAYS as _SCOPE_LAST_7_DAYS
 from samsara.runtime import thread_registry
 
 from samsara.log import get_logger
@@ -89,7 +90,6 @@ _EMPTY_HEIGHT = 160
 
 _TRANSPARENT = "historyTransparent"   # object name for non-painting containers
 
-_SCOPE_LAST_7_DAYS = "Last 7 days"
 _SCOPE_ALL = "All time"
 _SCOPE_ALIASES = {"All": _SCOPE_ALL}          # value saved by the pre-79 view
 _SCOPE_SETTING = "history/date_scope"
@@ -292,17 +292,6 @@ def _scope_start(scope: str, now: "datetime | None" = None):
     if scope != _SCOPE_LAST_7_DAYS:
         return None
     return (now or datetime.now()) - timedelta(days=7)
-
-
-def summary_text(count: int, scope: str, query: str, has_more: bool) -> str:
-    """The line under the list: how many entries, and over what range."""
-    more = "+" if has_more else ""
-    if query:
-        noun = "match" if count == 1 and not has_more else "matches"
-        return f"{count}{more} {noun} for \u201c{query}\u201d in all history"
-    noun = "entry" if count == 1 and not has_more else "entries"
-    where = "in the last 7 days" if scope == _SCOPE_LAST_7_DAYS else "in all history"
-    return f"{count}{more} {noun} {where}"
 
 
 def empty_state_text(query: str, scope: str, filter_name: str, store_available: bool,
@@ -1294,6 +1283,10 @@ class HistoryView(QWidget):
 
     def keyPressEvent(self, e):
         if e.key() == Qt.Key.Key_Escape:
+            if self._toast._kind in ('error', 'warning') and self._toast._label:
+                self._toast.dismiss()
+                self._restore_status()
+                return
             if self._list.currentItem() is not None:
                 self._list.setCurrentRow(-1)
                 return

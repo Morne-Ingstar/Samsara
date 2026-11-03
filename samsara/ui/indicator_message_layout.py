@@ -4,8 +4,8 @@ from PySide6.QtGui import QFontMetrics, QTextLayout, QTextOption
 from PySide6.QtWidgets import QWidget
 
 
-def message_lines(message, font, width):
-    """Wrap at words (or within long tokens), eliding only beyond line two."""
+def message_lines(message, font, width, *, max_lines=2):
+    """Wrap at words; persistent problems pass None to show every line."""
     width = max(1, int(width))
     text = str(message).replace('\r\n', '\n').replace('\r', '\n')
     from samsara.ui.result_message_rendering import result_width
@@ -22,7 +22,7 @@ def message_lines(message, font, width):
     layout.setTextOption(option)
     layout.beginLayout()
     lines, consumed = [], 0
-    for _ in range(2):
+    while max_lines is None or len(lines) < max_lines:
         line = layout.createLine()
         if not line.isValid():
             break
@@ -39,8 +39,8 @@ def message_lines(message, font, width):
     return lines or [''], elided
 
 
-def message_height(message, font, width, *, padding=12):
-    lines, _ = message_lines(message, font, width)
+def message_height(message, font, width, *, padding=12, max_lines=2):
+    lines, _ = message_lines(message, font, width, max_lines=max_lines)
     return len(lines) * message_line_spacing(message, font) + padding
 
 

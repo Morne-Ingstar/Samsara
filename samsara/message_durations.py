@@ -1,11 +1,12 @@
 """Shared reading time for Full feedback and Compact's outcome chip."""
 from __future__ import annotations
 from time import monotonic
+from collections import deque
 
 MIN_MESSAGE_MS = 2500
-MESSAGE_BASE_MS = 0
+MESSAGE_BASE_MS = 2500
 MESSAGE_CHAR_MS = 60
-MAX_MESSAGE_MS = 8000
+MAX_MESSAGE_MS = 10000
 
 
 def routine_receipt(label: str, kind: str) -> bool:
@@ -21,22 +22,21 @@ def routine_progress(purpose, owner) -> bool:
 def message_duration_ms(label: str, kind: str, requested_ms=1800, *, purpose='result'):
     """Normalize legacy numeric TTLs; preserve explicit persistent lifecycles.
 
-    Questions/running work belong to their producer. Result errors get reading
-    time even when a legacy caller requests an untimed fault; device state is
-    handled separately by each display.
+    Questions/running work belong to their producer. Errors and warnings stay
+    until dismissal or the next user action, regardless of legacy numeric TTLs.
     """
     kind, purpose = getattr(kind, 'value', kind), getattr(purpose, 'value', purpose)
-    if purpose != 'result' or kind in ('pending', 'live') or (requested_ms is None and kind != 'error'):
+    if purpose != 'result' or kind in ('error', 'warning', 'pending', 'live') or requested_ms is None:
         return None
-    # 899: capture reasons and ordinary results share 591's reading formula.
-    return max(MIN_MESSAGE_MS, min(MAX_MESSAGE_MS, MESSAGE_BASE_MS + MESSAGE_CHAR_MS * len(str(label))))
+    return min(MAX_MESSAGE_MS, MESSAGE_BASE_MS + MESSAGE_CHAR_MS * max(0, len(str(label)) - 20))
 
 
 def message_protected(label, kind, expires_at, now, *, purpose='result') -> bool:
-    """Only a timed result can defer a routine state update or clear."""
+    """Keep unread results and undismissed problems through routine clears."""
     return (bool(label) and getattr(purpose, 'value', purpose) == 'result'
             and getattr(kind, 'value', kind) not in ('pending', 'live')
-            and expires_at is not None and now < expires_at)
+            and (getattr(kind, 'value', kind) in ('error', 'warning')
+                 or expires_at is not None and now < expires_at))
 
 
 def message_priority(kind, *, purpose='result', owner='') -> int:
@@ -59,8 +59,34 @@ def message_should_wait(current_kind, incoming_kind, *, protected,
                         current_purpose='result', current_owner='',
                         incoming_purpose='result', incoming_owner='', replace=False) -> bool:
     """Shared replacement rule; each display retains only its latest waiter."""
-    return not replace and protected and message_priority(incoming_kind, purpose=incoming_purpose, owner=incoming_owner) <= message_priority(
+    return protected and message_priority(incoming_kind, purpose=incoming_purpose, owner=incoming_owner) <= message_priority(
         current_kind, purpose=current_purpose, owner=current_owner)
+
+
+class PendingMessages:
+    """Coalesce consecutive same-kind info; never lose a queued problem."""
+
+    def __init__(self):
+        self._items = deque()
+
+    def __bool__(self):
+        return bool(self._items)
+
+    def push(self, item, kind, purpose='result'):
+        kind, purpose = getattr(kind, 'value', kind), getattr(purpose, 'value', purpose)
+        if (self._items and kind not in ('error', 'warning') and purpose == 'result'
+                and self._items[-1][:2] == (kind, purpose)):
+            self._items.pop()
+        self._items.append((kind, purpose, item))
+
+    def pop(self):
+        return self._items.popleft()[2]
+
+    def clear(self):
+        self._items.clear()
+
+    def remove(self, predicate):
+        self._items = deque(row for row in self._items if not predicate(row[2]))
 
 
 class ReceiptDwell:
@@ -77,35 +103,47 @@ class ReceiptDwell:
         self.deadline = None
         self._kind = 'success'
         self._label = ''
-        self._waiting = None
+        self._waiting = PendingMessages()
 
-    def show(self, label, success=True):
+    def show(self, label, success=True, *, kind=None):
         # Promote an overdue waiter before considering a newly arriving receipt.
-        if self._waiting is not None and self.deadline is not None and monotonic() >= self.deadline:
+        if self._waiting and self.deadline is not None and monotonic() >= self.deadline:
             self.restore()
-        kind = 'success' if success else 'error'
+        kind = kind or ('success' if success else 'error')
         if message_should_wait(self._kind, kind, protected=message_protected(
                 self._label, self._kind, self.deadline, monotonic())):
-            self._waiting = (label, success)
+            self._waiting.push((label, success, kind), kind)
             return
         self._show(label, success)
         duration = message_duration_ms(label, kind)
         self._label, self._kind = label, kind
-        self.deadline = monotonic() + duration / 1000
-        self._start_timer(duration)
+        self.deadline = None if duration is None else monotonic() + duration / 1000
+        if duration is not None:
+            self._start_timer(duration)
 
     def restore(self):
         """Rearm early callbacks or promote a waiter; report whether text stays."""
         now = monotonic()
+        if self._label and self._kind in ('error', 'warning'):
+            return True
         if self.deadline is not None and now < self.deadline:
             self._start_timer(max(1, round((self.deadline - now) * 1000)))
             return True
         self.deadline = None
-        waiting, self._waiting = self._waiting, None
-        if waiting is not None:
-            self.show(*waiting)
+        if self._waiting:
+            waiting = self._waiting.pop()
+            self.show(waiting[0], waiting[1], kind=waiting[2])
             return True
+        self._label = ''
         return False
+
+    def dismiss(self, *, next_action=False):
+        """Explicit dismissal promotes a waiter; a new action retires old work."""
+        self._label = ''
+        self.deadline = None
+        if next_action:
+            self._waiting.clear()
+        return self.restore()
 
 
 def restore_receipt_text(widget, text):

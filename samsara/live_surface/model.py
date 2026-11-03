@@ -7,7 +7,7 @@ from time import monotonic
 from typing import Callable, Optional
 
 from samsara.live_surface.feedback import FeedbackKind, FeedbackPurpose, DEFAULT_TTL_MS
-from samsara.message_durations import message_duration_ms, message_protected, message_should_wait
+from samsara.message_durations import PendingMessages, message_duration_ms, message_protected, message_should_wait
 
 # Geometry/timing are design constants, never per-user tuning knobs.
 MARK_TARGET_DIP = 44
@@ -196,7 +196,9 @@ class LiveSurfaceModel:
         self._sequence: dict[str, int] = {}
         self._cleared_documents: set[str] = set()
         self._notice = Notice(NoticeKind.NONE, "", None)
-        self._waiting_notice: SurfaceEvent | None = None
+        self._waiting_notices = PendingMessages()
+        self._notice_document = (self.document_id, self.revision)
+        self._acknowledgement_capture = None
         self._question: Notice | None = None
         self._feedback_event: Notice | None = None
         self._feedback_revision = 0
@@ -213,7 +215,9 @@ class LiveSurfaceModel:
         self._last_activity = now
         kind = event.kind
         if kind is EventKind.CAPTURE_STARTED:
-            self.dismiss_error()
+            from samsara.message_lifetime import begin_acknowledgement_capture
+            begin_acknowledgement_capture(self, event.capture_id)
+            self.dismiss_error(next_action=True)
             if self.document is DocumentState.DELIVERED:
                 self.text = ""
                 self.document = DocumentState.EMPTY
@@ -227,10 +231,17 @@ class LiveSurfaceModel:
             self.presentation = PresentationState.AUTOMATIC_EXPANSION
         elif kind is EventKind.CAPTURE_CHANGED:
             if event.capture is CaptureState.RECORDING and self.capture is not CaptureState.RECORDING:
-                self.dismiss_error()
+                from samsara.message_lifetime import begin_acknowledgement_capture
+                begin_acknowledgement_capture(self, self._active_capture)
+                self.dismiss_error(next_action=True)
+            elif event.capture is not CaptureState.RECORDING:
+                from samsara.message_lifetime import end_acknowledgement_capture
+                end_acknowledgement_capture(self)
             self.capture = event.capture or self.capture
             self.lane = event.lane or self.lane
         elif kind is EventKind.CAPTURE_STOPPED:
+            from samsara.message_lifetime import end_acknowledgement_capture
+            end_acknowledgement_capture(self)
             self.capture = event.capture or CaptureState.OFF
             if event.capture_id:
                 self._retired_captures.add(event.capture_id)
@@ -283,10 +294,9 @@ class LiveSurfaceModel:
         elif kind is EventKind.NOTICE:
             self._receive_notice(event, now)
         elif kind is EventKind.NOTICE_CLEARED:
-            if self._waiting_notice is not None and (event.owner == self._waiting_notice.owner if event.owner
-                    else self._waiting_notice.purpose in (FeedbackPurpose.RUNNING, FeedbackPurpose.QUESTION)):
-                if event.notice in (NoticeKind.NONE, self._waiting_notice.notice):
-                    self._waiting_notice = None
+            self._waiting_notices.remove(lambda waiting: (event.owner == waiting.owner if event.owner
+                    else waiting.purpose in (FeedbackPurpose.RUNNING, FeedbackPurpose.QUESTION))
+                    and event.notice in (NoticeKind.NONE, waiting.notice))
             if self._question is not None and (not event.owner or event.owner == self._question.owner):
                 if event.notice in (NoticeKind.NONE, self._question.kind):
                     self._question = None
@@ -354,11 +364,19 @@ class LiveSurfaceModel:
             # only its visible text may wait behind the current message.
             self._feedback_revision += 1
             self._feedback_event = candidate
-        if message_should_wait(self._notice.feedback, feedback, protected=self._message_protected(now),
+        # A changed authoritative draft is a new user action (Clear/Restore,
+        # editing or dictating). Keep the old receipt until its replacement
+        # arrives; repeated projections of the same revision are not actions.
+        document_action = self._notice_document != (self.document_id, self.revision)
+        if message_should_wait(self._notice.feedback, feedback,
+                               protected=self._message_protected(now) and not document_action,
                                current_purpose=self._notice.purpose, current_owner=self._notice.owner,
-                               incoming_purpose=purpose, incoming_owner=event.owner, replace=True):
-            self._waiting_notice = event
+                               incoming_purpose=purpose, incoming_owner=event.owner):
+            self._waiting_notices.push(event, feedback, purpose)
             return
+        if document_action:
+            self._waiting_notices.clear()
+        self._notice_document = (self.document_id, self.revision)
         if purpose is FeedbackPurpose.QUESTION:
             self._question = candidate
             if self._notice.expires_at is not None or self._notice.purpose is FeedbackPurpose.RUNNING:
@@ -369,16 +387,23 @@ class LiveSurfaceModel:
         else:
             self._notice = candidate
 
-    def dismiss_error(self) -> None:
-        """A click/new utterance dismisses result errors, never device state."""
-        if self._notice.feedback is FeedbackKind.ERROR and self._notice.purpose is FeedbackPurpose.RESULT:
+    def dismiss_error(self, *, next_action=False) -> None:
+        """Dismiss result problems, never ongoing device state or questions."""
+        problem = self._notice.feedback in (FeedbackKind.ERROR, FeedbackKind.WARNING) and self._notice.purpose is FeedbackPurpose.RESULT
+        if next_action:
+            if problem:
+                from samsara.message_lifetime import arm_acknowledgement
+                arm_acknowledgement(self)
+            self._waiting_notices.clear()
+        if problem:
             self._notice = Notice(NoticeKind.NONE, '', None)
+            self._advance_notice(self._clock())
 
     def _advance_notice(self, now: float) -> None:
         if self._notice.expires_at is not None and now >= self._notice.expires_at:
             self._notice = Notice(NoticeKind.NONE, "", None)
-        if self._waiting_notice is not None and self._notice.kind is NoticeKind.NONE and self._question is None:
-            event, self._waiting_notice = self._waiting_notice, None
+        if self._waiting_notices and self._notice.kind is NoticeKind.NONE and self._question is None:
+            event = self._waiting_notices.pop()
             self._receive_notice(event, now, publish_feedback=False)
 
     def _message_protected(self, now: float) -> bool:

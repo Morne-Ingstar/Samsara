@@ -357,6 +357,9 @@ class HotkeyCluster:
         wake_hotkey = self.config.get('wake_word_hotkey', 'ctrl+alt+w')
         command_hotkey = self.config.get('command_hotkey', 'ctrl+alt+c')
         cancel_hotkey = self.config.get('cancel_hotkey', 'escape')
+        if key_name in ('esc', 'escape') and not self.recording:
+            from samsara.message_lifetime import dismiss_messages
+            self._schedule_ui(dismiss_messages, self)
         memo_hotkey = self.config.get('memo_hotkey', 'ctrl+alt+m')
         task_hotkey = self.config.get('task_hotkey', 'ctrl+alt+t')
         pause_hotkey = ((self.config.get('ui', {}) or {}).get(

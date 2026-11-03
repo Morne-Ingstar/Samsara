@@ -74,7 +74,7 @@ from samsara.ui.indicator_drag import IndicatorDrag
 from samsara.ui.splash_qt import _system_reduced_motion as _reduced_motion
 from samsara.ui.tray_qt import SPIN_SECONDS_PER_TURN, paint_mark
 from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer
-from samsara.message_durations import message_duration_ms, message_protected, message_should_wait
+from samsara.message_durations import PendingMessages, message_duration_ms, message_protected, message_should_wait
 from samsara.ui.indicator_message_layout import MessageHoverWindow, message_lines, message_height, message_line_spacing
 
 logger = logging.getLogger(__name__)
@@ -342,7 +342,7 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         self._chip_only = False
         self._chip_deadline = None
         self._chip_feedback = None
-        self._waiting_outcome = None
+        self._waiting_outcomes = PendingMessages()
         self._chip_timer = QTimer(self)
         self._chip_timer.setSingleShot(True)
         self._chip_timer.timeout.connect(self._clear_outcome)
@@ -376,6 +376,8 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         self._update_input_mask()
         self.setAccessibleName("Listening indicator")
         self._announcer = LiveSurfaceAnnouncer(self)
+        self._feedback_announcer = LiveSurfaceAnnouncer(self)
+        self._chip_revision = 0
         self._update_accessibility(announce=False)
 
     # ------------------------------------------------------------------
@@ -393,7 +395,6 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         self._state_changed()
 
     def hide(self):
-        self.dismiss_error()
         self._thinking = False
         self._pulse_timer.stop()
         self._cancel_idle()
@@ -426,7 +427,7 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         self._cancel_idle()
         self._flash_timer.stop()
         self._chip_timer.stop()
-        self._waiting_outcome = None
+        self._waiting_outcomes.clear()
         self._chip_label = None
         self._chip_kind = None
         self._chip_only = False
@@ -456,8 +457,12 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         if active == self._listening:
             return
         self._listening = active
+        from samsara.message_lifetime import begin_acknowledgement_capture, end_acknowledgement_capture
         if active:
-            self.dismiss_error()
+            begin_acknowledgement_capture(self)
+            self.dismiss_error(next_action=True)
+        else:
+            end_acknowledgement_capture(self)
         self._state_changed()
         if not self.isVisible():
             return
@@ -723,7 +728,7 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
             self._start_flash(_flash_error_bg(), theme.ERROR)
 
     def flash_wake(self):
-        self.dismiss_error()
+        self.dismiss_error(next_action=True)
         if self.isVisible():
             # The glyph plays the heard frame (red eye, bright ring) while
             # this flash runs -- see tray_qt.HEARD_KEYFRAMES.
@@ -888,7 +893,10 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
             description = "; ".join(part for part in (description, chip[0]) if part)
         self.setAccessibleDescription(description)
         if announce and self.isVisible():
-            self._announcer.announce_transition(description, description)
+            if not self._chip_only:
+                self._announcer.announce_transition(label, label)
+            if chip:
+                self._feedback_announcer.announce_transition((self._device_lost, self._chip_revision), chip[0])
 
     def _start_blink(self):
         if not self._idle_allowed():
@@ -940,7 +948,7 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
     def show_outcome(self, label: str, kind: str, ttl_ms: "int | None" = _CHIP_DEFAULT_TTL_MS, *, _feedback=None):
         """Show a short chip saying what just happened.
 
-        New messages replace the previous result immediately.
+        New messages wait until the current result has been read or dismissed.
         Numeric TTLs use the shared reading-time rule.
         Explicit persistent messages keep their producer-owned lifetime.
 
@@ -954,19 +962,20 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
             self.clear_outcome()
             return
         kind = kind if kind in _chip_fill() else "warning"
-        if self._waiting_outcome is not None and self._chip_deadline is not None and not self._protected_outcome():
+        if self._waiting_outcomes and self._chip_deadline is not None and not self._protected_outcome():
             self._clear_outcome()
         if message_should_wait(self._chip_kind, kind, protected=self._protected_outcome(),
                                current_purpose=getattr(self._chip_feedback, 'purpose', 'result'),
                                current_owner=getattr(self._chip_feedback, 'owner', ''),
                                incoming_purpose=getattr(_feedback, 'purpose', 'result'),
-                               incoming_owner=getattr(_feedback, 'owner', ''), replace=True):
-            self._waiting_outcome = (label, kind, ttl_ms, _feedback)
+                               incoming_owner=getattr(_feedback, 'owner', '')):
+            self._waiting_outcomes.push((label, kind, ttl_ms, _feedback), kind, getattr(_feedback, 'purpose', 'result'))
             return False
-        ttl_ms = message_duration_ms(label, kind, ttl_ms)
+        ttl_ms = message_duration_ms(label, kind, ttl_ms, purpose=getattr(_feedback, 'purpose', 'result'))
         self._chip_label = str(label)
         self._chip_kind = kind
         self._chip_feedback = _feedback
+        self._chip_revision += 1
         self._chip_deadline = None if ttl_ms is None else self._now_ms() / 1000 + ttl_ms / 1000
         self._chip_timer.stop()
         self._state_changed()   # e.g. the "live" (recording) chip stops idle motion
@@ -1011,19 +1020,18 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
 
     def _protected_outcome(self):
         return message_protected(self._chip_label, self._chip_kind,
-                                 self._chip_deadline, self._now_ms() / 1000)
+                                 self._chip_deadline, self._now_ms() / 1000,
+                                 purpose=getattr(self._chip_feedback, 'purpose', 'result'))
 
     def clear_feedback(self, owner):
-        if self._waiting_outcome is not None:
-            feedback = self._waiting_outcome[3]
-            if not owner or feedback and feedback.owner == owner:
-                self._waiting_outcome = None
+        self._waiting_outcomes.remove(lambda waiting: (waiting[3] and waiting[3].owner == owner)
+            if owner else getattr(getattr(waiting[3], 'purpose', None), 'value', None) in ('running', 'question'))
         if not owner or self._chip_feedback and self._chip_feedback.owner == owner:
             self.clear_outcome()
 
     def clear_outcome(self):
         """Remove the transient chip (the device-lost chip is unaffected)."""
-        if self._protected_outcome() and self._chip_kind != 'error':
+        if self._protected_outcome():
             return
         self._chip_feedback = None
         self._chip_deadline = None
@@ -1079,13 +1087,14 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
                 and self._chip_feedback.alive is None):
             return
         if self._protected_outcome():
-            self._chip_timer.start(max(1, round((self._chip_deadline - self._now_ms() / 1000) * 1000)))
+            if self._chip_deadline is not None:
+                self._chip_timer.start(max(1, round((self._chip_deadline - self._now_ms() / 1000) * 1000)))
             return
         self._chip_label = None
         self._chip_kind = None
         self._chip_deadline = self._chip_feedback = None
-        waiting, self._waiting_outcome = self._waiting_outcome, None
-        if waiting is not None:
+        while self._waiting_outcomes:
+            waiting = self._waiting_outcomes.pop()
             label, kind, ttl_ms, feedback = waiting
             if feedback is None or feedback.alive is None or feedback.alive():
                 self.show_outcome(label, kind, ttl_ms, _feedback=feedback)
@@ -1260,7 +1269,7 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         pill_w = self._pill_width(label, show_dot)
         chip = self._active_chip()
         chip_w = self._chip_width(chip[0]) if chip else 0
-        chip_h = max(36 if self._report_width() else _CHIP_H, message_height(chip[0], self._chip_font(), chip_w-2*_CHIP_PAD_X-self._report_width(), padding=6)) if chip else 0
+        chip_h = max(36 if self._report_width() else _CHIP_H, message_height(chip[0], self._chip_font(), chip_w-2*_CHIP_PAD_X-self._report_width(), padding=6, max_lines=None if self._report_width() else 2)) if chip else 0
 
         if chip is None:
             return pill_w, _PILL_H, QRectF(0, 0, pill_w, _PILL_H), None
@@ -1351,26 +1360,36 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         from samsara.ui.result_message_rendering import is_ava_chain_result, paint_result
         running = getattr(getattr(self._chip_feedback, 'kind', None), 'value', '') == 'running'
         fill = theme.AVA if is_ava_chain_result(label) else theme.WARNING if running else theme.TEXT_SECONDARY if kind == 'accent' else _chip_fill().get(kind, theme.WARNING)
+        if kind in ('error', 'warning'):
+            fill = theme._mix(_chip_fill()[kind], theme.BG0, .80)
         painter.fillPath(path, theme.qcolor(fill))
         font = self._chip_font()
-        lines, _ = message_lines(label, font, rect.width()-2*_CHIP_PAD_X-self._report_width())
+        lines, _ = message_lines(label, font, rect.width()-2*_CHIP_PAD_X-self._report_width(), max_lines=None if kind in ('error', 'warning') else 2)
         height = message_line_spacing(label, font)
         for index, line in enumerate(lines):
             line_rect = QRectF(rect.x()+_CHIP_PAD_X, rect.center().y()-len(lines)*height/2+index*height,
                                rect.width()-2*_CHIP_PAD_X-self._report_width(), height)
-            ink = QColor(theme.ink_on(theme.AVA) if is_ava_chain_result(label) else theme.TEXT_ON_ACCENT)
+            ink = QColor(theme.ink_on(fill) if kind in ('error', 'warning') or is_ava_chain_result(label) else theme.TEXT_ON_ACCENT)
             if index and getattr(self._chip_feedback, 'owner', '') == 'capture_clipping':
                 ink.setAlphaF(.72)
             paint_result(painter, line_rect, line, font, ink)
 
-    def dismiss_error(self):
+    def dismiss_error(self, *, next_action=False):
         from samsara.clipboard_recovery import IMAGE_MESSAGE, BITMAP_MESSAGE, open_choices
         app = getattr(self, '_clipboard_recovery_app', None)
         if (self._chip_label or '').startswith((IMAGE_MESSAGE, BITMAP_MESSAGE)) and app is not None:
             if open_choices(self, app):
                 return
-        if self._chip_kind == 'error' and getattr(getattr(self._chip_feedback, 'purpose', None), 'value', 'result') == 'result':
+        problem = self._chip_kind in ('error', 'warning') and getattr(getattr(self._chip_feedback, 'purpose', None), 'value', 'result') == 'result'
+        if next_action:
+            if problem:
+                from samsara.message_lifetime import arm_acknowledgement
+                arm_acknowledgement(self)
+            self._waiting_outcomes.clear()
+        if problem:
+            self._chip_label = self._chip_kind = self._chip_feedback = None
             self._chip_deadline = None
+            self._chip_timer.stop()
             self.clear_outcome()
 
     def _end_pointer(self, *, cancel=False):

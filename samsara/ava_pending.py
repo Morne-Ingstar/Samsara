@@ -225,8 +225,11 @@ def ask(app, runner, kind, text, options, *, operation=None, duration=None, labe
         return ava.TurnOutcome("ask", "queued", name="question")
 
 
-def consume(app, text, *, capture_path=None):
+def consume(app, text, *, capture_path=None, acknowledgement=None):
     """True means this utterance belongs to Ava, even if it is not a valid answer."""
+    from samsara.message_lifetime import consume_acknowledgement
+    if consume_acknowledgement(app, text, receipt=acknowledgement):
+        return True
     from plugins.commands import ask_ollama as ava
     with ownership_lock(app):
         q = getattr(app, "_ava_question", None)

@@ -83,7 +83,8 @@ def test_real_display_receives_reason_and_shared_reading_time(qapp, monkeypatch,
             label, deadline = app.listening_indicator._chip_label, app.listening_indicator._chip_deadline
         assert reasons.reason_for(kind, {'config': app.config, 'sustained_clipping': True})[0] in label
         # 899: reason receipts use the same formula on both displays.
-        assert deadline == message_duration_ms(label, 'accent' if kind == 'clipping' else 'error') / 1000
+        duration = message_duration_ms(label, 'accent' if kind == 'clipping' else 'error')
+        assert deadline == (None if duration is None else duration / 1000)  # 1038
     finally:
         if controller:
             controller.close()
@@ -149,9 +150,9 @@ def test_cancelled_streaming_result_has_no_new_notice(monkeypatch):
 
 
 def test_only_error_floor_changes():
-    assert message_duration_ms('x', 'error', 500) == 2500  # 899: ordinary errors follow 591.
+    assert message_duration_ms('x', 'error', 500) is None  # 1038
     assert message_duration_ms('x', 'success', 500) == 2500
-    assert message_duration_ms('x', 'warning', 500) == 2500
+    assert message_duration_ms('x', 'warning', 500) is None  # 1038
 
 
 @pytest.mark.parametrize('duration,finished,expected', [(.1, True, 'short_tap'), (2., True, 'near_silent'), (2., False, None)])

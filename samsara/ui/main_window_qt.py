@@ -497,7 +497,8 @@ class _MainWindow(QMainWindow):
         # Status bar -- separated segments (muted small-caps label + primary
         # value), not one combined "mode: X" string. Real vertical padding
         # (6-8px) instead of the old 0px-vertical/horizontal-only padding.
-        sb = QStatusBar()
+        from samsara.ui.message_status_qt import MessageStatusBar
+        sb = MessageStatusBar()
         sb.setSizeGripEnabled(False)
         sb.setStyleSheet("QStatusBar { padding: 6px 8px; } QStatusBar::item { border: none; }")
         self.setStatusBar(sb)

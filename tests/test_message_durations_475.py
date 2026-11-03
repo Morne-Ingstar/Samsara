@@ -48,39 +48,42 @@ def display(request, qapp, monkeypatch):
 @pytest.mark.parametrize('kind', ['success', 'accent', 'warning', 'error'])
 @pytest.mark.parametrize('length', [1, 50, 160])
 def test_each_kind_stays_its_computed_reading_time(display, kind, length):
+    # 1038: problems persist; information gets 2.5 s + 60 ms beyond character 20.
     d, label = display, 'x' * length
-    expected = max(2500, min(8000, 60 * length))  # 899 / 591: one formula for every result.
+    expected = message_duration_ms(label, kind, 500)
     d.i.show_outcome(label, kind, 500); d.flush()
-    assert d.deadline() == expected / 1000
-    d.clock[0] = expected / 1000 - .001
+    assert d.deadline() == (None if expected is None else expected / 1000)
+    d.clock[0] = 600 if expected is None else expected / 1000 - .001
     d.expire()
     assert d.text() == label
-    d.clock[0] = expected / 1000
-    d.expire()
+    if expected is None:
+        d.i.dismiss_error(); d.flush()
+    else:
+        d.clock[0] = expected / 1000
+        d.expire()
     assert d.text() == ''
 
 
 @pytest.mark.parametrize('kind', ['success', 'accent', 'warning', 'error'])
 def test_routine_state_clear_hide_and_typed_cannot_wipe_a_result(display, kind):
+    # 1038: a new capture retires problems; routine clears preserve unread info.
     d, label = display, 'Synthetic command result'
     d.i.show_outcome(label, kind); d.flush()
     original_deadline = d.deadline()
     d.clock[0] = .5
-    d.i.set_listening(True)
-    d.i.set_listening(False)
-    d.i.set_session_mode(None, None)
-    d.i.clear_outcome()
-    d.i.hide()
-    d.flush()
-    # Routine lifecycle clears retain the message; newer messages replace it.
-    assert d.text() == ('' if kind == 'error' else label)
-    assert d.deadline() == (None if kind == 'error' else original_deadline)
+    d.i.set_listening(True); d.i.set_listening(False)
+    d.i.set_session_mode(None, None); d.i.clear_outcome(); d.i.hide(); d.flush()
+    problem = kind in ('error', 'warning')
+    assert d.text() == ('' if problem else label)
+    assert d.deadline() == (None if problem else original_deadline)
     d.i.show_outcome('typed', 'success', 900)
     d.i.show_outcome('Captured', 'success', 1000)
-    schedule_feedback(d.app, '...', 'pending', None, source='hold_pending')
-    d.flush()
-    assert d.text() == '...' and d.deadline() is None
-    d.clock[0] = original_deadline
+    schedule_feedback(d.app, '...', 'pending', None, source='hold_pending'); d.flush()
+    assert d.text() == ('typed' if problem else label)
+    d.clock[0] = 3 if problem else original_deadline
+    d.expire()
+    assert d.text() == 'Captured'  # 1038: queued information gets its own reading time.
+    d.clock[0] += 2.5
     d.expire()
     assert d.text() == '...' and d.deadline() is None
     d.i.clear_feedback('hold'); d.flush(); d.expire()
@@ -94,30 +97,31 @@ def test_routine_state_clear_hide_and_typed_cannot_wipe_a_result(display, kind):
 
 def test_newer_result_replaces_and_gets_its_own_deadline(display):
     # 775 preserves the node ID; replacement is immediate with fresh reading time.
+    # 1038: an unrelated result waits for explicit dismissal of the refusal.
     d = display
     d.i.show_outcome('First refusal', 'warning'); d.flush()
-    first_deadline = d.deadline()
+    assert d.deadline() is None
     d.clock[0] = 1.0
     d.i.show_outcome('New result', 'success'); d.flush()
-    deadline = 1.0 + 2.5
-    assert d.text() == 'New result' and d.deadline() == deadline
-    d.clock[0] = deadline
-    d.expire()
+    assert d.text() == 'First refusal' and d.deadline() is None
+    d.i.dismiss_error(); d.flush()
+    assert d.text() == 'New result' and d.deadline() == 3.5
+    d.clock[0] = 3.5; d.expire()
     assert not d.text()
 
 
 def test_new_queued_action_notice_replaces_old_feedback(display):
     # A newly queued action replaces the previous message immediately.
+    # 1038: a new user capture releases old feedback before its action notice.
     d = display
     d.i.show_outcome('Previous refusal', 'warning'); d.flush()
-    first_deadline = d.deadline()
     d.clock[0] = .5
+    d.i.set_listening(True); d.flush()
     d.i.show_feedback('Synthetic action queued', 'pending', None,
                       Feedback(FeedbackKind.RUNNING, FeedbackPurpose.RUNNING, 'command'))
     d.flush()
     assert d.text() == 'Synthetic action queued' and d.deadline() is None
-    d.clock[0] = first_deadline
-    d.expire()
+    d.clock[0] = 600; d.expire()
     assert d.text() == 'Synthetic action queued' and d.deadline() is None
 
 
@@ -142,10 +146,11 @@ def test_question_stays_until_its_producer_answers_or_times_out(display):
 
 
 def test_full_delivery_and_lane_events_preserve_result_until_expiry():
+    # 1038: info remains through lifecycle events until its full reading time.
     clock = [0.0]
     model = LiveSurfaceModel(clock=lambda: clock[0])
-    model.consume(SurfaceEvent(EventKind.NOTICE, notice=NoticeKind.WARNING,
-                               message='Synthetic refusal', ttl_s=.5))
+    model.consume(SurfaceEvent(EventKind.NOTICE, notice=NoticeKind.INFORMATION,
+                               message='Synthetic result', ttl_s=.5))
     deadline = model.view().notice.expires_at
     clock[0] = .25
     for event in (SurfaceEvent(EventKind.CAPTURE_STARTED, capture_id='synthetic', lane=Lane.HOLD),
@@ -153,11 +158,10 @@ def test_full_delivery_and_lane_events_preserve_result_until_expiry():
                   SurfaceEvent(EventKind.DELIVERY_FINISHED, text='Synthetic delivery'),
                   SurfaceEvent(EventKind.CAPTURE_STOPPED), SurfaceEvent(EventKind.NOTICE_CLEARED)):
         model.consume(event)
-        assert model.view().notice.message == 'Synthetic refusal'
+        assert model.view().notice.message == 'Synthetic result'
         assert model.view().notice.expires_at == deadline
     clock[0] = deadline
     assert model.view().notice.kind is NoticeKind.NONE
-    # Delivery has its own dwell, beginning .25 seconds after the notice.
     assert model.view().form is VisibleForm.STATUS
     clock[0] = .25 + 2.5
     assert model.view().form is VisibleForm.MARK
@@ -203,7 +207,7 @@ def test_unrelated_result_does_not_answer_a_question(display, owner):
 def test_routine_receipts_and_persistent_status_contracts():
     assert message_duration_ms('typed', 'success', 900) == 2500
     assert message_duration_ms('Captured', 'success', 1000) == 2500
-    assert message_duration_ms('Persistent fault', 'error', None) == 2500  # 899 / 591: shared formula.
+    assert message_duration_ms('Persistent fault', 'error', None) is None  # 1038: persistent result errors.
     assert message_duration_ms('Question', 'warning', 8000, purpose='question') is None
     assert message_duration_ms('Short result', 'success', 0) == 2500
 
@@ -219,7 +223,8 @@ def test_result_and_refusal_remain_searchable_in_history_after_expiry(display, t
         d.flush()
         d.clock[0] = 9
         d.expire()
-        assert not d.text()
+        assert d.text() == 'Synthetic refusal: nothing ran'  # 1038: warnings persist.
+        d.i.dismiss_error(); d.flush()
         rows = db.recent_windowed(search='Synthetic refusal')
         assert len(rows) == 1
         assert rows[0]['display_text'] == 'Synthetic refusal: nothing ran'
@@ -278,6 +283,8 @@ def test_both_widgets_keep_feedback_visible_when_returning_to_rest(qapp, monkeyp
             compact.grab().save(str(directory / 'Compact_refusal_at_1_second.png'))
         clock[0] = 4
         c.refresh_expired(); compact._clear_outcome(); qapp.processEvents()
+        assert c.view().notice.message == label and compact._chip_label == label  # 1038
+        full.dismiss_error(); compact.dismiss_error(); c.drain()
         assert c.view().form is VisibleForm.MARK and not c.widget._band.isVisible()
         assert not compact.isVisible()
     finally:

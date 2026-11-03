@@ -102,17 +102,21 @@ def post_reason(app, kind, *, handsfree=False, sustained_clipping=False, headlin
         else:
             app._show_outcome_chip(label, severity, duration)
         if callable(getattr(app, '_schedule_ui', None)):
-            app._schedule_ui(_home_message, app, text, duration)
+            app._schedule_ui(_home_message, app, text, duration, severity)
         if speak:
             app._speak_session_notice(text)
     except Exception:
         logging.getLogger(__name__).debug('Capture feedback unavailable', exc_info=True)
 
 
-def _home_message(app, text, duration):
+def _home_message(app, text, duration, kind='error'):
     window = getattr(getattr(app, 'main_window', None), '_window', None)
     if window is not None and window.isVisible():
-        window.statusBar().showMessage(text, duration)
+        bar = window.statusBar()
+        if callable(getattr(bar, 'show_feedback', None)):
+            bar.show_feedback(text, kind, duration)
+        else:
+            window.statusBar().showMessage(text, duration or 0)
 
 
 def post_clipping(app, audio):

@@ -57,11 +57,12 @@ def display(request, qapp, monkeypatch):
 
 # 888b / 775: retain historical node IDs while pinning the approved 2.5-8 s formula.
 @pytest.mark.parametrize('length, expected', [(1, 2500), (19, 2500), (20, 2500),
-                                            (50, 3000), (77, 4620), (78, 4680), (200, 8000)],
+                                            (50, 4300), (77, 5920), (78, 5980), (200, 10000)],
                          ids=['1-1500', '19-1500', '20-1550', '50-3350', '77-4970', '78-5000', '200-5000'])
 def test_exact_shared_formula(length, expected):
+    # 1038: preserve historical node IDs and check persistent severity separately.
     for kind in ('success', 'accent', 'warning', 'error'):
-        assert message_duration_ms('x' * length, kind, 1) == expected
+        assert message_duration_ms('x' * length, kind, 1) == (None if kind in ('warning', 'error') else expected)
 
 
 @pytest.mark.parametrize('label', ['typed', 'Captured', 'Synthetic receipt ' * 6])
@@ -84,59 +85,57 @@ def test_receipt_survives_clear_hide_and_expires_at_its_dwell(display, label):
 
 def test_only_latest_waiter_shows_with_fresh_reading_time(display):
     # 888b / 775: each new result replaces the preceding one on arrival.
+    # 1038: the current message gets its minimum, then the latest waiter starts.
     d = display
-    d.show('First receipt')
-    d.clock[0] = .2
-    d.show('Superseded waiter')
-    assert d.text() == 'Superseded waiter'
-    d.clock[0] = .4
-    d.show('Latest receipt')
+    d.show('First receipt'); end = d.deadline()
+    d.clock[0] = .2; d.show('Superseded waiter')
+    assert d.text() == 'First receipt'
+    d.clock[0] = .4; d.show('Latest receipt')
+    assert d.text() == 'First receipt' and d.deadline() == end
+    d.clock[0] = end; d.expire()
     assert d.text() == 'Latest receipt'
-    end = .4 + message_duration_ms('Latest receipt', 'success') / 1000
+    end += message_duration_ms('Latest receipt', 'success') / 1000
     assert d.deadline() == end
-    d.clock[0] = end - .001
-    d.expire()
+    d.clock[0] = end - .001; d.expire()
     assert d.text() == 'Latest receipt'
-    d.clock[0] = end
-    d.expire()
+    d.clock[0] = end; d.expire()
     assert d.text() == ''
 
 
 def test_error_interrupts_and_lower_priority_waits(display):
     # 888b / 775: newer results replace errors as well as ordinary receipts.
+    # 1038: an error interrupts info and holds subsequent receipts until dismissed.
     d = display
     d.show('typed')
-    d.clock[0] = .1
-    d.show('Synthetic error', 'error')
+    d.clock[0] = .1; d.show('Synthetic error', 'error')
+    assert d.text() == 'Synthetic error' and d.deadline() is None
+    d.clock[0] = .2; d.show('Captured')
+    d.clock[0] = 600; d.expire()
     assert d.text() == 'Synthetic error'
-    d.clock[0] = .2
-    d.show('Captured')
-    assert d.text() == 'Captured'
-    end = .2 + message_duration_ms('Captured', 'success') / 1000
-    assert d.deadline() == end
-    d.clock[0] = end
-    d.expire()
+    d.i.dismiss_error(); d.flush()
+    assert d.text() == 'Captured' and d.deadline() == 602.5
+    d.clock[0] = 602.5; d.expire()
     assert d.text() == ''
 
 
 def test_arrival_after_missed_timer_keeps_waiters_in_order(display):
     # 888b / 775: delayed expiry must never resurrect a replaced receipt.
+    # 1038: elapsed current promotes its waiter before accepting another arrival.
     d = display
-    d.show('First receipt')
-    end = d.deadline()
-    d.clock[0] = .1
-    d.show('Waiting receipt')
+    d.show('First receipt'); end = d.deadline()
+    d.clock[0] = .1; d.show('Waiting receipt')
+    assert d.text() == 'First receipt'
+    d.clock[0] = end + .2; d.show('Latest arrival')
     assert d.text() == 'Waiting receipt'
-    d.clock[0] = end + .2
-    d.show('Latest arrival')
+    d.clock[0] = d.deadline(); d.expire()
     assert d.text() == 'Latest arrival'
-    d.clock[0] = d.deadline()
-    d.expire()
+    d.clock[0] = d.deadline(); d.expire()
     assert d.text() == ''
 
 
 def test_full_queued_feedback_is_published_once_on_arrival():
     # 888b / 775: visible feedback and the published event advance together.
+    # 1038: delivery/accessibility is once on arrival, even while text is queued.
     clock = [0.0]
     model = LiveSurfaceModel(clock=lambda: clock[0])
     from samsara.live_surface.model import NoticeKind
@@ -145,12 +144,15 @@ def test_full_queued_feedback_is_published_once_on_arrival():
     clock[0] = .1
     model.consume(SurfaceEvent(EventKind.NOTICE, notice=NoticeKind.SUCCESS, message='Waiting receipt'))
     view = model.view()
-    assert view.notice.message == view.feedback_event.message == 'Waiting receipt'
+    assert view.notice.message == 'First receipt'
+    assert view.feedback_event.message == 'Waiting receipt'
     assert view.feedback_revision == first_revision + 1
     clock[0] = view.notice.expires_at
-    expired = model.view()
-    assert expired.notice.kind is NoticeKind.NONE
-    assert expired.feedback_revision == view.feedback_revision
+    promoted = model.view()
+    assert promoted.notice.message == 'Waiting receipt'
+    assert promoted.feedback_revision == view.feedback_revision
+    clock[0] = promoted.notice.expires_at
+    assert model.view().notice.kind is NoticeKind.NONE
 
 
 def test_recording_changes_immediately_while_receipt_remains(display):
@@ -181,7 +183,7 @@ def test_cancelled_queued_progress_never_reappears(display):
     d.show('Synthetic processing', 'pending', None,
            Feedback(FeedbackKind.RUNNING, FeedbackPurpose.RUNNING, 'hold'))
     # 888b / 775: progress replaces the result immediately; cancellation removes it.
-    assert d.text() == 'Synthetic processing'
+    assert d.text() == 'typed'  # 1038: queued progress cannot erase unread info.
     d.i.clear_feedback('hold')
     d.flush()
     d.clock[0] = end
@@ -192,12 +194,12 @@ def test_cancelled_queued_progress_never_reappears(display):
 def test_dead_queued_producer_does_not_show(display):
     d, alive = display, [True]
     d.show('Synthetic warning', 'warning')
-    end = d.deadline()
+    assert d.deadline() is None  # 1038: warning is persistent.
     d.show('Synthetic work', 'accent', None,
            Feedback(FeedbackKind.RUNNING, FeedbackPurpose.RUNNING, 'work', alive=lambda: alive[0]))
     alive[0] = False
-    d.clock[0] = end
-    d.expire()
+    d.clock[0] = 600
+    d.i.dismiss_error(); d.flush(); d.expire()
     assert d.text() == ''
 
 
@@ -250,8 +252,10 @@ def test_history_footer_coalesces_and_defers_refresh(qapp, monkeypatch):
         assert window._status_lbl.text() == 'Latest receipt'
         window._show_toast('Synthetic failure', success=False)
         assert window._status_lbl.text() == 'Synthetic failure'
-        clock[0] = window._toast.deadline
+        clock[0] = 600
         window._restore_status()
+        assert window._status_lbl.text() == 'Synthetic failure'  # 1038
+        window._toast.dismiss(); window._restore_status()
         assert window._status_lbl.text() != 'Synthetic failure'
     finally:
         window._toast_timer.stop()

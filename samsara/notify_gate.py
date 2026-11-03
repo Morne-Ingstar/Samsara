@@ -52,12 +52,19 @@ class TrayNotifications:
         self._notification_sig.emit(level, str(title), str(text), icon, timeout)
 
     def _deliver_notification(self, level, title, text, icon, timeout):
+        from samsara.message_durations import message_duration_ms
+        # Windows controls balloon expiry. Keep important warnings readable in
+        # the selected in-app display even when Windows notifications are Off.
+        if level == 'important':
+            from samsara.live_surface.feedback import schedule_feedback
+            schedule_feedback(self._app, text, 'warning', None, source='windows_warning')
+        duration = message_duration_ms(text, 'accent')
         def deliver():
             # PLACEHOLDER COPY (1020): QSystemTrayIcon has no action buttons.
             body = text if level == 'reminder' else (
                 text + '\n\nClick to change Windows notifications.'
             )
-            self._tray.showMessage(title, body, icon, timeout)
+            self._tray.showMessage(title, body, icon, timeout if level == 'reminder' else duration)
             self._last_notification_class = level
 
         return notify(self._app.config, level, deliver)

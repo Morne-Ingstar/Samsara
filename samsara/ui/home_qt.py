@@ -2116,8 +2116,7 @@ class HomePage(QWidget):
 
     def _refresh_notice(self):
         notice = home_signals.problem_notice(self._app)
-        self._notice = notice
-        refresh_problem_notice(
+        self._notice = notice = refresh_problem_notice(
             self._notice_card, self._notice_text, self._notice_btn, notice,
             home_signals.DICTATION, OPEN_VOICE_HELP)
         self._notice_btn.parentWidget().setVisible(

@@ -737,6 +737,9 @@ class LiveSurfaceIndicatorAdapter:
     def clear_outcome(self) -> None:
         self.clear_feedback("")
 
+    def dismiss_error(self) -> None:
+        self.controller.dismiss_error()
+
     def flash_success(self) -> None:
         self.show_outcome("Captured", "success", 1000)
 

@@ -32,13 +32,18 @@ def build_problem_notice(grid, card_factory, label_factory, button_factory,
     layout.addWidget(text, stretch=1)
     button = button_factory("Voice troubleshooting", primary=True)
     button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
-    button.clicked.connect(action_callback)
+    button.clicked.connect(lambda: (dismiss_problem_notice(card), action_callback()))
     actions = QWidget(card)
     actions.setObjectName("homeNoticeActions")
     action_layout = QHBoxLayout(actions)
     action_layout.setContentsMargins(0, 0, 0, 0)
     action_layout.setSpacing(grid)
     action_layout.addWidget(button)
+    dismiss = button_factory("Dismiss")  # PLACEHOLDER COPY (1038)
+    dismiss.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+    dismiss.setAccessibleName("Dismiss problem notice")
+    dismiss.clicked.connect(lambda: dismiss_problem_notice(card))
+    action_layout.addWidget(dismiss)
     if report_callback is not None:
         report = button_factory("Report")
         report.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
@@ -48,6 +53,15 @@ def build_problem_notice(grid, card_factory, label_factory, button_factory,
     layout.addWidget(actions, alignment=Qt.AlignmentFlag.AlignVCenter)
     card.setVisible(False)
     return card, text, button
+
+
+def dismiss_problem_notice(card):
+    card._dismissed_notice = getattr(card, '_incoming_notice', None)
+    messages = getattr(card, '_messages', None)
+    if messages is not None:
+        messages.dismiss(next_action=True)
+        card._announcer.reset()
+    card.hide()
 
 
 def layout_problem_notice(card, text, button, available, grid):
@@ -75,7 +89,24 @@ def layout_problem_notice(card, text, button, available, grid):
 def refresh_problem_notice(card, text_widget, button, notice,
                            dictation_capability, fallback_action_label):
     """Update the shared notice's visible and accessible state."""
-    if notice is None:
+    from samsara.message_lifetime import MessageSlot
+    if not hasattr(card, '_messages'):
+        from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer
+        card._announcer = LiveSurfaceAnnouncer(card)
+        card._messages = MessageSlot()
+        card._incoming_notice = None
+        card._dismissed_notice = None
+    if notice != card._incoming_notice:
+        card._incoming_notice = notice
+        card._dismissed_notice = None
+        if notice is not None:
+            kind = 'accent' if notice.action == 'speech_model_loading' else 'warning'
+            card._messages.offer(notice.text, kind, None, notice)
+        else:
+            card._messages.clear()
+    current = card._messages.advance()
+    notice = current.payload if current else None
+    if notice is None or notice == card._dismissed_notice:
         card.setVisible(False)
         text_widget.setText("")
         card.setAccessibleDescription("")
@@ -87,8 +118,12 @@ def refresh_problem_notice(card, text_widget, button, notice,
             "Mic unavailable. Choose another in Settings > Audio > "
             "Microphone. Dictation unavailable.")  # PLACEHOLDER COPY (838b)
     text_widget.setText(visible_text)
+    text_widget.setToolTip(notice.text)
+    text_widget.setAccessibleName(notice.text)
     card.setAccessibleDescription(f"{notice.text} Evidence: {notice.evidence}.")
     label = notice.action_label or fallback_action_label
     button.setText(label)
     button.setAccessibleName(label)
     card.setVisible(True)
+    card._announcer.announce_transition(current, notice.text)
+    return notice

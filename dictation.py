@@ -10416,12 +10416,11 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         self._release_icon_chase('recording')
         self._update_tray_tooltip()
 
-        # Update listening indicator
+        from samsara.message_lifetime import take_acknowledgement, retire_acknowledgement
+        acknowledgement = take_acknowledgement(self, enabled=ownership.is_command or ownership.is_ava)
         _hold_chip_seq = 0
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_listening, False)
-            # "..." until the transcription outcome replaces it; the watchdog
-            # wrapped around the transcribe thread below clears it otherwise.
             if not (ownership.command_ghost or ownership.ava_ghost):
                 _hold_chip_seq = self._show_hold_pending_chip()
 
@@ -10719,7 +10718,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                     text_lower = text.lower().strip()
                     from samsara.ava_pending import consume
                     teaching_reply = getattr(getattr(self, '_ava_question', None), 'kind', '') == 'teaching'
-                    if (is_command_mode or is_ava_mode or teaching_reply) and consume(self, text, capture_path='command_key' if is_command_mode else 'ava_hold' if is_ava_mode else 'dictation_key'): return
+                    if (is_command_mode or is_ava_mode or teaching_reply) and consume(self, text, capture_path='command_key' if is_command_mode else 'ava_hold' if is_ava_mode else 'dictation_key', acknowledgement=acknowledgement): return
                     # Voice exit from Mouse 4 command mode. Queue 84: WHOLE
                     # utterance only. This was a substring test, the same rule
                     # that let "Have it stop listening to you, or something
@@ -11180,6 +11179,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             try:
                 transcribe()
             finally:
+                if acknowledgement is not None: retire_acknowledgement(self, acknowledgement)
                 self._finish_empty_hold_capture(_hold_chip_seq)
 
         thread = thread_registry.spawn(
@@ -11200,7 +11200,8 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                     self._close_hold_capture_duck()
 
     def _cancel_recording_impl(self):
-        """Cancel recording without transcribing"""
+        from samsara.message_lifetime import retire_acknowledgement
+        retire_acknowledgement(self)
         self.command_mode_recording = self.ava_mode_recording = False
         self._capture_provenance = None
         streaming_session = getattr(self, '_streaming_session', None)
@@ -11228,7 +11229,6 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
 
         self.play_sound("error")  # Play error sound to indicate cancellation
 
-        # Update listening indicator
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_listening, False)
             self._schedule_ui(self.listening_indicator.flash_error)

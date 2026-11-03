@@ -5,7 +5,7 @@ Features:
   - Dark semi-transparent pill matching Samsara's UI palette
   - "i" icon, hint text, close button, "Don't show hints" checkbox
   - Fade in on show (300ms), fade out on dismiss (300ms)
-  - Auto-dismisses after 8 seconds
+  - Auto-dismisses after the shared length-based reading time
   - Always-on-top, no focus steal, not click-through (user can interact)
   - Only one instance visible at a time (enforced by HintManager)
 """
@@ -62,6 +62,8 @@ class HintToast(QWidget):
         self.setFixedWidth(self._WIDTH)
 
         self._build(message)
+        from samsara.message_durations import message_duration_ms
+        self._AUTO_MS = message_duration_ms(message, 'accent')
         self._announcer = LiveSurfaceAnnouncer(self)
         self.setAccessibleDescription(message)
 
