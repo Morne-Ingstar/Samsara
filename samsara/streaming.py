@@ -1660,7 +1660,7 @@ class StreamingWorker(threading.Thread):
             if audio is None or skip_decode(audio, app, final=False, path='streaming', state=self):
                 return None
             params = self._partial_params()
-            segments, _ = transcribe_with_vocabulary(app, audio, path="hold_partial", **params)
+            from samsara.hold_windows import partial_decode; segments, _ = partial_decode(self, audio, params)
             seg_list = list(segments)
             text = "".join(seg.text for seg in seg_list).strip()
             if self._decoder_guard(seg_list, text, params, partial=True):
@@ -1805,7 +1805,7 @@ class StreamingWorker(threading.Thread):
             'no_speech_threshold': NO_SPEECH_THRESHOLD,
             'log_prob_threshold': LOG_PROB_THRESHOLD,
             'condition_on_previous_text': False,
-            'without_timestamps': True,
+            'without_timestamps': False,
             'word_timestamps': False,
             'temperature': 0.0,
         }

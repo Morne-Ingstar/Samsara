@@ -60,15 +60,18 @@ def _remaining(deadline):
     return float(deadline) - time.monotonic() + loading
 
 
-def _deadline(app):
-    default = 8.0 if _cpu(app) else 15.0
+def _deadline(app, audio_s=0):
+    from math import ceil
+    default = (8.0 if _cpu(app) else 15.0) * max(1, ceil(audio_s / 25))
+    configured = None
     try:
-        seconds = float(app.config.get('dictation', {}).get('final_decode_timeout_s', default))
+        configured = app.config.get('dictation', {}).get('final_decode_timeout_s')
+        seconds = float(default if configured is None else configured)
         if not np.isfinite(seconds):
             seconds = default
     except (AttributeError, TypeError, ValueError):
         seconds = default
-    return _Deadline(time.monotonic() + min(30.0, max(.05, seconds)), app)
+    return _Deadline(time.monotonic() + min(120.0 if configured is None else 30.0, max(.05, seconds)), app)
 
 
 def _run(app, operation, deadline, cancel):
@@ -153,7 +156,11 @@ def _transcribe(app, audio, params, deadline, cancel):
             current_audit.reset(token)
 
     def decode_segments(abandoned):
-        segments, info = transcribe_with_vocabulary(app, audio, path="hold_final", **params)
+        from samsara.hold_windows import transcribe
+        def check():
+            if abandoned.is_set() or cancel.is_set() or _remaining(deadline) <= 0:
+                raise TimeoutError('hold decode deadline or cancellation')
+        segments, info = transcribe(app, audio, params, transcribe_with_vocabulary, check=check)
         kept = []
         segments = iter(segments)
         while True:
@@ -207,7 +214,7 @@ def stream_final(worker, audio, params):
     session._fallback_notice_rejected = False
     session._decode_audio = audio
     session._decode_params = dict(params)
-    deadline, cancel = _deadline(app), session.cancel_event
+    deadline, cancel = _deadline(app, len(audio) / app.model_rate), session.cancel_event
     params.update(_params(app, params, len(audio) / app.model_rate))
     try:
         segments, info = _transcribe(app, audio, params, deadline, cancel)
@@ -298,7 +305,7 @@ def decode_hold(app, audio, params, duration_s):
     """Batch free-form seam; leave Command/Ava paths with their own decoder."""
     from samsara.audio_tools import _HotkeyDecodeResult, _suspected_silent_data_loss
     from samsara.transcript_gates import _apply_segment_quality_gates
-    cancel, deadline = threading.Event(), _deadline(app)
+    cancel, deadline = threading.Event(), _deadline(app, duration_s)
     effective = _params(app, params, duration_s)
     original = None
     try:
