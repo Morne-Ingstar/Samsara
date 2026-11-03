@@ -820,6 +820,8 @@ def _chip(app, label: str, kind: str) -> None:
         logger.debug("[POLICY] chip failed: %s", exc)
 
 def _emit(app, inv: Invocation, decision) -> None:
+    from samsara.message_delivery import remember as remember_message
+    remember_message(app, inv, decision)
     from samsara.click_effect_policy import remember
     remember(app, inv, decision)
     cid = inv.command_id
@@ -1012,7 +1014,8 @@ def authorize(inv: Invocation, *, app=None, executor=None, confirmed: bool = Fal
     handling = handling_for(inv, app=app, executor=executor)
     handler = (_plugin_entry(cid) or {}).get('func')
     # Local activation resolvers retain all preceding source/schema/scope gates.
-    if deferred_activation(inv) or (inv.route == Route.EXACT and getattr(handler, 'handles_own_confirmation', False) is True):
+    from samsara.message_delivery import deferred as deferred_message
+    if deferred_activation(inv) or deferred_message(inv) or (inv.route == Route.EXACT and getattr(handler, 'handles_own_confirmation', False) is True):
         a = Allowed('handler_confirmation', risk=risk)
     elif handling.mode == "explicit_confirm":
         a = NeedsConfirmation(confirmation_prompt(cid, inv.args), risk=risk)
@@ -1173,19 +1176,11 @@ class PendingOperation:
                 return False
             self.approved = bool(approved)
             self.always = bool(always)
-        self._event.set()
-        question = getattr(self._app, "_ava_question", None)
-        if (question is not None and question.operation is self
-                and isinstance(question.runner, _ConfirmationListener)):
-            from samsara import ava_pending
-            ava_pending._clear(self._app, question, "Confirmed." if approved else "Cancelled.")
-        cb = self._on_approve if approved else self._on_reject
-        if cb is not None:
-            try:
-                cb(self)
-            except Exception as exc:
-                logger.exception("[POLICY] pending %s callback failed: %s", "approve" if approved else "reject", exc)
-        return True
+        return self._finish_resolution(approved)
+
+    def _finish_resolution(self, approved):
+        from samsara.message_delivery import finish_resolution
+        return finish_resolution(self, approved)
 
     def approve(self, *, always: bool = False, source: str = ANSWER_VOICE, app=None) -> bool:
         if always and self.invocation.command_id.startswith("interact "):
@@ -1491,6 +1486,8 @@ def listen_for_confirmation(app, prompt):
         from plugins.commands import ask_ollama as ava
         return ava.speak(app, text, category="confirmation")
     runner = _ConfirmationListener(app, op)
+    if callable(getattr(op, "message_readback", None)):
+        runner.missed = lambda reason: None  # 1031c: do not persist private preview/body on a missed answer.
     return ava_pending.ask(app, runner, "policy",
         text, (), operation=op,
         duration=6.0, label="Say yes or no")
@@ -1651,8 +1648,11 @@ def answer_pending(app, text: str, *, source: str = ANSWER_VOICE, capture_path: 
     model / wait already used). Only this function and the dialog buttons
     resolve a pending operation."""
     op = pending_operation()
+    from samsara.message_delivery import readback_reply
+    if op is not None and (result := readback_reply(app, op, text, source)):
+        return result
     if isinstance(op, (TimedOperation, ChoiceOperation)):
-        return answer_cancel_window(app, text, source=source)
+        return answer_cancel_window(app, text, source=source, capture_path=capture_path)
     reply = classify_reply(text)
     if op is not None and op.invocation.command_id == "send prompt":
         exact = (text or "").strip().lower().rstrip(".!?")
@@ -1836,7 +1836,8 @@ class TimedOperation(PendingOperation):
                 pass
 
     def start(self) -> None:
-        self._arm(self.delay_s, self._elapsed)
+        if self.approved is None and not self.held:
+            self._arm(self.delay_s, self._elapsed)
 
     def _elapsed(self) -> None:
         with self._lock:
@@ -1863,17 +1864,8 @@ class TimedOperation(PendingOperation):
         self.cancel(self._app, "no answer heard in time")
 
     def run_now(self, reason: str, *, release: bool = True) -> bool:
-        if release:
-            _release_slot(self)
-        why = self.refusal(self._app)
-        if why is not None:
-            if why != "already answered":
-                self.cancel(self._app, why)
-            return False
-        self.outcome_reason = reason
-        logger.info("[POLICY] cancel window ran %s (%s) after %.2fs", self.invocation.command_id,
-                    reason, self.delay_s)
-        return self.resolve(True)
+        from samsara.message_delivery import run_timed_operation
+        return run_timed_operation(self, reason, release=release)
 
     def convert_to_question(self) -> bool:
         """"wait": stop the clock; ask yes/no with the ordinary TTL."""
@@ -1902,7 +1894,8 @@ class TimedOperation(PendingOperation):
 
 
 def stage_cancel_window(app, inv: Invocation, label: str, delay_s: float, run, *,
-                        bind_foreground: bool = True, timer_factory=None) -> TimedOperation:
+                        bind_foreground: bool = True, timer_factory=None, start=True,
+                        refusal_guard=None, reply_filter=None) -> TimedOperation:
     """Stage `run` behind a cancel window of `delay_s` seconds. `run()` is
     called at most once, on the thread that resolves the window."""
     targets, probe = None, None
@@ -1912,6 +1905,7 @@ def stage_cancel_window(app, inv: Invocation, label: str, delay_s: float, run, *
             probe = _foreground_target
     op = TimedOperation(inv, label, delay_s, run, app=app, targets=targets, target_probe=probe,
                         timer_factory=timer_factory)
+    op._refusal_guard, op.voice_reply_filter = refusal_guard, reply_filter
     record = {
         "type": "cancel_window",
         "op": op,
@@ -1931,7 +1925,7 @@ def stage_cancel_window(app, inv: Invocation, label: str, delay_s: float, run, *
                 op.op_id[:8], " (held: speech already under way)" if speaking else "")
     if speaking:
         op.hold()
-    else:
+    elif start:
         op.start()
     return op
 
@@ -2015,7 +2009,7 @@ def _spoken_number(text: str) -> Optional[int]:
     return number if number is not None and 0 <= number <= 9 else None
 
 
-def answer_cancel_window(app, text: str, *, source: str = ANSWER_VOICE) -> Optional[str]:
+def answer_cancel_window(app, text: str, *, source: str = ANSWER_VOICE, capture_path=None) -> Optional[str]:
     """A complete-utterance reply to an open cancel window or choice; None
     when nothing of that kind is open or `text` is not a reply to it (the
     utterance then goes on to its lane as usual). Wired as the session's
@@ -2045,6 +2039,8 @@ def answer_cancel_window(app, text: str, *, source: str = ANSWER_VOICE) -> Optio
         return "rejected"
     reply = classify_reply(raw)
     if reply == REPLY_YES or normalized == "send now":
+        if callable(check := getattr(op, "voice_reply_filter", None)) and (why := check(REPLY_YES, source, capture_path)):
+            return why
         return "approved" if op.run_now("you said yes") else f"refused:{op.cancel_reason or 'not live'}"
     if reply == REPLY_WAIT and not op.converted:
         if op.convert_to_question():

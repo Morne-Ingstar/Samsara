@@ -132,6 +132,15 @@ def dispatch(app, target, probe, run, *, command_id='click', timer_factory=None,
     from samsara.command_registry import DispatchResult, DispatchState
     inv = invocation or _invocation(app, command_id)
     inv = replace(inv, args=copy.deepcopy(inv.args), effect_target=target)
+    from samsara.message_delivery import email_activation
+    email = email_activation(app, target, run)
+    if email is not None:
+        run, email_prompt = email
+        if run is None:
+            return DispatchResult(DispatchState.REJECTED, inv.command_id, inv.command_id,
+                                  {'reason': 'complete email preview unavailable'})
+    else:
+        email_prompt = None
     arg_hash = ep.argument_hash(inv.command_id, inv.args)
     attempted = [False]
 
@@ -165,8 +174,12 @@ def dispatch(app, target, probe, run, *, command_id='click', timer_factory=None,
     if isinstance(decision, ep.NeedsConfirmation):
         # PLACEHOLDER COPY (1031b): existing confirmation surface, both displays.
         prompt = f'Activate {ep._template_value(target.label)} in {ep._template_value(target.destination.process or "this window")}?'
-        ep.stage_pending(app, inv, prompt, on_approve=lambda op: commit(True),
+        prompt = email_prompt or prompt
+        op = ep.stage_pending(app, inv, prompt, on_approve=lambda op: commit(True),
                          refusal_guard=refusal, record_type='action')
+        if email_prompt:
+            from samsara.message_delivery import bind_email_question
+            bind_email_question(app, op, target.destination.message)
         ep.listen_for_confirmation(app, prompt)
         return DispatchResult(DispatchState.QUEUED, inv.command_id, inv.command_id,
                               {'awaiting_confirmation': True, 'prompt': prompt})

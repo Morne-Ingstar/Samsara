@@ -64,6 +64,14 @@ def spoken_notices_for_level(level) -> str:
 
 
 SETTINGS_SCHEMA = {
+    "messaging.slack": {
+        "type": "list", "item_type": "dict", "default": [], "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Explicit Slack account/contact IDs and token environment-variable name; config only.",
+    },
+    "messaging.trusted_slack": {
+        "type": "list", "item_type": "dict", "default": [], "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Exact account/recipient/conversation scopes approved by trust slack conversation.",
+    },
     "favorites.font_size": {
         "type": "int", "min": 14, "max": 32, "default": 18, "tab": "general", "settings_ui": False,
         "ui_less_reason": "Favorites HUD A−/A+ controls and favorites font size voice command.",

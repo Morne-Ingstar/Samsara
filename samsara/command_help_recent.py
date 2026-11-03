@@ -2,6 +2,13 @@
 
 # PLACEHOLDER COPY (978): prerequisites describe the actual command boundaries.
 HELP = {
+    # PLACEHOLDER COPY (1031c): exact configured destinations; no guessed contacts.
+    'slack message': (['slack message Pat saying I will be there at six'],
+        'Configure one exact Slack individual DM named Pat first. New conversations ask once; trusted conversations use a one-second grace.'),
+    'trust slack conversation': (['trust slack conversation Pat'],
+        'Configure one exact Slack individual DM named Pat first; confirm its account, recipient and conversation to save that trust scope.'),
+    'send outlook email': (['send outlook email'],
+        'Focus an unsent classic Outlook draft with resolved recipients and an explicit sending account; review its preview before saying yes.'),
     'preview cockpit memos': (['preview cockpit memos last three'],
         'Requires saved memos and an enabled, qualified extraction backend. Preview applies no changes.'),
     'use todays memos for cockpit': (["use today's memos for cockpit"],

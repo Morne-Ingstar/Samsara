@@ -11128,6 +11128,87 @@
     },
     {
       "aliases": [
+        "send outlook email"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "private_messages.send_outlook_email",
+      "description": "Previews the current classic Outlook email and asks once before sending it.",
+      "examples": [
+        "send outlook email"
+      ],
+      "kind": "plugin",
+      "object": "outlook_email",
+      "pack": "core",
+      "plugin": "private_messages",
+      "precondition": "Focus an unsent classic Outlook draft with resolved recipients and an explicit sending account; review its preview before saying yes.",
+      "risk": "destructive",
+      "source": "plugins/commands/private_messages.py:25",
+      "undoable": false,
+      "verb": "send",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "slack message"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "private_messages.slack_message",
+      "description": "Says slack message contact saying text; sends to that configured individual DM.",
+      "examples": [
+        "slack message Pat saying I will be there at six"
+      ],
+      "kind": "plugin",
+      "object": "message",
+      "pack": "core",
+      "plugin": "private_messages",
+      "precondition": "Configure one exact Slack individual DM named Pat first. New conversations ask once; trusted conversations use a one-second grace.",
+      "risk": "destructive",
+      "source": "plugins/commands/private_messages.py:6",
+      "undoable": false,
+      "verb": "slack",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "trust slack conversation"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "private_messages.trust_slack_conversation",
+      "description": "Approves the exact configured Slack account, individual and conversation once.",
+      "examples": [
+        "trust slack conversation Pat"
+      ],
+      "kind": "plugin",
+      "object": "slack_conversation",
+      "pack": "core",
+      "plugin": "private_messages",
+      "precondition": "Configure one exact Slack individual DM named Pat first; confirm its account, recipient and conversation to save that trust scope.",
+      "risk": "destructive",
+      "source": "plugins/commands/private_messages.py:16",
+      "undoable": false,
+      "verb": "trust",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "ask"
       ],
       "args": [

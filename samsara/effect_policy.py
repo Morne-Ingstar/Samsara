@@ -29,7 +29,7 @@ class SubmitTarget:
 
     DM adapters must identify an account, conversation and individual recipient
     with stable provider IDs. Display names and executables cannot grant T2.
-    The current tree has no dedicated DM adapter; unresolved chats ask once.
+    Dedicated provider adapters live in message_adapters; unresolved chats ask once.
     """
     kind: str = "unknown"
     hwnd: int = 0
@@ -42,6 +42,7 @@ class SubmitTarget:
     label: str = "the focused control"
     user_authored: bool = True
     preview: str = field(default="", repr=False)
+    message: object = field(default=None, repr=False)
 
 
 def text_hash(text):
@@ -157,8 +158,12 @@ def resolve_submit_target(app=None):
             context.append((item.ControlTypeName, item.AutomationId, item.Name))
             if depth < 6:
                 pending.extend((child, depth + 1) for child in item.GetChildren())
-        revision = text_hash((body, identity.get("title_hash"), context))
-        return SubmitTarget(kind, hwnd, process, control, revision, label=process or "the focused control")
+        from samsara.message_delivery import outlook_snapshot
+        message = outlook_snapshot(hwnd, process)
+        revision = text_hash((body, identity.get("title_hash"), context,
+                              message.fingerprint if message else None))
+        return SubmitTarget(kind, hwnd, process, control, revision,
+                            label=process or "the focused control", message=message)
     except Exception:
         return SubmitTarget(hwnd=hwnd, process=process, label=process or "the focused control")
 
@@ -181,6 +186,9 @@ def input_refusal(inv, app=None, executor=None):
     if (target is not None and requires_composer
             and not (target.hwnd and target.control and target.revision)):
         return "composer unavailable"
+    from samsara.message_delivery import email_preview_missing
+    if target is not None and requires_composer and email_preview_missing(target):
+        return "complete email preview unavailable; use a supported email adapter"
     return None
 
 
@@ -201,6 +209,9 @@ _EFFECTS = {"email", "email_sent", "money", "purchase", "payment", "publish",
 
 def handling_for(inv, *, app=None, executor=None):
     from samsara import execution_policy as ep
+    from samsara.message_delivery import Message, handling
+    if isinstance(inv.effect_target, Message):
+        return handling(inv.effect_target, app, inv.route)
     command = command_input(inv.command_id, app, executor)
     kind = input_kind(command)
     if kind == "macro":
@@ -261,14 +272,18 @@ def stage_input_confirmation(app, inv, executor, prompt):
                                    generation=inv.generation, source_text=inv.source_text, confirmed=True)
 
     target = inv.effect_target
+    from samsara.message_delivery import bind_email_question
+    if target.message is not None:
+        prompt = target.message.preview() + ". Send? Say read full message for the full body."  # PLACEHOLDER COPY (1031c)
     targets, target_probe, foreground_bound = ep.bind_staged_target(inv, executor)
     binding = ({"foreground_target": targets, "foreground_probe": target_probe}
                if foreground_bound else {"targets": targets, "target_probe": target_probe})
-    ep.stage_pending(app, inv, prompt, on_approve=approve,
+    op = ep.stage_pending(app, inv, prompt, on_approve=approve,
                      record_type="action", **binding,
                      refusal_guard=lambda: None if (target == resolve_submit_target(app)
                          and ep.argument_hash(inv.command_id, inv.args) == expected_hash)
                      else "composer, arguments or destination changed")
+    bind_email_question(app, op, target.message)
     ep.listen_for_confirmation(app, prompt)
 
 
@@ -318,6 +333,9 @@ def dispatch_input(inv, app, executor, run, *, confirmed=False, timer_factory=No
         op._refusal_guard = lambda: None if target == resolve_submit_target(app) else "composer or destination changed"
         return DispatchResult(DispatchState.QUEUED, inv.command_id, inv.command_id,
                               {"send_grace_s": 1.0, "op_id": op.op_id})
+    if target.message is not None:
+        from samsara.message_delivery import email_input
+        return email_input(app, target.message, run)
     return run()
 
 
@@ -377,6 +395,11 @@ def submit_wake_profile(app, reply_context=None):
     deferred = [False]
     if not eligible():
         return False
+    if target.message is not None:
+        from samsara.message_delivery import stage
+        deferred[0] = True
+        stage(app, inv, target.message, lambda: target.message if eligible() else None, lambda message: run())
+        return False  # The bound email question owns completion and the wake session.
     decision = ep.authorize(inv, app=app)
     if isinstance(decision, ep.NeedsConfirmation):
         deferred[0] = True
