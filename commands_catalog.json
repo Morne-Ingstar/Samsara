@@ -8802,7 +8802,7 @@
       "plugin": "example_greet",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/example_greet.py:4",
+      "source": "plugins/commands/example_greet.py:6",
       "undoable": true,
       "verb": "greet",
       "whole_utterance": false

@@ -483,7 +483,7 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | examples | before you say it | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|---|---|
-| `example_greet.greet_me` | `greet me`, `hello`, `say hello` | - | - | - | ui | yes |  | Prints a greeting, as an example of how a plugin command works. | `plugins/commands/example_greet.py:4` |
+| `example_greet.greet_me` | `greet me`, `hello`, `say hello` | - | - | - | ui | yes |  | Prints a greeting, as an example of how a plugin command works. | `plugins/commands/example_greet.py:6` |
 
 ## favorites (7)
 

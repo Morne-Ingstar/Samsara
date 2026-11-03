@@ -1817,7 +1817,7 @@ class SessionModeManager(UtteranceUndoMixin):
         wake = dispatch_wake_prefix(self, text, signals)
         if wake is not None:
             return wake
-        if normalize_utterance(text) not in ('redo that',):
+        if normalize_utterance(text) not in ('redo that', 'redo'):
             self._scratch_redo = None
         # Queue 99: "again" means "scratch once more" only when the PREVIOUS
         # resolved action was a scratch. Disarm here and let the scratch paths
@@ -2124,18 +2124,12 @@ class SessionModeManager(UtteranceUndoMixin):
                     })
                 return self._dispatch_dictate(literal_payload)
 
+            from samsara.draft_commands import probe_hands_free
+            hands_free_match, early = probe_hands_free(self, text, signals, fragment_guard)
+            if early is not None:
+                return early
             if self._hands_free_command_probe_fn is not None:
-                hands_free_match = self._hands_free_command_probe_fn(text)
                 if hands_free_match is not None:
-                    from samsara.command_catalog import hands_free_media_phrases
-                    if fragment_guard and hands_free_match.dispatch_text not in hands_free_media_phrases():
-                        log.info("[SESSION] paced fragment kept as dictation: %r", describe_text(text))
-                        return self._dispatch_dictate(text)
-                    if not passes_switch_anti_hallucination_gate(signals):
-                        return DispatchOutcome(kind="hands_free_command_refused", detail={
-                            "phrase": hands_free_match.phrase,
-                            "pending_chars": len(self._dictate_pending_buffer),
-                        })
                     # 2026-09-11: the registry resolved this utterance to the
                     # Ava front door (ask_ollama registers "hey ava" with the
                     # alias "ava", so bare "Ava." lands here). That is a MODE
@@ -2618,6 +2612,10 @@ class SessionModeManager(UtteranceUndoMixin):
         self, match: HandsFreeCommandMatch, *, deferred: bool = False,
     ) -> DispatchOutcome:
         """Execute one exact command using its draft policy; retain the lane."""
+        from samsara.draft_commands import dispatch_draft_command
+        local = dispatch_draft_command(self, match.phrase, match.dispatch_text)
+        if local is not None:
+            return local
         if not deferred and self._cancel_window_fn is not None:
             # Queue 69: the window wraps the whole command dispatch. A cancel
             # leaves the draft staged and no command effect runs.
@@ -2664,10 +2662,11 @@ class SessionModeManager(UtteranceUndoMixin):
                 "state": state,
             })
 
-        self._stack.push(StackItem(
-            kind="command", payload=result.phrase or match.phrase,
-            mode=SessionMode.DICTATE, timestamp=self._clock(),
-        ))
+        if not self._dictate_pending_buffer:
+            self._stack.push(StackItem(
+                kind="command", payload=result.phrase or match.phrase,
+                mode=SessionMode.DICTATE, timestamp=self._clock(),
+            ))
         return DispatchOutcome(kind="hands_free_command_executed", detail={
             **getattr(result, "detail", {}),
             "phrase": result.phrase or match.phrase,
@@ -2804,6 +2803,10 @@ class SessionModeManager(UtteranceUndoMixin):
                 return DispatchOutcome(kind="dictate_commit_failed", detail={"pending_chars": self._draft.chars})
             if not prepared:
                 return DispatchOutcome(kind="empty")
+        from samsara.draft_commands import stage_at_cursor
+        local = stage_at_cursor(self, prepared)
+        if local is not None:
+            return local
         stripped_suffix = ""
         ellipsis_seam = None
         if self._last_dictate_ended_terminal is not None:
@@ -2882,6 +2885,7 @@ class SessionModeManager(UtteranceUndoMixin):
         self._draft.mark_manual_commit()
         text = self._dictate_pending_buffer
         if not text:
+            self._closed_empty_draft = (self._draft.document_id, self._draft.revision)
             self._dictate_pending_audio = []
             if target_mode is not None:
                 self._switch_mode(target_mode)
@@ -3061,15 +3065,10 @@ class SessionModeManager(UtteranceUndoMixin):
         independent exe-name and HWND checks. Mismatches refuse deletion.
         Legacy injected callbacks remain available to embedders.
         """
-        top = self._stack.peek()
-        if top is not None and top.kind == "draft_edit_apply":
-            before = top.extra["document"]
-            if self._draft.document_id != before.document_id or self._draft.text != top.payload:
-                return False
-            before.revision = self._draft.revision + 1
-            self._draft = before
-            self._stack.pop()
-            return True
+        from samsara.draft_commands import undo_local_edit
+        local = undo_local_edit(self)
+        if local is not None:
+            return local
         # Immediate scratch uses only confirmed external undo; parked drafts stay local.
         delivery = getattr(self, '_hands_free_delivery', None)
         immediate = self.mode is SessionMode.DICTATE and delivery is not None and delivery.enabled(self)

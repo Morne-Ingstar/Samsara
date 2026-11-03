@@ -58,7 +58,7 @@ class UtteranceUndoMixin:
             self._last_scratch_at = self._clock()
             # Local staged edits need no editor receipt. Mixed legacy external
             # operations cannot promise a reversible transaction.
-            local = all(item.kind == 'dictation_staged_chunk'
+            local = all(item.kind in {'dictation_staged_chunk', 'draft_edit_apply'}
                         for item in before['items'][-scratched:])
             if local or all(unit is not None for unit in removed_units):
                 self._scratch_redo = (before, self._scratch_state(), removed_units if not local else [])

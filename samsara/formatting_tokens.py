@@ -3,6 +3,8 @@
 During dictation, a small fixed set of spoken phrases become literal
 formatting characters in the delivered text:
 
+    "question mark" / "comma" / "period" -> '?' / ',' / '.'
+    "exclamation mark", "full stop", "colon", "semicolon" also insert marks.
     "new line"                -> "\n"
     "new paragraph"           -> "\n\n"
     "insert tab"              -> "\t"
@@ -94,6 +96,14 @@ import re
 # "asterisk"; "new paragraph" and "new line" don't collide with each other
 # but are kept adjacent for readability).
 _SIMPLE_TOKENS = (
+    ("question mark", "?"),
+    ("exclamation mark", "!"),
+    ("exclamation point", "!"),
+    ("full stop", "."),
+    ("period", "."),
+    ("comma", ","),
+    ("semicolon", ";"),
+    ("colon", ":"),
     ("new paragraph", "\n\n"),
     ("new line", "\n"),
     ("insert tab", "\t"),
@@ -118,6 +128,8 @@ _SIMPLE_TOKENS = (
 #          each phrase alternates open, close, open, ... so
 #          "double asterisk bold double asterisk" -> "**bold**"
 _ATTACH = {
+    **{phrase: "close" for phrase in ("question mark", "exclamation mark",
+        "exclamation point", "full stop", "period", "comma", "colon", "semicolon")},
     "open quote": "open",
     "close quote": "close",
     "open paren": "open",
@@ -134,6 +146,8 @@ _START_OF_UTTERANCE_OVERRIDES = {
 }
 
 _REPLACEMENTS = {phrase: repl for phrase, repl in _SIMPLE_TOKENS}
+_PUNCTUATION_TOKENS = frozenset(phrase for phrase, repl in _SIMPLE_TOKENS
+                              if repl in {'.', ',', '?', '!', ':', ';'})
 
 #: Trailing modifiers: (spoken trigger, text before, text after). One per
 #: utterance, final words only; a second one earlier in the utterance is
@@ -232,6 +246,8 @@ def _substitute(text: str) -> str:
             segment = segment[:-1]
         if attach == "close" and segment.endswith(","):
             segment = segment[:-1]
+        if canonical in _PUNCTUATION_TOKENS:
+            segment = re.sub(r'(?<!\.)[.!?]$', '', segment)
         out.append(segment)
 
         if start == 0 and canonical in _START_OF_UTTERANCE_OVERRIDES:
@@ -241,6 +257,10 @@ def _substitute(text: str) -> str:
         out.append(replacement)
 
         pos = end
+        if canonical in _PUNCTUATION_TOKENS:
+            # Decoder punctuation on the spoken token is not another mark.
+            while pos < len(text) and text[pos] in '.,!?;:':
+                pos += 1
         trim_leading_next = {"separator": "separator", "open": "open"}.get(attach, False)
 
     tail = text[pos:]
