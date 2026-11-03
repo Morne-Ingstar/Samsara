@@ -819,8 +819,9 @@ def _chip(app, label: str, kind: str) -> None:
     except Exception as exc:
         logger.debug("[POLICY] chip failed: %s", exc)
 
-
 def _emit(app, inv: Invocation, decision) -> None:
+    from samsara.click_effect_policy import remember
+    remember(app, inv, decision)
     cid = inv.command_id
     if isinstance(decision, Allowed):
         logger.info("[POLICY] ALLOW %s route=%s risk=%s gen=%s", cid, inv.route.value, decision.risk, inv.generation)
@@ -1007,12 +1008,11 @@ def authorize(inv: Invocation, *, app=None, executor=None, confirmed: bool = Fal
         return a
 
     # 6. Resolve the effect locally, after every source/schema/availability gate.
-    from samsara.effect_policy import handling_for
+    from samsara.click_effect_policy import handling_for, deferred_activation
     handling = handling_for(inv, app=app, executor=executor)
     handler = (_plugin_entry(cid) or {}).get('func')
-    # 820b: exact user commands may own a local confirmation; all earlier
-    # generation/argument/pack/scope checks and all model-route gates remain.
-    if inv.route == Route.EXACT and getattr(handler, 'handles_own_confirmation', False) is True:
+    # Local activation resolvers retain all preceding source/schema/scope gates.
+    if deferred_activation(inv) or (inv.route == Route.EXACT and getattr(handler, 'handles_own_confirmation', False) is True):
         a = Allowed('handler_confirmation', risk=risk)
     elif handling.mode == "explicit_confirm":
         a = NeedsConfirmation(confirmation_prompt(cid, inv.args), risk=risk)
@@ -1072,7 +1072,7 @@ class PendingOperation:
                  clock: Callable[[], float] = time.monotonic):
         self.invocation = inv
         self.prompt = prompt
-        from samsara.effect_policy import handling_for
+        from samsara.click_effect_policy import handling_for
         self.handling = handling_for(inv, app=app)
         self.op_id = uuid.uuid4().hex
         self.generation = inv.generation

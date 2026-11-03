@@ -131,7 +131,9 @@ def _act(app, service, node, verb, hwnd):
             raise UIAError('foreground changed')
         # The service revalidates HWND, generation, live bounds and visibility
         # on its COM worker immediately before invoking the pattern.
-        service.act(node, verb)
+        from samsara.click_effect_policy import uia_action
+        return uia_action(app, service, node, verb,
+                          command_id={'click': 'click', 'focus': 'focus control'}.get(verb, verb))
     except Exception:
         _feedback(app, "Target changed or unavailable. Try again.")
     return True  # A refused action must never become dictated text.

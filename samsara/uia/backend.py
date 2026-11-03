@@ -258,6 +258,7 @@ class NativeNode:
             'expand': (10005, 'IUIAutomationExpandCollapsePattern'),
             'range': (10003, 'IUIAutomationRangeValuePattern'),
             'text': (10014, 'IUIAutomationTextPattern'),
+            'value': (10002, 'IUIAutomationValuePattern'),
         }[kind]
         try:
             raw = self.element.GetCurrentPattern(pid)

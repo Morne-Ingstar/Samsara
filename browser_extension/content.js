@@ -23,9 +23,23 @@
   var _shadowHost = null;
   var _shadowRoot = null;
   var _reposRaf = null;
+  var _binding = null;
+  var _context = null;
+
+  function activationContext() {
+    // Kept only in this content-script closure; never sent to Samsara or logged.
+    var fields = Array.from(document.querySelectorAll('input,textarea,select,[contenteditable]'));
+    return JSON.stringify([location.href, document.body ? document.body.innerHTML : '',
+      fields.map(function (el) {
+        return [el.id, el.name, el.type, el.type === 'password' ? '' : el.value,
+          el.checked, el.getAttribute('aria-label'), el.textContent];
+      })]);
+  }
 
   function clearHints() {
     _hints = [];
+    _binding = null;
+    _context = null;
     if (_shadowHost && _shadowHost.parentNode) {
       _shadowHost.parentNode.removeChild(_shadowHost);
     }
@@ -102,6 +116,8 @@
     _hints = selected.map(function (c, i) {
       return { number: i + 1, el: c.el, rect: c.rect, kind: c.kind };
     });
+    _binding = crypto.randomUUID();
+    _context = activationContext();
 
     renderLabels();
     window.addEventListener("scroll", onScrollOrResize, true);
@@ -111,7 +127,7 @@
     return {
       type: "hints",
       hints: _hints.map(function (h) {
-        return { index: h.number, kind: h.kind, rect: h.rect };
+        return { index: h.number, kind: h.kind, rect: h.rect, binding: _binding };
       }),
     };
   }
@@ -144,7 +160,18 @@
     }
 
     var el = hint.el;
+    if (!msg.binding || msg.binding !== _binding || !el.isConnected || el.disabled ||
+        activationContext() !== _context) {
+      clearHints();
+      return { type: 'selection_result', ok: false, reason: 'target_changed' };
+    }
     el.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (activationContext() !== _context) {
+      clearHints();
+      return { type: 'selection_result', ok: false, reason: 'target_changed' };
+    }
+    // Consume before dispatch: a reentrant event handler cannot reuse approval.
+    clearHints();
 
     var action = msg.action || "click";
     var textKinds = { input: true, textbox: true, contenteditable: true };

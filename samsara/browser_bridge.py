@@ -377,9 +377,9 @@ class BrowserBridge:
         self.last_hints_unavailable_reason = reason
         return None
 
-    def send_selection(self, number: int, action: str, timeout: float = 0.8, modifiers=None) -> bool:
+    def send_selection(self, number: int, action: str, timeout: float = 0.8, modifiers=None, binding=None) -> bool:
         response = self._send_and_wait(
-            {"type": "select", "number": number, "action": action, "modifiers": modifiers or {}},
+            {"type": "select", "number": number, "action": action, "modifiers": modifiers or {}, "binding": binding},
             timeout,
         )
         ok = bool(response and response.get("ok"))

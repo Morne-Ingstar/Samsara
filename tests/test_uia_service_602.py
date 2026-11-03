@@ -188,6 +188,11 @@ def test_focus_uses_setfocus(harness):
 
 @pytest.mark.parametrize('verb', ['click', 'invoke', 'toggle', 'expand', 'collapse', 'right_click', 'double_click'])
 def test_click_fallback_uses_validated_bounds_on_worker(harness, verb):
+    if verb in {'expand', 'collapse'}:  # 1031b: navigation cannot fall back to arbitrary activation.
+        with pytest.raises(UIAError):
+            harness.service.act(harness.service.search('priv')[0], verb)
+        assert harness.clicks == []
+        return
     assert harness.service.act(harness.service.search('priv')[0], verb)
     assert harness.clicks == [(harness.leaf.rect, verb if verb in {'right_click', 'double_click'} else 'click', harness.owner[0])]
 

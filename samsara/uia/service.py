@@ -46,6 +46,7 @@ class Node:
     in_document: bool
     depth: int
     foreground_hwnd: int = 0  # Non-foreground targets remain bound to their owner.
+    revision: str = field(default='', repr=False)
 
 
 @dataclass(frozen=True)
@@ -313,6 +314,9 @@ class UIAService:
         fetched = time.perf_counter()
         self._generation += 1
         nodes, controls, stats = self._walk(root, hwnd, self._generation)
+        from .activation import revision
+        context = revision(nodes, controls, stats)
+        nodes = [replace(n, revision=context) for n in nodes]
         if hwnd != owner:
             nodes = [replace(n, foreground_hwnd=owner) for n in nodes]
         stats.update(fetch_ms=int((fetched - started) * 1000),
@@ -391,6 +395,23 @@ class UIAService:
     def geometry(self, node):
         return self._call(lambda: self._target(node)[1])
 
+    def _activation_revision(self, node):
+        self._target(node)
+        from .activation import revision
+        root, _ = self._get_backend().root(node.hwnd)
+        nodes, controls, stats = self._walk(root, node.hwnd, node.generation)
+        current = revision(nodes, controls, stats)
+        if not node.revision or current != node.revision:
+            raise StaleTarget('activation context changed or unreadable')
+        self._target(node)
+        return current
+
+    def activation_revision(self, node):
+        return self._call(self._activation_revision, node)
+
+    def act_bound(self, node, verb, revision):
+        return self.act(node, verb, None, revision)
+
     @staticmethod
     def _pattern(ctrl, kind):
         if hasattr(ctrl, 'pattern'):
@@ -400,7 +421,7 @@ class UIAService:
                                'text': 'GetTextPattern'}[kind], None)
         return getter() if getter else None
 
-    def act(self, node, verb, value=None):
+    def act(self, node, verb, value=None, expected_revision=None):
         """Perform one policy-approved action. Missing patterns may fall back to a click.
 
         Activation verbs can use that fallback when their pattern is absent.
@@ -413,9 +434,11 @@ class UIAService:
             raise ValueError('unsupported UIA verb')
         if verb == 'set_value' and (value is None or not math.isfinite(float(value))):
             raise ValueError('finite range value required')
-        return self._call(self._act, node, verb, value)
+        return self._call(self._act, node, verb, value, expected_revision)
 
-    def _act(self, node, verb, value):
+    def _act(self, node, verb, value, expected_revision=None):
+        if expected_revision is not None and self._activation_revision(node) != expected_revision:
+            raise StaleTarget('activation context changed')
         ctrl, rect = self._target(node)
         try:
             if verb in {'double_click', 'right_click', 'physical_click'}:
@@ -431,7 +454,7 @@ class UIAService:
                         'expand': 'expand', 'collapse': 'expand', 'set_value': 'range', 'read': 'text'}[verb]
                 pattern = self._pattern(ctrl, kind)
                 if pattern is None:
-                    if verb not in {'click', 'invoke', 'toggle', 'expand', 'collapse'}:
+                    if verb not in {'click', 'invoke', 'toggle'}:
                         raise UIAError('pattern unavailable')
                     self._check_deadline()
                     self._click(rect, 'click')

@@ -109,9 +109,7 @@ _taskbar_mode = False
 # ---------------------------------------------------------------------------
 # DOM (browser-extension) session state -- deliberately a SEPARATE lock and
 # variable set from _state_lock/_elements above, not a repurposing of them.
-# A DOM "element" is a (requestId, number) pair to relay over the bridge, not
-# a UIA control object with .Click()/.BoundingRectangle -- mixing the two
-# into one list would require every UIA-only call site to branch anyway.
+# DOM targets use request/number identities, separate from UIA control objects.
 # Only one of _elements / _dom_active is ever populated at a time: starting
 # one session clears the other (see _try_show_dom_numbers / _draw_overlay).
 # Reachable from three different thread identities: the plugin-command
@@ -122,6 +120,7 @@ _taskbar_mode = False
 # callback below).
 # ---------------------------------------------------------------------------
 _dom_lock       = threading.RLock()
+_dom_effect_hints: list = []
 _dom_active     = False
 _dom_hint_count = 0
 _BRAVE_PROCESS_NAMES = frozenset({'brave.exe'})
@@ -248,10 +247,10 @@ def _on_dom_dismissed() -> None:
     Python-side DOM session state so a stale 'click N' after Escape fails
     gracefully instead of addressing a session that no longer exists in
     the page."""
-    global _dom_active, _dom_hint_count
+    global _dom_active, _dom_hint_count, _dom_effect_hints
     with _dom_lock:
         _dom_active = False
-        _dom_hint_count = 0
+        _dom_hint_count, _dom_effect_hints = 0, []
     logger.info("[OVERLAY] DOM overlay dismissed (in-page Escape)")
 
 
@@ -286,7 +285,7 @@ def _try_show_dom_numbers(app):
                            visibly (distinct log line + overlay caption),
                            per the "never silently do nothing" requirement.
     """
-    global _dom_active, _dom_hint_count
+    global _dom_active, _dom_hint_count, _dom_effect_hints
     try:
         import win32gui
         fg_hwnd = win32gui.GetForegroundWindow()
@@ -321,6 +320,7 @@ def _try_show_dom_numbers(app):
     with _dom_lock:
         _dom_active = True
         _dom_hint_count = len(hints)
+        _dom_effect_hints = hints
 
     _cancel_dismiss_timer()
     _schedule_dismiss_timer(app)
@@ -617,7 +617,7 @@ def _click_with_validation(element, modifier: str, keys: frozenset = frozenset()
 
 
 def _perform_click(element, modifier: str, keys: frozenset = frozenset()) -> bool:
-    """UIA-first click, then Win32 fallback. keys holds modifier key names to hold."""
+    """Click once; a provider failure may already have caused the effect."""
     try:
         import win32api  # noqa: PLC0415
         rect = element.BoundingRectangle
@@ -638,28 +638,8 @@ def _perform_click(element, modifier: str, keys: frozenset = frozenset()) -> boo
             _apply_modifier_keys(keys, lambda: element.Click(simulateMove=False))
         return True
     except Exception as e:
-        logger.info("[OVERLAY] UIA click failed (%s), falling back to mouse", e)
-
-    try:
-        import win32api, win32con
-        rect = element.BoundingRectangle
-        def _do_mouse():
-            if modifier == 'right':
-                win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0)
-                win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0)
-            else:
-                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
-                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
-                if modifier == 'double':
-                    time.sleep(0.05)
-                    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
-                    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
-
-        _apply_modifier_keys(keys, _do_mouse)
-        return True
-    except Exception as e:
-        logger.error("[OVERLAY] Win32 fallback click failed: %s", e)
-        return False
+        logger.info("[OVERLAY] click outcome unavailable (%s); not retrying", type(e).__name__)
+        return False  # 1031b: an unknown outcome must never trigger a second click.
 
 # ---------------------------------------------------------------------------
 # Qt overlay -- all functions below must run on the Qt main thread
@@ -930,11 +910,10 @@ def _draw_overlay(app, elements: list, caption: str = "", fg_info: "dict | None"
     if fg_info is None:
         fg["hwnd"] = fg_hwnd
 
-    # Queue 56: no Qt screen queries on this (worker) thread. The active
-    # monitor filter, physical->logical conversion, label placement, window
-    # creation and _elements numbering all run on the Qt thread in
-    # _render_elements_qt.
+    # Capture target state before Qt renders the labels and their geometry.
     elements = list(elements)
+    from samsara.click_effect_policy import bind_elements
+    bind_elements(elements)
 
     _cancel_dismiss_timer()
     # Defensive start: mirrors ai_command_hud_qt.show_hud()/splash_qt.py's
@@ -956,11 +935,11 @@ def _clear_dom_session() -> None:
     """Clears Python-side DOM session state and asks the extension to
     drop its in-page hints too. Safe to call even if no DOM session is
     active (no-op bridge.send_dismiss() when nothing is connected)."""
-    global _dom_active, _dom_hint_count
+    global _dom_active, _dom_hint_count, _dom_effect_hints
     with _dom_lock:
         was_active = _dom_active
         _dom_active = False
-        _dom_hint_count = 0
+        _dom_hint_count, _dom_effect_hints = 0, []
     if was_active:
         browser_bridge.get_bridge().send_dismiss()
 
@@ -1120,7 +1099,8 @@ def _click_text(app, query: str, modifier: str, keys: frozenset):
     if handled is not None:
         return handled
     try:
-        snap = screen_ocr.read_foreground(fg_hwnd)
+        from samsara.click_effect_policy import read_unobscured
+        snap = read_unobscured(fg_hwnd)
     except Exception as e:
         logger.warning("[CLICK-TEXT] could not read the foreground window exe=%s: %s", fg.get("exe"), e)
         _speak(app, TEXT_READ_FAILED_SPOKEN)
@@ -1139,18 +1119,24 @@ def _click_text(app, query: str, modifier: str, keys: frozenset):
         return DispatchState.FAILED
 
     def target(m):
-        return _OcrTarget(m.rect, fg_hwnd, snap.window_rect, m.text)
+        result = _OcrTarget(m.rect, fg_hwnd, snap.window_rect, m.text)
+        result._effect_snapshot = snap
+        return result
 
     if len(matches) == 1 and matches[0].exact:
         m = matches[0]
-        if not _click_with_validation(target(m), modifier, keys):
+        from samsara.click_effect_policy import element_action
+        element = target(m)
+        result = element_action(app, element, modifier, keys,
+                                lambda: _click_with_validation(element, modifier, keys))
+        if result is False:
             logger.info("[CLICK-TEXT] window changed before the click; nothing clicked")
             _speak(app, TEXT_CHANGED_SPOKEN)
             _report_chip(app, f"{CHIP_CROSS} window changed; nothing clicked", "error")
             return DispatchState.FAILED
         logger.info("[CLICK-TEXT] clicked %r at physical %s modifier=%s keys=%s",
                     describe_text(m.text), m.center, modifier, sorted(keys))
-        return True
+        return result
 
     elements = [{"control": target(m), "prect": m.rect, "name": m.text, "type": OCR_ELEMENT_TYPE}
                 for m in matches]
@@ -1536,16 +1522,18 @@ def _grid_apply(app, digits: list, action: "str | None") -> bool:
         return True
     _grid_hide(app)
     try:
-        _grid_click(action)
+        from samsara.click_effect_policy import cursor_action
+        def activate():
+            _grid_click(action)
+            wording = {"click": "clicked", "right": "right-clicked", "double": "double-clicked"}[action]
+            _report_chip(app, f"{wording} ({cx},{cy})", "success", delay_s=0)
+            return True
+        return cursor_action(app, {'click': 'single'}.get(action, action),
+                             activate, point=(cx, cy))
     except Exception as exc:
         logger.warning("[GRID] click failed: %s", exc)
         _report_chip(app, f"{CHIP_CROSS} grid click failed", "error", delay_s=0)
         return True
-    wording = {"click": "clicked", "right": "right-clicked", "double": "double-clicked"}[action]
-    _report_chip(app, f"{wording} ({cx},{cy})", "success", delay_s=0)
-    logger.info("[GRID] %s at (%d,%d) after %s", wording, cx, cy,
-                "".join(str(d) for d in path) or "no refinement")
-    return True
 
 
 def _grid_from_click(app, remainder) -> "bool | None":
@@ -1776,12 +1764,14 @@ def handle_click(app, remainder):
     The dictation lane turns a sole spoken number into "click N", so this is
     also where a bare "five" lands.
     """
+    from samsara.click_effect_policy import label_remainder
+    remainder = label_remainder(app, remainder)
     if grid_active():
         handled = _grid_from_click(app, remainder)
         if handled is not None:
             return handled
     if not remainder or not remainder.strip():
-        return _click_at_cursor("single")
+        return _click_at_cursor("single", app)
 
     from plugins.commands import click_by_name
     if click_by_name.selection_number(remainder, app) is not None:
@@ -1821,8 +1811,13 @@ def handle_click(app, remainder):
     return _click_number(app, number, modifier, keys_frozen)
 
 
-def _click_at_cursor(modifier: str) -> bool:
+def _click_at_cursor(modifier: str, app=None) -> bool:
     """The global bare-click path, intentionally independent of labels."""
+    from samsara.click_effect_policy import cursor_action
+    return cursor_action(app, modifier, lambda: _click_at_cursor_raw(modifier))
+
+
+def _click_at_cursor_raw(modifier: str) -> bool:
     try:
         import win32api, win32con  # noqa: PLC0415
         if modifier == "right":
@@ -1862,18 +1857,20 @@ def _click_number(app, number: int, modifier: str, keys_frozen: frozenset = froz
             'shiftKey': 'shift' in keys_frozen,
             'altKey': 'alt' in keys_frozen,
         }
-        ok = browser_bridge.get_bridge().send_selection(number, action, modifiers=dom_modifiers)
-        if not ok:
-            msg = f"Element {number} is no longer available."
-            logger.info(f"[OVERLAY] {msg}")
-            _speak(app, msg)
-            return True
-        # content.js already clears its own hints on a successful selection;
-        # this only clears the Python-side flags (a redundant dismiss to an
-        # already-cleared content script is a harmless no-op there).
-        _cancel_dismiss_timer()
-        _clear_dom_session()
-        return True
+        from samsara.click_effect_policy import dom_action
+        hints = globals().get('_dom_effect_hints', [])
+        if len(hints) != dom_count:
+            return False
+        def activate(binding, selected_modifier):
+            selected_action = 'click' if selected_modifier == 'single' else action
+            ok = browser_bridge.get_bridge().send_selection(
+                number, selected_action, modifiers=dom_modifiers, binding=binding)
+            _cancel_dismiss_timer()
+            _clear_dom_session()
+            return ok
+        return dom_action(app, hints, number, modifier, keys_frozen,
+                          lambda: _dom_active and globals().get('_dom_effect_hints') is hints,
+                          activate)
 
     with _state_lock:
         if not _elements:
@@ -1888,20 +1885,23 @@ def _click_number(app, number: int, modifier: str, keys_frozen: frozenset = froz
 
     if _overlay_window is not None:
         qt_runtime.post(lambda: _overlay_window and _overlay_window.highlight_number(number))
-    if not _click_with_validation(element, modifier, keys_frozen):
+    from samsara.click_effect_policy import element_action
+    result = element_action(app, element, modifier, keys_frozen,
+                            lambda: _click_with_validation(element, modifier, keys_frozen))
+    if result is False:
         msg = f"Element {number} is no longer available."
         logger.info(f"[OVERLAY] {msg}")
         _speak(app, msg)
         return True
 
     _destroy_overlay(app)
-    return True
+    return result
 
 
 def _numbered_click_handler(modifier: str):
     def _handler(app, remainder):
         if not remainder or not remainder.strip():
-            return _click_at_cursor(modifier)
+            return _click_at_cursor(modifier, app)
         number = _parse_spoken_number(remainder.strip().lower())
         if number is None:
             _speak(app, "Say a numbered label while numbers are showing.")
