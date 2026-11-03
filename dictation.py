@@ -6539,8 +6539,8 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 logger.info("Model still loading, please wait...")
             return
 
-        self.play_sound("start", use_winsound=True)
-        time.sleep(0.15)
+        from samsara.audio_engine.wake_consumer import continuous_ready_output
+        continuous_ready_output(self)  # 1052b: async auto-start shares the hold interlock.
         logger.debug("[MIC] Continuous mode ACTIVE — speak naturally, pauses will trigger transcription")
 
         # ACE path: ring consumer handles capture — no separate PortAudio stream.
@@ -7058,7 +7058,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 self._hands_free_capture_duck_owners.clear()
                 self._hands_free_capture_duck_starting = False
                 self._hands_free_capture_duck_restore_generation += 1
-                idle_ducker = self._hands_free_idle_ducker
+                self._wake_ready_output_pending = False; idle_ducker = self._hands_free_idle_ducker  # 1052b
                 self._hands_free_idle_ducker = None
             if timer is not None:
                 timer.cancel()
@@ -7331,9 +7331,9 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         if not self._request_wake_models(start_listening=True):
             return
 
-        self._start_hands_free_idle_duck()
-        self.play_sound("start", use_winsound=True)
-        time.sleep(0.15)
+        from samsara.audio_engine.wake_consumer import _on_wake_ready
+        _on_wake_ready(self)  # 1052b: defer startup output while hold capture is open.
+
         phrase = self.config.get('wake_word_config', {}).get(
             'phrase', config_defaults.DEFAULTS['wake_word_config.phrase'])
         logger.info(f"[LISTEN] Wake word mode ACTIVE - say '{phrase}' to give commands")

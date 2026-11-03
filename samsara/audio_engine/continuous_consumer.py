@@ -102,6 +102,7 @@ class ContinuousConsumer:
 
     def stop(self) -> list:
         """Stop polling and return any accumulated speech frames for final flush."""
+        self._app._continuous_ready_output_pending = False
         with self._lifecycle_lock:
             self._running = False
             self._stop_event.set()
@@ -219,6 +220,8 @@ class ContinuousConsumer:
             self._close_capture_duck()
 
     def _process_frame(self, frame) -> None:
+        from .wake_consumer import resume_wake_ready_output
+        resume_wake_ready_output(self._app, 'continuous')  # 1052b: no startup cue in a hold.
         app = self._app
 
         # Convert int16 ring frame → float32

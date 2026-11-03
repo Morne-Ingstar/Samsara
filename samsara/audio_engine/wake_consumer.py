@@ -42,6 +42,10 @@ import numpy as np
 from .frame import FRAME_MS, PREBUFFER_FRAMES, SAMPLE_RATE
 from .ring import EMPTY
 from .wake_prefilter import oww_prefilter
+from .startup_cue import (
+    _on_wake_ready, continuous_ready_output, resume_wake_ready_output,
+    wake_hold_suppressed,
+)
 
 from samsara.constants import (
     DEFAULT_MIN_SPEECH_DURATION,
@@ -998,6 +1002,7 @@ class WakeConsumer:
 
     def _process_frame(self, frame) -> None:  # noqa: C901 (complexity mirrors legacy callback)
         app = self._app
+        resume_wake_ready_output(app)
         if not mic_score.prepare_wake_frame(self):
             return
         if self._mouth_shadow is not None:
@@ -1060,12 +1065,7 @@ class WakeConsumer:
         # reachability requirement the way toggle-command-mode does, so it
         # now goes fully deaf for the duration of the hotkey hold, same as
         # plain wake-word mode.
-        toggle_cmd_exempt = self._is_toggle_cmd(app) and not self._suspend_on_hold_enabled(app)
-        hotkey_suppress = (
-            app._hotkey_recording
-            and not toggle_cmd_exempt
-        )
-        if hotkey_suppress:
+        if wake_hold_suppressed(self, app):
             if not self._hotkey_suppressed_last:
                 self._log_frame(logging.DEBUG, 'hotkey_suppressed',
                     "[SEAM] WakeConsumer suppression ENGAGED (hotkey recording "

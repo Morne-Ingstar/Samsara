@@ -27,6 +27,7 @@ must never import dictation.
 import logging
 import re
 import string
+from dataclasses import dataclass
 from samsara.log import describe_text
 from samsara import diagnostics
 from samsara.hold_final_policy import current_audit, segment_level
@@ -50,6 +51,125 @@ _COMPRESSION_RATIO_THRESHOLD = 2.4
                              # exact way (every temp 0.0-1.0 failed log_prob_threshold, then
                              # compression_ratio hit 7.125 at temp 0.8) because nothing downstream
                              # checked these signals before delivering the text.
+
+
+@dataclass(frozen=True)
+class RepetitionResult:
+    """1052b contract: decoder owns the single retry; the gate never decodes."""
+    text: str
+    needs_retry: bool = False
+    stripped: int = 0
+    dropped: int = 0
+    segments: tuple = ()
+
+    @property
+    def changed(self):
+        return bool(self.stripped or self.dropped)
+
+
+_LOOP_WORD = re.compile(r"[^\W_]+(?:['’][^\W_]+)*", re.UNICODE)
+# PLACEHOLDER COPY (1052b)
+LOOP_WARNING = 'Part of that was unclear - check the text'
+
+
+def gate_repetition_text(text):
+    """Remove maximal loop spans only with four ordinary words left to keep.
+
+    Token case and punctuation do not conceal a loop. Original spelling,
+    spacing and punctuation are untouched when no loop is present. A motif
+    containing just one distinct word uses the four-token rule, never the
+    three-phrase rule. Natural adjacent repeats do not fund the salvage floor.
+    """
+    text = text or ''
+    tokens = list(_LOOP_WORD.finditer(text))
+    words = [token.group().casefold() for token in tokens]
+    spans = []
+    i = 0
+    while i < len(words):
+        end = i
+        for width in (1, 2, 3):
+            phrase = words[i:i + width]
+            if len(phrase) != width or (width > 1 and len(set(phrase)) == 1):
+                continue
+            stop = i + width
+            while words[stop:stop + width] == phrase:
+                stop += width
+            if (stop - i) // width >= (4 if width == 1 else 3):
+                end = max(end, stop)
+        if end > i:
+            spans.append((i, end))
+            i = end
+        else:
+            i += 1
+    if not spans:
+        return RepetitionResult(text)
+    excluded = {i for start, end in spans for i in range(start, end)}
+    ordinary = sum(i not in excluded
+                   and (i == 0 or words[i - 1] != word)
+                   and (i + 1 == len(words) or words[i + 1] != word)
+                   for i, word in enumerate(words))
+    if ordinary < 4:
+        return RepetitionResult('', needs_retry=True, dropped=1)
+    pieces, cursor = [], 0
+    for start, end in spans:
+        pieces.append(text[cursor:tokens[start].start()].rstrip())
+        # Remove the loop's following punctuation as well as its words.
+        cursor = tokens[end].start() if end < len(tokens) else len(text)
+    pieces.append(text[cursor:].strip())
+    return RepetitionResult(' '.join(piece for piece in pieces if piece).strip(),
+                            stripped=len(spans))
+
+
+class _ScreenedSegment:
+    """A view: keep decoder timing/scores available without mutating its object."""
+    def __init__(self, original, text):
+        self._original = original
+        self.text = text
+        # The original ratio describes the removed run, not the surviving words.
+        self.compression_ratio = None
+
+    def __getattr__(self, name):
+        return getattr(self._original, name)
+
+
+def gate_repetition_segments(segments):
+    """Screen every segment before aggregate quality checks can erase good ones."""
+    kept, stripped, dropped = [], 0, 0
+    for segment in segments:
+        verdict = gate_repetition_text(getattr(segment, 'text', '') or '')
+        stripped += verdict.stripped
+        dropped += verdict.dropped
+        if verdict.dropped:
+            continue
+        kept.append(_ScreenedSegment(segment, ' ' + verdict.text)
+                    if verdict.stripped else segment)
+    if stripped or dropped:
+        logging.getLogger('Samsara').info(
+            '[LOOP_GATE] runs_stripped=%d segments_dropped=%d needs_retry=%s',
+            stripped, dropped, bool(dropped))
+        audit = current_audit.get()
+        if audit is not None:
+            if dropped:
+                audit.drop('repetition_loop', dropped)
+            # Kept local to the audit instance; no change to the decoder policy.
+            audit.loop_stripped = getattr(audit, 'loop_stripped', 0) + stripped
+    return RepetitionResult(''.join(seg.text for seg in kept).strip(),
+                            bool(dropped), stripped, dropped, tuple(kept))
+
+
+def emit_loop_warning(app, result):
+    """Emit the existing warning kind; 1038 owns scheduling and lifetime."""
+    if result.changed:
+        app._show_outcome_chip(LOOP_WARNING, 'warning')
+
+
+class SegmentQualityResult(tuple):
+    """Preserve the historical (text, low_confidence) unpacking contract."""
+    def __new__(cls, text, low_confidence, repetition):
+        value = super().__new__(cls, (text, low_confidence))
+        value.repetition = repetition
+        value.needs_retry = repetition.needs_retry
+        return value
 
 
 # Well-known Whisper hallucination strings that appear on near-silent audio,
@@ -543,6 +663,13 @@ def _keep_low_confidence_long_chunk(seg_list, text, duration_s):
 
 
 def _apply_segment_quality_gates(seg_list, transcribe_params, audio_duration, *, audio=None, rate=16000):
+    repetition = gate_repetition_segments(seg_list)
+    text, low = _segment_quality_after_repetition(
+        list(repetition.segments), transcribe_params, audio_duration, audio=audio, rate=rate)
+    return SegmentQualityResult(text, low, repetition)
+
+
+def _segment_quality_after_repetition(seg_list, transcribe_params, audio_duration, *, audio=None, rate=16000):
     """Segment-level hallucination/quality gating for one full decode.
 
     Replaces the old per-chunk aggregate gating: on a single long decode,
