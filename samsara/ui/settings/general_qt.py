@@ -577,6 +577,20 @@ class GeneralPage:
             hints_enabled,
         )
 
+        # PLACEHOLDER COPY (1020)
+        from samsara.notify_gate import saved_level
+        notifications = QComboBox()
+        for value, label in (('important', 'Important only'), ('all', 'All'), ('off', 'Off')):
+            notifications.addItem(label, value)
+        notifications.setCurrentIndex(notifications.findData(saved_level(self.app.config)))
+        notifications.setAccessibleName('Windows notifications')
+        notifications.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        notifications.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        self._widgets['notifications_level'] = notifications
+        _add_row(hint_layout, 'Windows notifications',
+                 'Reminders you set are always shown.', notifications,
+                 width=notifications.sizeHint().width())
+
         reset_hints_btn = QPushButton("Reset hints")
         # No own width: goes through _add_row(width=180) below, see setup_btn.
         reset_hints_btn.clicked.connect(self._reset_hints)
@@ -748,6 +762,7 @@ class GeneralPage:
                 'language':           self._widgets['lang_name_to_code'].get(
                                           self._widgets['lang_combo'].currentText(), 'en'),
                 'hints_enabled':      self._widgets['hints_enabled'].isChecked(),
+                'notifications_level': self._widgets['notifications_level'].currentData(),
                 'launch_at_login':    requested_launch_at_login,
                 'start_hidden':       self._widgets['start_hidden'].isChecked(),
                 'updates': {

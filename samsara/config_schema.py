@@ -296,6 +296,7 @@ SETTINGS_SCHEMA = {
     "auto_capitalize":      {"type": "bool", "default": True,  "tab": "general"},
     "format_numbers":       {"type": "bool", "default": True,  "tab": "general"},
     "hints_enabled":        {"type": "bool", "default": True,  "tab": "general", "help": {"why": "Hints appear while you learn actions in the app; they do not alter dictation. Turn them off once they stop being useful, or use Reset hints to see them again. They are on by default for new users.", "docs": "https://morneis.com/samsara/docs/settings/#hints_enabled"}},
+    "notifications_level": {"type": "enum", "options": ["important", "all", "off"], "default": "important", "tab": "general"},
     "launch_at_login":      {"type": "bool", "default": False, "tab": "general"},
     "start_hidden":         {"type": "bool", "default": False, "tab": "general"},
     "updates.automatic_checks": {

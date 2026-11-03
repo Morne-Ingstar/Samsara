@@ -35,6 +35,9 @@ BASE = [
         "hints_enabled,action:Reset hints",
         "hints_enabled"
     ],
+    # PLACEHOLDER COPY (1020)
+    ["Windows notifications", "Reminders you set are always shown.",
+     "notifications_level", "notifications_level"],
     [
         "Start at sign-in",
         "Launch Samsara when you sign in to Windows.",

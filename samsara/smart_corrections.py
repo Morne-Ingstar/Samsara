@@ -245,15 +245,14 @@ def _notify_fallback_issue(app, kind: str) -> None:
         return
     _fallback_notice_shown = True
 
-    nm = getattr(app, "notification_manager", None)
-    if nm is None:
+    notify = getattr(getattr(app, 'tray_icon', None), 'notify_info', None)
+    if not callable(notify):
         return
     suffix = "using Cloud AI" if kind == "cloud" else "skipping"
     try:
-        nm.show_notification(
+        notify(
             "Smart Corrections",
             f"Smart Corrections: local AI unavailable — {suffix}",
-            duration=8,
         )
     except Exception as exc:
         logger.debug(f"[SMART] fallback notice failed: {exc}")

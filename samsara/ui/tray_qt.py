@@ -35,6 +35,7 @@ from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
 from samsara.constants import DEFAULT_WAKE_PHRASE
 from samsara.log import get_logger
+from samsara.notify_gate import TrayNotifications
 from samsara.paths import newest_python_mtime
 from samsara.quick_memo import memo_file
 from samsara.ui import theme
@@ -730,13 +731,13 @@ def open_support_tab(app):
     return show_support_tab(app)
 
 
-class SamsaraTrayQt(QObject):
+class SamsaraTrayQt(QObject, TrayNotifications):
     """QSystemTrayIcon wrapper matching pystray.Icon's property interface."""
 
     _icon_sig    = Signal(object)  # MarkFrame (rendered on the Qt thread)
     _tooltip_sig = Signal(str)
     _hide_sig    = Signal()
-    _warning_sig = Signal(str, str)   # (title, text) -> balloon, from any thread
+    _notification_sig = Signal(str, str, str, object, int)
 
     def __init__(self, app):
         super().__init__()
@@ -765,7 +766,8 @@ class SamsaraTrayQt(QObject):
         self._icon_sig.connect(self._apply_icon)
         self._tooltip_sig.connect(self._tray.setToolTip)
         self._hide_sig.connect(self._tray.hide)
-        self._warning_sig.connect(self._show_warning_balloon)
+        self._notification_sig.connect(self._deliver_notification)
+        self._last_notification_class = None
         # Initial icon + tooltip
         try:
             self._apply_icon(app.create_icon_image())
@@ -902,19 +904,12 @@ class SamsaraTrayQt(QObject):
         except Exception:
             logger.exception("[TRAY] Could not show the source-change chip")
             try:
-                self._tray.showMessage(
+                self._notify('info',
                     "Samsara code changed", _CODE_CHANGE_MESSAGE,
                     QSystemTrayIcon.MessageIcon.Warning, 10000,
                 )
             except Exception:
                 logger.exception("[TRAY] Could not show source-change notification")
-
-    def notify_warning(self, title: str, text: str) -> None:
-        """Show a warning balloon (thread-safe). Used by the mouse-hotkey fallback (35)."""
-        self._warning_sig.emit(str(title), str(text))
-
-    def _show_warning_balloon(self, title: str, text: str) -> None:
-        self._tray.showMessage(title, text, QSystemTrayIcon.MessageIcon.Warning, 12000)
 
     def stop(self):
         try:
@@ -985,7 +980,7 @@ class SamsaraTrayQt(QObject):
         # check). Surface it here, once, after the app is confirmed fully
         # operational -- never blocks or delays startup itself.
         if bool(vars(self._app).get("_logging_self_check_failed", False)):
-            self._tray.showMessage(
+            self._notify('info',
                 "Samsara logging warning",
                 "Logging may not be writing to disk correctly. If you need "
                 "to report a bug, check that ~/.samsara/logs/samsara.log "
@@ -1002,7 +997,7 @@ class SamsaraTrayQt(QObject):
         # here, same pattern as the logging warning above.
         if bool(vars(self._app).get("_config_load_failed", False)):
             corrupt_name = vars(self._app).get("_config_corrupt_backup_name", None) or "a backup file"
-            self._tray.showMessage(
+            self._notify('important',
                 "Samsara settings warning",
                 f"Settings failed to load — running on defaults; your saved "
                 f"settings were preserved at {corrupt_name}. Restore via "
@@ -1017,21 +1012,21 @@ class SamsaraTrayQt(QObject):
             update_status = reconcile_update_on_startup()
             if update_status is not None:
                 if update_status.state == "installed":
-                    self._tray.showMessage(
+                    self._notify('info',
                         "Samsara updated",
                         update_status.message,
                         QSystemTrayIcon.MessageIcon.Information,
                         8000,
                     )
                 elif update_status.state in {"failed", "rolled_back"}:
-                    self._tray.showMessage(
+                    self._notify('important',
                         "Samsara update problem",
                         update_status.message,
                         QSystemTrayIcon.MessageIcon.Warning,
                         12000,
                     )
                 elif update_status.state == "cleanup_pending":
-                    self._tray.showMessage(
+                    self._notify('info',
                         "Samsara update cleanup pending",
                         "Leftover update files remain from a previous update "
                         f"and cleanup will retry automatically. {update_status.message}",
@@ -1099,10 +1094,10 @@ class SamsaraTrayQt(QObject):
     def _show_update_available(self, release):
         """Runs on the Qt thread after an opted-in background check."""
         self._available_update = release
-        self._tray.showMessage(
+        self._notify('info',
             "Samsara update available",
-            f"Version {release.version} is ready. Click this notification or "
-            "open the tray menu to install it.",
+            # PLACEHOLDER COPY (1020)
+            f"Version {release.version} is ready. Open the tray menu to install it.",
             QSystemTrayIcon.MessageIcon.Information,
             12000,
         )
@@ -1114,10 +1109,6 @@ class SamsaraTrayQt(QObject):
             f"Check your connection and try again. ({error})",
         )
 
-    def _on_message_clicked(self):
-        if self._available_update is not None:
-            self._open_update_dialog()
-
     # ---- Guarded actions -------------------------------------------------
     #
     # 61 (2026-09-14): "Open memos" raised inside a Qt slot when no memo had
@@ -1127,7 +1118,7 @@ class SamsaraTrayQt(QObject):
 
     def _report_action_failure(self, label: str, message: str) -> None:
         try:
-            self._tray.showMessage(
+            self._notify('important',
                 f"Samsara: {label}", message,
                 QSystemTrayIcon.MessageIcon.Warning, 8000,
             )
@@ -1296,7 +1287,7 @@ class SamsaraTrayQt(QObject):
         except Exception as exc:
             self._restart_pending = False
             logger.exception("[RESTART] Could not arm restart: %s", exc)
-            self._tray.showMessage(
+            self._notify('important',
                 "Samsara restart failed", f"Samsara is still running: {exc}",
                 QSystemTrayIcon.MessageIcon.Critical,
             )
