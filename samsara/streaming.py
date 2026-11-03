@@ -2095,6 +2095,8 @@ class StreamingSession:
         if not live:
             tutorial_capture.retire_final(self, text, raw_text, duration_s)
             return
+        from samsara.hold_recording_recovery import prepare_final
+        text, raw_text, duration_s = prepare_final(self, text, raw_text, duration_s)
         from samsara.decode_recovery import deliver_failure
         if deliver_failure(self, duration_s):
             return
@@ -2111,9 +2113,6 @@ class StreamingSession:
                     )
                 except Exception as e:
                     logger.debug(f"[STREAM] _log_history (empty) failed: {e}")
-            # In direct-paste mode, the user has partial text typed into
-            # the target app -- erase it on no-speech so we leave a clean
-            # slate. Off-thread to avoid blocking Tk.
             if self._direct_paste and self._last_pasted:
                 thread_registry.spawn("streaming-empty-undo", self._undo_direct_paste,
                                  daemon=True)
@@ -2242,6 +2241,7 @@ class StreamingSession:
     def _discard_capture(self):
         """Stop and discard the shared streaming accumulator exactly once."""
         self._stop_capture()
+        from samsara.hold_recording_recovery import cancelled; cancelled(self)
 
     def _stop_capture(self):
         """Stop the accumulator once and return its audio to the final pass."""
@@ -2252,7 +2252,7 @@ class StreamingSession:
         consumer = getattr(self.app, '_dictation_consumer', None)
         if consumer is not None and hasattr(consumer, 'stop_streaming'):
             try:
-                return consumer.stop_streaming()
+                from samsara.hold_recording_recovery import capture_stopped; return capture_stopped(self, consumer.stop_streaming())
             except Exception as e:
                 logger.exception(f"[STREAM] Capture cleanup failed: {e}")
         return None

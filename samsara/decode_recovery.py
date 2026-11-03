@@ -292,7 +292,8 @@ def supersede_final(app):
     try:
         if not session._capture_cleaned or getattr(session, '_decode_audio', None) is None:
             return
-        retain(app, session._decode_audio, session._decode_params, 'superseded')
+        from samsara.hold_recording_recovery import retain_stopped
+        retain_stopped(session, 'superseded')
     finally:
         lock.release()
     session.cancel()

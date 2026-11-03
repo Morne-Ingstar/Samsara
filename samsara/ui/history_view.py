@@ -245,12 +245,8 @@ def row_pills(row: dict) -> list:
 def list_text(row: dict) -> str:
     """The text a row shows: whitespace collapsed to one line, and the
     recorder's placeholder strings turned into plain language."""
-    text = _row_text(row)
-    if is_no_speech_attempt(row):
-        return "No speech detected"
-    if text.startswith("[FAILED] "):
-        return "Transcription failed: " + text[len("[FAILED] "):]
-    return " ".join(text.split())
+    from samsara.ui.history_row_text import display_text
+    return display_text(row, _row_text(row), is_no_speech_attempt(row))
 
 
 def copy_text(row: dict) -> str:
