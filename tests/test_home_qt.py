@@ -868,7 +868,8 @@ class TestTypeScale:
 class TestIdentityStripRestored:
     def test_words_today_is_present_with_its_original_label_and_a_live_figure(self, page):
         home = page(_app(history_store=_Store(words=1428)))
-        card = home_qt.find_by_accessible_name(home, home_qt.WORDS_TODAY)
+        # 1056: the same visible label now belongs to an accessible Stats button.
+        card = home_qt.find_by_accessible_name(home, 'Words today - open stats')
         assert card is not None and card.isVisibleTo(home)
         assert home_qt.WORDS_TODAY == "words today"
         # 111: grouped, so the figure is read at a glance rather than counted.

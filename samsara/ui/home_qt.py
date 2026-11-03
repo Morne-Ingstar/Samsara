@@ -1961,6 +1961,7 @@ class HomePage(QWidget):
         self._identity_grid.setVerticalSpacing(GRID)
 
         self._words_card, self._words_val = self._stat_card(WORDS_TODAY, "0", theme.TEXT_PRIMARY)
+        self._words_card.bind(self._open_page)
         self._infinity_card, _inf = self._stat_card(WORDS_REMAINING, INFINITY, theme.ACCENT)
         # Same size: the larger of the two preferred sizes, never smaller
         # than 150 x 78 (the figure changes width as the day goes on).
@@ -2039,7 +2040,8 @@ class HomePage(QWidget):
         self._identity_rows = 2
 
     def _stat_card(self, label: str, value: str, color: str) -> tuple:
-        card = _card()
+        from samsara.ui.stats_qt import StatsCard
+        card = StatsCard() if label == WORDS_TODAY else _card()
         card.setAccessibleName(label)
         card.setStyleSheet(f"QFrame#homeCard {{ background: {theme.DATA_SURFACE}; border: none; border-radius: 10px; }}")
         card.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
@@ -2049,8 +2051,6 @@ class HomePage(QWidget):
         val = _label(value, role="usage figure", color=color, weight=600)
         val.setAccessibleName(f"{label} value")
         lay.addWidget(val)
-        # Wrapped: "words remaining" folds onto two lines in a narrow strip
-        # instead of demanding a width the strip has not got (89).
         lay.addWidget(_label(label, role="usage label", color=theme.TEXT_SECONDARY,
                              weight=600, wrap=True))
         return card, val

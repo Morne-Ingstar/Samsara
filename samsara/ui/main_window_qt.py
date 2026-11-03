@@ -654,6 +654,9 @@ class _MainWindow(QMainWindow):
                 logger.debug(f"_on_page_shown {name}: {exc}")
 
     def _make_panel(self, name: str):
+        if name == "Stats":
+            from samsara.ui.stats_qt import StatsPage
+            return StatsPage(self._app)
         if name == "Home":
             page = HomePage(self._app, open_page=self._activate)
             page.set_mark_frame(self._header_mark.frame)

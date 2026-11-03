@@ -13791,6 +13791,26 @@
     },
     {
       "aliases": [
+        "open stats",
+        "show my stats"
+      ],
+      "args": [],
+      "canonical_id": "stats.show_my_stats",
+      "description": "show my stats",
+      "examples": [],
+      "kind": "plugin",
+      "object": "my_stats",
+      "pack": "core",
+      "plugin": "stats",
+      "precondition": "",
+      "risk": "ui",
+      "source": "plugins/commands/stats.py:5",
+      "undoable": true,
+      "verb": "show",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "close stremio",
         "exit stremio",
         "quit stremio"
