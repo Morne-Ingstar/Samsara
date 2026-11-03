@@ -156,14 +156,15 @@ def test_setup_next_offers_calibration_once_and_skip_continues(isolated, tmp_pat
     win._mics = [{'id': 7, 'name': 'Synthetic mic'}]
     win._config['microphone'] = 7
     win._decisions.wake.buttons()[0].setChecked(True)
-    win._step = 4
+    # 1062: 935/342f7ac5 moved Talking within the shorter setup route.
+    win._step = next(i for i, (name, _) in enumerate(setup._STEPS) if name == 'Talking')
     win._show_step()
     win._go_next()
-    assert win._step == 4
+    assert win._step_name == 'Talking'
     guide = win._wake_setup_app._wake_calibration_window
     assert guide._current_step == guide._STEP_WAKE
     guide._skip_step()
-    assert win._step == 5
+    assert win._step_name == 'Complete'
     assert calibration_needed(win._config)
 
 
@@ -190,13 +191,14 @@ def test_setup_saves_canonical_phrase_and_preserves_existing_calibration(isolate
 
 def test_closing_setup_cancels_its_calibration_without_advancing(isolated, tmp_path):
     win = setup._WizardWindow(tmp_path / 'config.json')
-    win._step = 4
+    # 1062: select the calibration page by identity after 935/342f7ac5.
+    win._step = next(i for i, (name, _) in enumerate(setup._STEPS) if name == 'Talking')
     win._decisions.wake.buttons()[0].setChecked(True)
     win._go_next()
     guide = win._wake_setup_app._wake_calibration_window
     generation = guide._wake_cal_generation
     win.close()
-    assert not guide.isVisible() and win._step == 4 and win.result is None
+    assert not guide.isVisible() and win._step_name == 'Talking' and win.result is None
     guide._on_wake_calibration_result(generation, 0.004, '', {})
     assert calibration_needed(win._config)
 
@@ -256,13 +258,13 @@ def test_tutorial_checks_calibration_before_wake_instructions(isolated):
     from PySide6.QtWidgets import QLabel, QPushButton
     app = wake_ui.SetupWakeApp(config(), [])
     win = TutorialWindow(app)
-    win._step = next(i for i, (key, _) in enumerate(win._steps) if key == 'ways')
-    win._show_step()
+    # 1062: 936/342f7ac5 made Ways optional and moved its action to the footer.
+    win._open_optional('ways')
     detail = win.findChild(QLabel, 'tutorialWakeInstruction')
     button = win.findChild(QPushButton, 'tutorialWakeCalibrate')
     assert detail.text() == wake_ui.CALIBRATION_NOTE and not button.isHidden()
     app.config['wake_word_config']['audio']['measured_noise_floor'] = 0.004
-    wake_ui.refresh_tutorial_wake(win)
+    win._refresh_ways_wake()
     assert button.isHidden() and 'Say "jarvis"' in detail.text()
 
 
