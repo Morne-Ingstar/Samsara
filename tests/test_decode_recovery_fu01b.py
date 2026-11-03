@@ -7,7 +7,7 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
-from samsara import decode_recovery as recovery, failure_reasons, speech_regions
+from samsara import decode_recovery as recovery, failure_reasons, speech_presence
 from samsara.gpu_fallback import ResilientSpeechModel, paste_final
 from samsara.streaming import StreamingSession
 
@@ -63,7 +63,7 @@ def test_first_utterance_recovers_after_two_second_gpu_and_two_second_cpu_load(m
         text = recovery.stream_final(worker, audio, incoming)[2]
     assert 'ordinary sentence.' in text and 'More words.' in text
     assert params[0]['beam_size'] == 3 and params[0]['best_of'] == 1
-    assert params[0]['temperature'] == 0 and params[0]['max_new_tokens'] <= 192
+    assert params[0]['temperature'] == (0., .2) and  params[0]['max_new_tokens'] <= 192
     assert not posted
 
     def insert(text, **kwargs):
@@ -95,14 +95,13 @@ def test_recovery_after_gpu_fallback_keeps_retry_temperature(monkeypatch):
     worker._decoder_guard = guard
     incoming = dict(beam_size=8, best_of=5, temperature=(0, .2, .4),
                     max_new_tokens=448, language='en')
-    assert recovery.stream_final(worker, audio, incoming)[2]
+    assert not recovery.stream_final(worker, audio, incoming)[2]  # 1052d no generic recovery
     assert app.device_type == 'cpu' and events == ['load']
-    assert len(params) == 2 and len(guarded) == 3
-    assert params[0]['temperature'] == 0.0
-    assert params[1]['temperature'] == .2
+    assert len(params) == 1 and len(guarded) == 1  # 1052d exhausted ordinary decode does not re-decode
+    assert params[0]['temperature'] == (0., .2)  # 1052d CPU ladder
     assert all(p['beam_size'] == 3 and p['best_of'] == 1 for p in params)
     assert all(p['max_new_tokens'] <= 192 and p['language'] == 'en' for p in params)
-    assert params[1]['initial_prompt'] is None and not params[1]['vad_filter']
+    assert not params[0]['vad_filter']  # 1052d no second pass
 
 
 def test_later_cpu_calls_preserve_explicit_temperature_and_still_apply_caps(monkeypatch):
@@ -121,13 +120,10 @@ def test_sparse_speech_region_final_shares_fallback_caps_and_load_exclusion(monk
     app, session, worker, _, events, posted, params = harness(
         monkeypatch, gpu_delay=.04, load_delay=.2, timeout=.12)
     audio = np.ones(16000 * 20, np.float32) * .1
-    monkeypatch.setattr(speech_regions.speech_presence._presence, 'measure', lambda *a: object())
-    monkeypatch.setattr(speech_regions, 'locate', lambda *a, **k:
-                        speech_regions.Regions(((0, 16000),), ((0, 16000),), len(audio)))
-    monkeypatch.setattr(speech_regions, 'filter_words', lambda segs, evidence:
-                        (segs, ''.join(s.text for s in segs).strip()))
-    assert speech_regions.stream_final(worker, audio, {'beam_size': 9})[2]
-    assert params[0]['beam_size'] == 3 and params[0]['word_timestamps']
+    # 1052d: original PCM and shared chunk decoder replace compact regions.
+    monkeypatch.setattr(speech_presence, 'measure', lambda *a: speech_presence.Presence(False))
+    assert recovery.stream_final(worker, audio, {'beam_size': 9})[2]
+    assert params[0]['beam_size'] == 3 and not params[0].get('word_timestamps', False)
     assert not posted
 
 
@@ -163,7 +159,7 @@ def test_cold_load_overlapping_model_lock_wait_is_excluded(monkeypatch):
     assert not thread.is_alive() and app._hold_decode_job.done.wait(1)
     # Params were selected while the partial still held a CUDA->CPU load.
     assert params[-1]['beam_size'] == 3 and params[-1]['best_of'] == 1
-    assert params[-1]['temperature'] == 0 and params[-1]['max_new_tokens'] <= 192
+    assert params[-1]['temperature'] == (0., .2) and  params[-1]['max_new_tokens'] <= 192
 
 
 def test_cpu_cancel_after_segment_one_never_pulls_segment_two(monkeypatch):
@@ -227,10 +223,10 @@ def test_rejected_final_salvages_partial_without_announcing_recovery(monkeypatch
     worker._decoder_guard = lambda *a, **k: 'bad_decode'
     session._last_partial = 'Previously accepted partial.'
     text = recovery.stream_final(worker, audio, {})[2]
-    assert text == session._last_partial
+    assert not text  # 1052d whole-preview fallback is retired
     app._paste_preserving_clipboard = Mock(return_value=True)
     paste_final(session, text)
-    app._paste_preserving_clipboard.assert_called_once()
+    app._paste_preserving_clipboard.assert_called_once()  # Empty insertion cannot announce recovery
     assert not posted
 
 

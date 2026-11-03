@@ -161,6 +161,7 @@ def finish_streaming_if_empty(worker, audio):
                     state=worker, skip_reason='not_decoded')
         worker._session.on_final(None)
     elif skip_decode(audio, app, path='streaming', state=worker):
+        worker._session._last_partial = ''  # 1052d: final silence cannot resurrect a preview.
         worker._session.on_final(None, duration_s=len(audio) / app.model_rate)
     else:
         return False
@@ -237,6 +238,14 @@ class SpeechPresence:
 
 
 _presence = SpeechPresence()
+
+
+def measure(pcm, sample_rate):
+    """Expose the existing Silero probabilities without preparing another PCM."""
+    try:
+        return _presence.measure(pcm, sample_rate)
+    except Exception:
+        return Presence(False)
 
 
 def skip_decode(pcm, sample_rate, config=None, *, final=True, path='capture', state=None,

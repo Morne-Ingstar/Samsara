@@ -66,20 +66,16 @@ def audited_batch(decode):
 
 
 def preserve_preview_tail(session, text):
-    """Append only a matching accepted preview's suffix; never erase final words.
-
-    A final that intentionally removed an outro cannot recover that same tail.
-    Disagreeing hypotheses, explicit retries and sparse timelines stay with the
-    caller's existing policies. The preview belongs to this recording session.
+    """The final wins unless its last chunk failed.
+    Only a matching preview tail passing the loop gate may fill that failure.
+    A rejected or conflicting preview never replaces final words.
     """
     from samsara.hallucination_filter import OUTRO_PHRASES
-    from samsara.transcript_gates import _is_hallucinated_segments, _trim_trailing_garbage_run
+    from samsara.transcript_gates import _is_hallucinated_segments, _trim_trailing_garbage_run, gate_repetition_text
     preview = getattr(session, '_last_partial', '')
-    if not isinstance(preview, str) or not text:
+    if not getattr(session, '_hold_last_chunk_failed', False) or not isinstance(preview, str) or not text:
         return text
     audit = current_audit.get()
-    if audit is not None and audit.dropped:
-        return text
     final_words = list(re.finditer(r'\w+', text))
     preview_words = list(re.finditer(r'\w+', preview))
     if len(final_words) < 3 or len(preview_words) <= len(final_words):
@@ -92,6 +88,7 @@ def preserve_preview_tail(session, text):
         return text
     words = tuple(re.findall(r'\w+', suffix.casefold()))
     if (words in {tuple(re.findall(r'\w+', p)) for p in OUTRO_PHRASES}
+            or gate_repetition_text(suffix).changed
             or _is_hallucinated_segments([], suffix)
             or _trim_trailing_garbage_run(suffix) != suffix):
         return text

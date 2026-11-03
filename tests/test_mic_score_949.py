@@ -203,7 +203,7 @@ def test_production_history_writer_persists_numeric_confidence(tmp_path, monkeyp
 
 
 def test_streaming_handoff_is_capture_owned_and_scope_restored(monkeypatch):
-    from samsara import speech_regions
+    from samsara import decode_recovery
     app = SimpleNamespace(config={"microphone": 2, "microphone_name": "A"})
     session = SimpleNamespace()
     score.start_streaming_history(session, app)
@@ -211,7 +211,7 @@ def test_streaming_handoff_is_capture_owned_and_scope_restored(monkeypatch):
     app.config["microphone_name"] = "B"
     decoded = ([SimpleNamespace(avg_logprob=-.15)], SimpleNamespace(), "raw fixture")
     decode = Mock(return_value=decoded)
-    monkeypatch.setattr(speech_regions, "stream_final", decode)
+    monkeypatch.setattr(decode_recovery, "stream_final", decode)  # 1052d consolidated seam
     worker, audio, params = SimpleNamespace(_session=session), np.zeros(10), {}
     assert score.stream_final(worker, audio, params) is decoded
     decode.assert_called_once_with(worker, audio, params)

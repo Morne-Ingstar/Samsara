@@ -15,7 +15,7 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
-from samsara import command_clip_trim, speech_presence as presence, speech_regions as regions
+from samsara import command_clip_trim, speech_presence as presence, decode_recovery as decoder
 from tests.test_silent_hold_387 import make_worker, _segment
 
 
@@ -66,82 +66,70 @@ def bind_audio(session, monkeypatch, audio, result):
 
 
 def test_real_silero_rejects_synthetic_cricket_fixture():
-    audio = clips()['crickets']
-    result = measured('crickets')
+    audio, result = clips()['crickets'], measured('crickets')
     assert result.known and not result.passes()
-    plan = regions.locate(audio, result)
-    assert not plan.speech and not plan.padded
-    assert plan.concatenate(audio)[0].size == 0
+    assert decoder._speech_bounds(result, RATE, len(audio)) == []
 
 
 @pytest.mark.parametrize('name', ['mixed', 'normal', 'quiet', 'quiet_hold'])
 def test_measured_speech_survives_with_context_and_no_gain(name):
-    audio = clips()[name]
+    audio, result = clips()[name], measured(name)
     before = audio.copy()
-    result = measured(name)
-    assert result.passes()
-    plan = regions.locate(audio, result)
-    compact, aligned = plan.concatenate(audio)
-    assert plan.speech and aligned
-    assert compact.size < 6*RATE
-    for start, end in plan.speech:
-        assert any(a <= start <= end <= b for a,b in plan.padded)
+    bounds = decoder._speech_bounds(result, RATE, len(audio))
+    assert result.passes() and bounds
+    chunks = decoder.chunk_audio(audio, RATE, result)
+    assert chunks[0].core_start == 0 and chunks[-1].core_end == len(audio)
+    assert all(np.shares_memory(audio[c.start:c.end], audio) for c in chunks)
     np.testing.assert_array_equal(audio, before)
-    np.testing.assert_array_equal(compact, np.concatenate([audio[a:b] for a,b in plan.padded]))
 
 
 def test_780_onset_is_reused_and_command_gain_is_not_applied(monkeypatch):
-    audio = clips()['mixed']
-    onset = Mock(wraps=command_clip_trim.prepare)
+    # 1052d retires compact/onset preparation; original PCM is never amplified.
+    audio, result = clips()['mixed'], measured('mixed')
+    onset = Mock(side_effect=AssertionError('hold must not prepare command PCM'))
     monkeypatch.setattr(command_clip_trim, 'prepare', onset)
-    plan = regions.locate(audio, measured('mixed'))
-    assert onset.call_count >= 1
-    assert plan.speech[0][0] > 27*RATE
-    for call in onset.call_args_list:
-        assert len(call.args[0]) <= command_clip_trim.MAX_CLIP_S*RATE
+    chunks = decoder.chunk_audio(audio, RATE, result)
+    assert all(np.shares_memory(audio[c.start:c.end], audio) for c in chunks)
+    onset.assert_not_called()
 
 
 def test_short_quiet_word_is_not_replaced_by_a_later_long_run():
     scores = [0.]*200
-    scores[10:12] = [.11]*2  # 64ms quiet evidence, below 780's 96ms.
-    scores[100:120] = [.9]*20
-    audio = np.zeros(len(scores)*512, np.float32)
-    plan = regions.locate(audio, evidence(scores))
-    assert plan.speech == ((10*512, 12*512), (100*512, 120*512))
+    scores[10:12], scores[100:120] = [.11]*2, [.9]*20
+    bounds = decoder._speech_bounds(evidence(scores), RATE, len(scores)*512)
+    assert len(bounds) == 2
+    assert bounds[0][0] <= 10*512 < 12*512 <= bounds[0][1]
+    assert bounds[1][0] <= 100*512 < 120*512 <= bounds[1][1]
 
 
 def test_confident_last_partial_frame_is_preserved():
-    audio = np.zeros(512*40+13, np.float32)
-    scores = [0.]*40 + [.9]
-    plan = regions.locate(audio, evidence(scores, len(audio)))
-    assert plan.speech == ((512*40, len(audio)),)
+    samples = 512*40+13
+    bounds = decoder._speech_bounds(evidence([0.]*40+[.9], samples), RATE, samples)
+    assert bounds and bounds[-1][1] == samples
 
 
 def test_padding_merges_and_mapping_keeps_each_original_island():
-    audio = np.arange(512*100, dtype=np.float32)
     scores = [0.]*100
     scores[10:14], scores[17:21], scores[70:74] = [.9]*4, [.9]*4, [.9]*4
-    plan = regions.locate(audio, evidence(scores))
-    compact, aligned = plan.concatenate(audio)
-    assert len(plan.padded) == 2 and len(aligned) == 2
-    assert len(compact) == sum(b-a for a,b in plan.padded)
-    first_end = (plan.padded[0][1]-plan.padded[0][0])/RATE
-    assert aligned[-1][0] >= first_end
+    bounds = decoder._speech_bounds(evidence(scores), RATE, len(scores)*512)
+    assert len(bounds) == 2
+    assert bounds[0][0] <= 10*512 and bounds[0][1] >= 21*512
+    assert bounds[1][0] <= 70*512 and bounds[1][1] >= 74*512
 
 
 def test_earcon_boundary_is_measured_and_padding_does_not_reinclude_it():
-    audio = np.zeros(512*120, np.float32)
     scores = [.8]*8 + [0.]*20 + [.8]*8 + [0.]*84
     capture = presence.HoldEvidence(0, .4, 0)
-    plan = regions.locate(audio, evidence(scores), capture=capture)
-    assert plan.speech == ((28*512, 36*512),)
-    assert all(a >= round(.4*RATE) for a,b in plan.padded)
+    bounds = decoder._speech_bounds(evidence(scores), RATE, len(scores)*512, capture)
+    assert len(bounds) == 1 and bounds[0][0] >= round(.4*RATE)
 
 
 @pytest.mark.parametrize('bad', [presence.Presence(False), evidence([float('nan')]*2),
                                evidence([1.2]*2), evidence([.9], 100)])
 def test_unknown_or_invalid_evidence_preserves_normal_decode(bad):
-    assert regions.locate(np.zeros(1024), bad) is None
+    assert decoder._speech_bounds(bad, RATE, 1024) is None
+    chunks = decoder.chunk_audio(np.zeros(1024), RATE, bad)
+    assert len(chunks) == 1 and chunks[0].end == 1024
 
 
 @pytest.mark.parametrize('start,end,kept', [(0,.1,False), (.4,1.4,True), (.39,1.39,False),
@@ -150,37 +138,32 @@ def test_unknown_or_invalid_evidence_preserves_normal_decode(bad):
                                         (-.1,.8,False), (0,float('inf'),False)])
 def test_words_need_sixty_percent_of_their_duration(start, end, kept, caplog):
     seg = _segment(text=' invented', words=[word(' invented', start, end)])
-    with caplog.at_level(logging.INFO, logger='Samsara'):
-        filtered, text = regions.filter_words([seg], ((.8, 1.4),))
+    filtered = decoder._aligned([seg], [(round(.8*RATE), round(1.4*RATE))], RATE, 0)
     assert bool(filtered) is kept
-    assert bool(text) is kept
-    assert seg.text == ' invented'  # Decoder objects must not be mutated.
-    if not kept:
-        assert '[GUARD] dropped words outside speech regions (1 words)' in caplog.text
-        assert 'invented' not in caplog.text
+    assert seg.text == ' invented'
 
 
 def test_missing_word_timestamps_cannot_authorize_sparse_text():
-    assert regions.filter_words([_segment(text='Unaligned output')], ((0.,1.),)) == ([], '')
+    assert decoder._aligned([_segment(text='Unaligned output')], [(0,RATE)], RATE, 0) == []
 
 
 @pytest.mark.parametrize('name', ['mixed', 'quiet_hold'])
 def test_final_only_delivers_aligned_sentence_after_long_pause(make_worker, monkeypatch, name):
-    audio = clips()[name]
-    result = measured(name)
-    compact, intervals = regions.locate(audio, result).concatenate(audio)
-    a, b = max(intervals, key=lambda pair: pair[1]-pair[0])
-    words = [word(' phantom', -.2, -.1), word(' Real sentence.', a+.4, min(b, a+.9)),
-             word(' phantom', len(compact)/RATE+.1, len(compact)/RATE+.2)]
-    worker, session = make_worker([_segment(text=' phantom Real sentence. phantom', words=words)])
+    audio, result = clips()[name], measured(name)
+    worker, session = make_worker([])
     bind_audio(session, monkeypatch, audio, result)
+    def decode(pcm, **params):
+        offset = (pcm.ctypes.data-audio.ctypes.data)//audio.itemsize/RATE
+        words = [word(' phantom', -.2, -.1), word(' Real sentence.', 28.5-offset, 29.-offset),
+                 word(' phantom', len(pcm)/RATE+.1, len(pcm)/RATE+.2)]
+        return iter([_segment(text=' phantom Real sentence. phantom', words=words)]), NS(language='en')
+    session.app.model.transcribe.side_effect = decode
     worker._final_pass()
     assert session.on_final.call_args.args == ('Real sentence.',)
     assert session.on_final.call_args.kwargs['duration_s'] == 60
-    session.app.process_transcription.assert_called_once_with('Real sentence.')
-    args, kwargs = session.app.model.transcribe.call_args
-    np.testing.assert_array_equal(args[0], compact)
-    assert kwargs['word_timestamps'] and not kwargs['without_timestamps']
+    for call in session.app.model.transcribe.call_args_list:
+        assert np.shares_memory(call.args[0], audio) and len(call.args[0]) <= 25*RATE
+        assert call.kwargs['word_timestamps']
     assert not session.app.model_lock.locked()
 
 
@@ -213,7 +196,7 @@ def test_ordinary_decoding_keeps_audio_parameters_and_existing_guards(make_worke
     if kind == 'disabled':
         session.app.config['dictation'] = {'speech_presence_gate': False}
     worker._final_pass()
-    assert session.app.model.transcribe.call_args.args[0] is audio
+    assert np.shares_memory(session.app.model.transcribe.call_args.args[0], audio)  # 1052d source slice
     assert not session.app.model.transcribe.call_args.kwargs.get('word_timestamps', False)
     assert session.on_final.call_args.args == ('Real sentence.',)
 
@@ -229,20 +212,15 @@ def test_cancelled_sparse_final_does_not_start_native_decode(make_worker, monkey
 
 
 def test_sparse_decoder_rejection_retries_same_compact_timeline(make_worker, monkeypatch):
+    # 1052d: exhausted native ladder is reported; no compact/5 s recovery.
     audio, result = clips()['mixed'], measured('mixed')
-    compact, intervals = regions.locate(audio, result).concatenate(audio)
-    a, b = intervals[0]
-    seg = _segment(text=' Clear.', words=[word(' Clear.', a+.4, min(b, a+.9))])
-    worker, session = make_worker([seg])
+    worker, session = make_worker([_segment(text=' Clear.', words=[word(' Clear.', 2., 2.5)])])
     bind_audio(session, monkeypatch, audio, result)
-    guard = Mock(side_effect=['decoder_failure', None])
-    monkeypatch.setattr(worker, '_decoder_guard', guard)
+    monkeypatch.setattr(worker, '_decoder_guard', Mock(return_value='decoder_failure'))
     worker._final_pass()
-    assert session.app.model.transcribe.call_count == 2
-    for call in session.app.model.transcribe.call_args_list:
-        np.testing.assert_array_equal(call.args[0], compact)
-        assert call.kwargs['word_timestamps']
-    assert session.on_final.call_args.args == ('Clear.',)
+    assert session.on_final.call_args.args == (None,)
+    assert session.app.model.transcribe.call_count == 1
+    np.testing.assert_array_equal(session.app._hold_retry_audio.audio, audio)
 
 
 def test_known_empty_region_result_does_not_decode_even_if_earlier_gate_passed(make_worker, monkeypatch):
@@ -261,31 +239,23 @@ def test_plan_inference_failure_retains_existing_decoder(make_worker, monkeypatc
     detector = bind_audio(session, monkeypatch, audio, result)
     detector.measure.side_effect = [result, RuntimeError('synthetic detector failure')]
     worker._final_pass()
-    assert session.app.model.transcribe.call_args.args[0] is audio
-    assert session.on_final.call_args.args == ('Real sentence.',)
+    assert session.on_final.call_args.args[0]
+    assert all(np.shares_memory(call.args[0], audio) for call in session.app.model.transcribe.call_args_list)
+    assert all(len(call.args[0]) <= 25*RATE for call in session.app.model.transcribe.call_args_list)
 
 
 def test_sparse_recovery_retains_audio_and_preserves_explicit_try_again(make_worker, monkeypatch):
     audio, result = clips()['mixed'], measured('mixed')
-    compact, bounds = regions.locate(audio, result).concatenate(audio)
-    a,b = bounds[0]
-    seg = _segment(text=' Recovered.', words=[word(' Recovered.', a+.4,min(b,a+.9))])
-    worker, session = make_worker([seg])
+    worker, session = make_worker([_segment(text=' Recovered.', words=[word(' Recovered.', 2., 2.5)])])
     bind_audio(session, monkeypatch, audio, result)
-    original_guard = worker._decoder_guard
     monkeypatch.setattr(worker, '_decoder_guard', Mock(return_value='decoder_failure'))
     worker._final_pass()
-    retained = session.app._hold_retry_audio
-    np.testing.assert_array_equal(retained.audio, compact)
-    assert retained.speech_regions == bounds
-    # A subsequent ordinary short hold saying try again uses retained compact
-    # PCM; its words still cross the sparse alignment check before delivery.
-    monkeypatch.setattr(worker, '_decoder_guard', original_guard)
+    np.testing.assert_array_equal(session.app._hold_retry_audio.audio, audio)
+    monkeypatch.setattr(worker, '_decoder_guard', Mock(return_value=None))
     session._stop_capture.return_value = np.zeros(RATE, np.float32)
-    monkeypatch.setattr(presence._presence, 'measure', lambda *args: presence.Presence(False))
-    session.app.model.transcribe.side_effect = [
-        (iter([_segment(text='try again')]), NS(language='en')),
-        (iter([seg]), NS(language='en')),
-    ]
+    monkeypatch.setattr(presence._presence, 'measure', lambda *a: presence.Presence(False))
+    responses = iter([[_segment(text='try again')], [_segment(text=' Recovered.')]])
+    session.app.model.transcribe.side_effect = lambda *a, **k: (iter(next(responses, [])), NS(language='en'))
     worker._final_pass()
-    assert session.on_final.call_args.args == ('Recovered.',)
+    assert 'Recovered.' in session.on_final.call_args.args[0]
+    np.testing.assert_array_equal(session._decode_audio, session.app._hold_retry_audio.audio)

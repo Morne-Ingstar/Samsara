@@ -210,41 +210,40 @@ def build_worker():
 
 @pytest.mark.parametrize('ratio', [37.25, 30.4, 23.1, 25.9, 13.5, 9.4])
 def test_logged_compression_rejection_recovers_with_one_clean_slate_retry(build_worker, ratio):
+    # 1052d: compression after the native ladder is an honest failure, not a 5 s recovery.
     worker, session, audio, calls = build_worker([[segment(compression_ratio=ratio)], [segment()]])
     _, _, text = recovery.stream_final(worker, audio, {'temperature': (0, .2, .4, .6)})
-    assert text == segment().text
-    assert len(calls) == 2
-    assert calls[0][1]['temperature'] == 0.0
-    assert calls[1][1]['temperature'] == .2
-    assert all(call[1]['condition_on_previous_text'] is False for call in calls)
-    assert calls[1][1]['initial_prompt'] is None
+    assert not text and session._hold_failed_ranges
+    assert len(calls) == 1 and calls[0][1]['temperature'] == (0., .2)
+    assert calls[0][1]['condition_on_previous_text'] is False
+    np.testing.assert_array_equal(session.app._hold_retry_audio.audio, audio)
 
 
 def test_backstop_logprob_rejection_recovers_from_already_shown_partial(build_worker):
     # 1.6 s / avg_logprob -.758 backstop: simulated repeated final text.
+    # 1052d: loop retry cannot fall back to an unrelated preview.
     worker, session, audio, calls = build_worker(
         [[segment(text='loop loop loop loop', avg_logprob=-.758)]], duration=1.6,
         partial='The accepted partial sentence.')
     _, _, text = recovery.stream_final(worker, audio, {})
-    assert text == session._last_partial
-    assert len(calls) == 1
+    assert not text and session._decode_failure
+    assert len(calls) == 2 and calls[1][1]['temperature'] == .4
 
 
 def test_long_recovery_is_chunked_once_without_temperature_ladders(build_worker):
-    worker, session, audio, calls = build_worker(
-        [[segment(compression_ratio=37.25)]] +
-        [[segment(text=t)] for t in ('Opening sentence.', 'Middle sentence.', 'Next thought.', 'Final words.')],
-        duration=17.4)
+    # 1052d: long PCM is chunked before its first decode; no secondary 5 s chunks.
+    worker, session, audio, calls = build_worker([[segment()], [segment(text='Final words.')]], duration=45)
     _, _, text = recovery.stream_final(worker, audio, {})
     assert text.endswith('Final words.')
-    assert len(calls) == 5 and max(n for n, _ in calls[1:]) <= 5*16000
-    assert all(p['temperature'] == .2 for _, p in calls[1:])
+    assert len(calls) == 2 and all(n <= 25*16000 for n, _ in calls)
+    assert all(p['temperature'] == (0., .2) for _, p in calls)
 
 
 def test_failed_retry_keeps_audio_and_both_displays_get_truthful_feedback(build_worker):
     worker, session, audio, calls = build_worker([[segment(compression_ratio=13.5)], [segment(compression_ratio=9.4)]])
     _, _, text = recovery.stream_final(worker, audio, {})
-    assert not text and session._decode_failure == recovery.UNCLEAR
+    from samsara.transcript_gates import LOOP_WARNING
+    assert not text and session._decode_failure == LOOP_WARNING  # 1052d native ladder failure
     np.testing.assert_array_equal(session.app._hold_retry_audio.audio, audio)
     for full in (True, False):
         overlay = NS(flash_done_and_fade=Mock())
@@ -256,7 +255,7 @@ def test_failed_retry_keeps_audio_and_both_displays_get_truthful_feedback(build_
         session._mark_done = Mock()
         assert recovery.deliver_failure(session, 2.6)
         shown = overlay.show_empty_result if full else overlay.update_text
-        assert shown.call_args.args[0] == recovery.UNCLEAR
+        assert shown.call_args.args[0] == LOOP_WARNING  # 1052d
         assert 'no speech' not in shown.call_args.args[0].lower()
         session._mark_done.assert_called_once()
 
@@ -363,12 +362,13 @@ def test_capture_cannot_be_stolen_before_final_snapshot_finishes():
 
 
 def test_batch_guard_failure_has_recovery_and_failure_is_not_empty_speech(build_worker):
-    worker, session, audio, calls = build_worker([[segment(compression_ratio=30.4)], [segment()]])
-    result = recovery.decode_hold(session.app, audio, {}, len(audio)/16000)
-    assert result.text == segment().text and result.diag_path == 'hold_618'
-    worker, session, audio, calls = build_worker([[segment(compression_ratio=13.5)], [segment(compression_ratio=9.4)]])
+    # 1052d: batch shares the native ladder; an exhausted chunk is retained and warned.
+    from samsara.transcript_gates import LOOP_WARNING
+    worker, session, audio, calls = build_worker([[segment(compression_ratio=13.5)]])
     session.app._show_outcome_chip = Mock()
     result = recovery.decode_hold(session.app, audio, {}, len(audio)/16000)
-    assert not result.text and result.diag_path == 'failed_618'
-    assert result.language_rejected  # legacy missing-data retry must not run a third time
-    session.app._show_outcome_chip.assert_called_once_with(recovery.UNCLEAR, 'warning')
+    assert not result.text and result.diag_path == 'hold_1052d'
+    assert result.language_rejected
+    assert len(calls) == 1
+    session.app._show_outcome_chip.assert_called_once_with(LOOP_WARNING, 'warning')
+    np.testing.assert_array_equal(session.app._hold_retry_audio.audio, audio)

@@ -226,7 +226,7 @@ def start_streaming_history(session, app):
 
 def stream_final(worker, audio, params):
     """Retain raw final-segment confidence before streaming cleanup/delivery."""
-    from samsara.speech_regions import stream_final as decode_final
+    from samsara.decode_recovery import stream_final as decode_final
     result = decode_final(worker, audio, params)
     session = worker._session
     remember_segments(session.app, result[0], getattr(session, '_mic_score_evidence', None))

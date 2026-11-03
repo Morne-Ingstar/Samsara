@@ -67,7 +67,7 @@ def make_worker(monkeypatch):
 @pytest.mark.parametrize('segment,level', [
     (_segment(temperature=1.0, avg_logprob=-4.77), FLOOR),
     (_segment(temperature=0.0, compression_ratio=18.4), 0.1),
-    (_segment(temperature=0.2, avg_logprob=-2.4), 0.1),
+    (_segment(temperature=1.0, avg_logprob=-2.4), 0.1),  # 1052d full CUDA ladder exhausted
     (_segment(temperature=0.0, avg_logprob=-2.4), FLOOR),
 ])
 def test_failed_final_never_reaches_corrections_or_delivery(make_worker, segment, level):
@@ -102,9 +102,8 @@ def test_shared_batch_backstop_runs_after_decoder_guard(make_worker, monkeypatch
     monkeypatch.setattr(transcript_gates, '_is_hallucinated_segments', backstop)
     worker._final_pass()
     # Recovery retries the same admitted PCM once, guarding each decode.
-    assert session.app.model.transcribe.call_count == 2
-    assert backstop.call_count == 2
-    assert backstop.call_args_list[0] == backstop.call_args_list[1]
+    assert session.app.model.transcribe.call_count == 1  # 1052d native ladder, no recovery decode
+    assert backstop.call_count == 1  # 1052d
     assert session.on_final.call_args.args == (None,)
     session.app.process_transcription.assert_not_called()
 
@@ -115,8 +114,8 @@ def test_one_guard_line_contains_signals_without_transcript(make_worker, caplog)
         worker._final_pass()
     lines = [record.getMessage() for record in caplog.records
              if '[GUARD] streaming final discarded:' in record.getMessage()]
-    assert worker._session.app.model.transcribe.call_count == 2
-    assert len(lines) == 2  # One diagnostic per rejected original/recovery decode.
+    assert worker._session.app.model.transcribe.call_count == 1  # 1052d no generic recovery
+    assert len(lines) == 1  # 1052d: one completed native ladder.
     for line in lines:
         for signal in ('avg_logprob=', 'compression_ratio=', 'temperature=', 'speech_level='):
             assert signal in line
@@ -149,7 +148,7 @@ def test_only_streaming_final_ladder_changes(make_worker, profile_temp, expected
     worker, session = make_worker([], params={'temperature': profile_temp})
     original_profile = dict(session.app.get_transcription_params())
     final = worker._final_params()
-    assert final['temperature'] == expected
+    assert final['temperature'] == (0., .2, .4, .6, .8, 1.)  # 1052d device policy
     assert final['vad_filter'] is False
     assert final['without_timestamps'] is False
     assert session.app.get_transcription_params() == original_profile
@@ -164,12 +163,14 @@ def test_missing_profile_temperature_has_two_rungs(make_worker):
     profile = dict(session.app.get_transcription_params())
     profile.pop('temperature')
     session.app.get_transcription_params.return_value = profile
-    assert worker._final_params()['temperature'] == (0.0, 0.2)
+    assert worker._final_params()['temperature'] == (0., .2, .4, .6, .8, 1.)  # 1052d unknown device is not CPU
 
 
 def test_suppressed_direct_partial_is_undone_and_notice_posted_once(make_worker, monkeypatch):
     worker, fake = make_worker([_segment(avg_logprob=-4.77, temperature=1.0)], FLOOR)
     session = streaming.StreamingSession.__new__(streaming.StreamingSession)
+    session.__dict__.update(fake.__dict__)  # 1052d exercise the same capture and delivery owner.
+    worker._session = session
     session.app = fake.app
     session._state_lock = threading.Lock()
     session._paste_lock = threading.Lock()
@@ -192,7 +193,8 @@ def test_suppressed_direct_partial_is_undone_and_notice_posted_once(make_worker,
     assert session._last_pasted is False
     streaming.pyautogui.hotkey.assert_called_once_with('ctrl', 'z')
     overlay._partials.controller.post.assert_called_once()
-    assert overlay._partials.controller.post.call_args.args[0].message == 'No speech'
+    from samsara.transcript_gates import LOOP_WARNING
+    assert overlay._partials.controller.post.call_args.args[0].message == LOOP_WARNING  # 1052d honest failure
     overlay.flash_done_and_fade.assert_called_once_with(session._mark_done)
     if streaming.pyperclip is not None:
         streaming.pyperclip.copy.assert_not_called()

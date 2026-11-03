@@ -11,7 +11,7 @@ from types import SimpleNamespace as NS
 import numpy as np
 import pytest
 
-from samsara import decode_recovery, hold_windows, speech_presence
+from samsara import decode_recovery, speech_presence
 from tests.test_silent_hold_387 import make_worker
 
 RATE = 16000
@@ -28,8 +28,11 @@ def segment(text, start, end):
 
 @pytest.fixture
 def capture(make_worker, monkeypatch):
-    monkeypatch.setattr(speech_presence._presence, 'measure', lambda pcm, rate:
-        speech_presence.Presence(True, longest_s=1. if np.any(pcm) else 0.))
+    def measure(pcm, rate):
+        scores = tuple(.9 if np.any(pcm[i:i+512]) else 0. for i in range(0,len(pcm),512))
+        return speech_presence.Presence(True, max_probability=max(scores, default=0),
+            probabilities=scores, frames=len(scores), samples=len(pcm))
+    monkeypatch.setattr(speech_presence._presence, 'measure', measure)
 
     def build(duration, *, missing='tail', silent_after=None):
         pcm = np.zeros(duration * RATE, np.float32)
@@ -42,7 +45,7 @@ def capture(make_worker, monkeypatch):
         worker, session = make_worker([])
         app = session.app
         app.device_type = 'cpu'
-        app.config['dictation'] = {'speech_presence_gate': False}
+        app.config['dictation'] = {'speech_presence_gate': True}  # 1052d chunk evidence
         app._filter_dictation_language = lambda text, info: True
         session._stop_capture.return_value = pcm
         app._dictation_consumer.snapshot_streaming_audio.return_value = pcm
@@ -56,7 +59,7 @@ def capture(make_worker, monkeypatch):
             if len(audio) > 30 * RATE:
                 selected = [(text, a, b) for text, a, b in selected
                             if (a < 25 if missing in ('tail', 'empty') else not 30 <= a < 60)]
-            if missing == 'empty' and len(audio) <= 30 * RATE:
+            if missing == 'empty' and offset >= 24:
                 selected = []
             return iter(segment(text, a - offset, b - offset) for text, a, b in selected), NS(language='en')
 
@@ -81,9 +84,11 @@ def test_all_windows_survive_real_hold_callers(capture, duration, path):
     else:
         result = decode_recovery.decode_hold(session.app, pcm, worker._final_params(), duration)
         text = result.text
-    assert text == ' '.join(item[0] for item in timeline)
+    # 1052d: a first late preview shows only its trailing window; finals cover all.
+    expected = timeline if path != 'partial' else [item for item in timeline if item[1] >= calls[0][0]]
+    assert text == ' '.join(item[0] for item in expected)
     # 1021 may trim only the digital-silence suffix before the native call.
-    assert timeline[-1][2] <= calls[0][1] <= duration
+    assert all(end - start <= 25.001 for start, end, _ in calls)  # 1052d bounded from first call
     assert all(end - start <= 25.001 for start, end, _ in calls[1:])
     assert all(not params['without_timestamps'] for _, _, params in calls)
     assert all(not params['condition_on_previous_text'] for _, _, params in calls)
@@ -109,10 +114,11 @@ def test_silent_second_half_adds_nothing_and_does_not_retry(capture, caplog, pat
             text = decode_recovery.decode_hold(session.app, pcm, worker._final_params(), 90).text
         else:
             text = decode_recovery.stream_final(worker, pcm, worker._final_params())[2]
-    assert text == ' '.join(item[0] for item in timeline)
-    assert len(calls) == 1
+    expected = timeline if path != 'partial' else []  # 1052d first late preview has no frozen prefix
+    assert text == ' '.join(item[0] for item in expected)
+    assert all(start < 30 or path == 'partial' for start, _, _ in calls)  # 1052d: no spoken tail is lost
     assert not hasattr(session.app, '_hold_retry_audio')
-    assert not any('[HOLD_WINDOWS] unresolved' in r.message for r in caplog.records)
+    assert not any('[HOLD_FINAL] failed' in r.message for r in caplog.records)
 
 
 def test_empty_spoken_window_warns_with_range_and_keeps_entire_audio(capture, caplog):
@@ -122,11 +128,12 @@ def test_empty_spoken_window_warns_with_range_and_keeps_entire_audio(capture, ca
     assert text == ' '.join(item[0] for item in timeline[:3])
     retained = session.app._hold_retry_audio
     np.testing.assert_array_equal(retained.audio, pcm)
-    assert retained.reason == 'untranscribed_window'
+    assert retained.reason == 'empty_spoken_chunk'  # 1052d explicit chunk failure
     pcm[0] = .9
     assert retained.audio[0] == 0  # Retry owns a stable copy.
-    warning = next(r.message for r in caplog.records if '[HOLD_WINDOWS] unresolved' in r.message)
-    assert 'start_s=24.000 end_s=90.000' in warning
+    warning = next(r.message for r in caplog.records if '[HOLD_FINAL] failed' in r.message)
+    start, end, _ = session._hold_failed_ranges[0]
+    assert f'start_s={start:.3f} end_s={end:.3f}' in warning  # 1052d source-time core
     assert 'audio_retained=1' in warning
     assert not any(label in warning for label in LABELS)
 
@@ -135,7 +142,7 @@ def test_recovery_error_preserves_native_words_and_retains_audio(capture, caplog
     worker, session, pcm, timeline, _ = capture(45)
     decode = session.app.model.transcribe.side_effect
     def failing(audio, **params):
-        if len(audio) <= 30 * RATE:
+        if (audio.ctypes.data - pcm.ctypes.data) // pcm.itemsize >= 24 * RATE:
             raise RuntimeError('synthetic window failure')
         return decode(audio, **params)
     session.app.model.transcribe.side_effect = failing
@@ -143,39 +150,41 @@ def test_recovery_error_preserves_native_words_and_retains_audio(capture, caplog
         text = decode_recovery.stream_final(worker, pcm, worker._final_params())[2]
     assert text == ' '.join(item[0] for item in timeline[:3])
     np.testing.assert_array_equal(session.app._hold_retry_audio.audio, pcm)
-    assert any('window_decode_failed' in r.message for r in caplog.records)
+    assert any('chunk_decode_failed' in r.message for r in caplog.records)
 
 
 def test_context_overlap_deduplicates_recovery_only():
     original = segment('We checked the northern gate.', 0, 24)
     recovered = segment('northern gate. The carrots are ready.', 23.8, 28)
     result = [original]
-    hold_windows._append(result, recovered, recovered=True)
+    decode_recovery._append(result, [recovered])
     assert ''.join(s.text for s in result).strip() == 'We checked the northern gate. The carrots are ready.'
     repeated = segment('The carrots are ready.', 30, 33)
-    hold_windows._append(result, repeated, recovered=True)
-    assert len(result) == 3  # Repetition outside overlapping context is intentional.
+    decode_recovery._append(result, [repeated])
+    assert len(result) == 3
 
 
 def test_continuous_pcm_windows_cover_every_sample_and_stay_bounded():
-    pcm = np.full(90 * RATE, .01, np.float32)
-    windows = list(hold_windows._windows(pcm, RATE, 0, 90))
-    assert windows[0][0] == 0 and windows[-1][1] == len(pcm)
-    assert all(0 < end - start <= 25 * RATE for start, end in windows)
-    assert all(right[0] <= left[1] for left, right in zip(windows, windows[1:]))
+    pcm = np.full(90*RATE, .01, np.float32)
+    chunks = decode_recovery.chunk_audio(pcm, RATE, speech_presence.Presence(False))
+    assert chunks[0].start == 0 and chunks[-1].end == len(pcm)
+    assert all(0 < c.end-c.start <= 25*RATE for c in chunks)
+    assert all(right.core_start == left.core_end for left,right in zip(chunks,chunks[1:]))
 
 
 def test_middle_gap_context_cannot_repeat_next_native_words():
+    # 1052d has ordered chunks, no out-of-order recovery context.
+    result = [segment('Finish the garden. The golden gate', 56, 61)]
     original = segment('The golden gate is closed.', 60, 64)
-    recovered = segment('Finish the garden. The golden gate', 56, 61)
-    item = hold_windows._trim_following_context(recovered, [original])
-    assert item.text.strip() == 'Finish the garden.'
+    decode_recovery._append(result, [original])
+    assert ''.join(s.text for s in result).strip() == 'Finish the garden. The golden gate is closed.'
     assert original.text.strip() == 'The golden gate is closed.'
 
 
 def test_native_timestamps_in_final_padding_do_not_invent_missing_audio():
-    assert hold_windows._gaps([segment('Complete recording.', 0, 91.5)], 90) == []
-    assert hold_windows._gaps([segment('End of padded window.', 91, 92)], 90) == [(0, 90)]
+    clipped = decode_recovery._clip_timing([segment('Complete recording.', 0, 91.5)], 90)
+    assert clipped[0].end == 90
+    assert clipped[0].start == 0
 
 
 @pytest.mark.parametrize('timing', ['missing', 'invalid_recovery'])
@@ -185,32 +194,32 @@ def test_invalid_timestamps_keep_native_text_and_recoverable_audio(capture, capl
     def bad_timing(audio, **params):
         segments, info = decode(audio, **params)
         segments = list(segments)
-        if timing == 'missing':
+        if timing == 'missing' and (audio.ctypes.data - pcm.ctypes.data) // pcm.itemsize >= 24 * RATE:
             for s in segments:
                 del s.start
-        elif len(audio) <= 30 * RATE:
+        elif (audio.ctypes.data - pcm.ctypes.data) // pcm.itemsize >= 24 * RATE:
             for s in segments:
                 s.end = float('nan')
         return iter(segments), info
     session.app.model.transcribe.side_effect = bad_timing
     with caplog.at_level(logging.WARNING):
         text = decode_recovery.stream_final(worker, pcm, worker._final_params())[2]
-    assert text == ' '.join(item[0] for item in timeline[:3])
+    expected = timeline if timing == 'missing' else timeline[:3]
+    assert text == ' '.join(item[0] for item in expected)  # 1052d missing timing warns without erasing recognized words
     np.testing.assert_array_equal(session.app._hold_retry_audio.audio, pcm)
     assert any('audio_retained=1' in r.message for r in caplog.records)
 
 
 def test_cancel_between_windows_never_launches_another_native_decode(capture):
     worker, session, pcm, _, calls = capture(90)
-    def check():
-        if calls:
-            raise TimeoutError('cancelled')
-    returned, _ = hold_windows.transcribe(session.app, pcm, worker._final_params(),
-        lambda app, audio, **params: app.model.transcribe(audio, **{k: v for k, v in params.items() if k != 'path'}),
-        check=check)
-    with pytest.raises(TimeoutError):
-        list(returned)
+    def decode(audio, **params):
+        calls.append(1)
+        session.cancel_event.set()
+        return iter([segment('Must not deliver.', 0, 1)]), NS(language='en')
+    session.app.model.transcribe.side_effect = decode
+    assert not decode_recovery.stream_final(worker, pcm, worker._final_params())[2]
     assert len(calls) == 1
+    assert session.app._hold_decode_job.done.wait(1)
 
 
 @pytest.mark.parametrize('device,short,long', [('cpu', 8, 32), ('cuda', 15, 60)])

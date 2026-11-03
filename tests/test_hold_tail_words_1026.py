@@ -92,11 +92,11 @@ def test_shorter_final_appends_guarded_preview_suffix_without_replacing_prefix(m
     session._stop_capture.return_value = audio()
     with caplog.at_level(logging.INFO):
         worker._final_pass()
-    expected = 'Keep the complete project notes including the flibberquax.'
+    expected = final.text  # 1052d: successful final wins even over a longer preview
     assert session.on_final.call_args.args == (expected,)
     assert session.app.model.transcribe.call_count == 1
     line = next(r.getMessage() for r in caplog.records if '[HOLD_FINAL]' in r.getMessage())
-    assert 'preview_tail_words=3' in line
+    assert 'preview_tail_words=0' in line  # 1052d
     assert f'chars_delivered={len(expected)}' in line
 
 
@@ -138,16 +138,16 @@ def test_quiet_spoken_outro_is_not_dropped_for_confidence_alone(make_worker):
 
 
 def test_fallback_exhausted_still_rejects_and_uses_only_accepted_preview(make_worker, caplog):
-    failed = segment('Untrusted decoder output.', avg_logprob=-1.27, temperature=.2)
+    failed = segment('Untrusted decoder output.', avg_logprob=-1.27, temperature=1.)  # 1052d CUDA ladder exhausted
     worker, session = make_worker([failed])
     session._last_partial = 'Accepted preview words.'
     session._stop_capture.return_value = audio()
     with caplog.at_level(logging.INFO):
         worker._final_pass()
-    assert session.on_final.call_args.args == (session._last_partial,)
+    assert session.on_final.call_args.args == (None,)  # 1052d no whole-preview replacement
     assert session.app.model.transcribe.call_count == 1
     line = next(r.getMessage() for r in caplog.records if '[HOLD_FINAL]' in r.getMessage())
-    assert "'fallback_exhausted': 1" in line
+    assert 'reason=fallback_exhausted' in line  # 1052d range failure precedes audit summary
     assert failed.text not in line
 
 

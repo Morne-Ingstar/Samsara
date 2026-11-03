@@ -1660,7 +1660,9 @@ class StreamingWorker(threading.Thread):
             if audio is None or skip_decode(audio, app, final=False, path='streaming', state=self):
                 return None
             params = self._partial_params()
-            from samsara.hold_windows import partial_decode; segments, _ = partial_decode(self, audio, params)
+            from samsara.decode_recovery import partial_decode; segments, _ = partial_decode(self, audio, params)
+            if segments is None:
+                return None
             seg_list = list(segments)
             text = "".join(seg.text for seg in seg_list).strip()
             if self._decoder_guard(seg_list, text, params, partial=True):
@@ -1675,16 +1677,14 @@ class StreamingWorker(threading.Thread):
     def _final_pass(self):
         app = self._session.app
         try:
-            # Acquire final audio by stopping the accumulator.  stop_streaming()
-            # stops the drain thread and returns all frames atomically -- no race
-            # with dictation.py's stop_recording(), which no longer calls it.
+            # Stop and drain the accumulator atomically before taking model_lock.
             # Done OUTSIDE model_lock: join can take up to 2s on slow threads.
             consumer = getattr(app, '_dictation_consumer', None)
             if consumer is not None and hasattr(consumer, 'stop_streaming'):
                 audio = self._session._stop_capture()
             else:
                 audio = self._snapshot_audio()   # non-ACE fallback
-            from samsara.speech_regions import LOST
+            from samsara.decode_recovery import LOST
             if getattr(consumer, 'capture_loss', False) is True:
                 self._session._decode_failure = LOST
                 self._session.on_final(None, duration_s=len(audio) / app.model_rate if audio is not None else 0)
@@ -1815,9 +1815,9 @@ class StreamingWorker(threading.Thread):
         params = final_base_params(app, _languages.resolve_transcribe_language(app))  # 813
         params['beam_size'] = FINAL_BEAM
         params['vad_filter'] = False
-        # 387: retain fast's single deterministic pass; other profiles get
-        # at most one retry. Do not undo 124's without_timestamps=False fix.
-        params['temperature'] = 0.0 if params.get('temperature') == 0.0 else (0.0, 0.2)
+        # 1052d: device, rather than profile, bounds the fallback ladder.
+        from samsara.decode_recovery import temperature_ladder
+        params.update(temperature=temperature_ladder(app), condition_on_previous_text=False)
         return params
 
     def _decoder_guard(self, segments, text, params, *, partial=False, duration_s=None):
@@ -2096,7 +2096,7 @@ class StreamingSession:
             tutorial_capture.retire_final(self, text, raw_text, duration_s)
             return
         from samsara.hold_recording_recovery import prepare_final
-        text, raw_text, duration_s = prepare_final(self, text, raw_text, duration_s)
+        text, raw_text, duration_s = (text, raw_text, duration_s) if getattr(self, '_hold_final_audit', None) or getattr(self, '_hold_failed_ranges', ()) else prepare_final(self, text, raw_text, duration_s)
         from samsara.decode_recovery import deliver_failure
         if deliver_failure(self, duration_s):
             return
