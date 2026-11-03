@@ -91,12 +91,16 @@ LIVENESS_CHECK_S = 1.0
 SILENT_CHECKS = 3
 #: How long the self-test waits for our own injected move to reach the hook.
 PROBE_WAIT_S = 0.25
+ACTIVE_RETRY_S = 30.0
+INPUT_IDLE_S = 30.0
 
 _perf = time.perf_counter
 _sleep = time.sleep
 _STOP = object()
+_WAKE = object()
 MOUSEEVENTF_MOVE = 0x0001
 INPUT_MOUSE = 0
+PROBE_TAG = 0x1032
 
 if sys.platform == 'win32':
     _user32   = ctypes.windll.user32
@@ -194,8 +198,50 @@ if sys.platform == 'win32':
         input queues -- the self-test is then inconclusive, never a loss."""
         inp = _INPUT()
         inp.type = INPUT_MOUSE
-        inp.mi = _MOUSEINPUT(0, 0, 0, MOUSEEVENTF_MOVE, 0, None)
+        inp.mi = _MOUSEINPUT(0, 0, 0, MOUSEEVENTF_MOVE, 0, PROBE_TAG)
         return _user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(_INPUT)) == 1
+
+
+def _input_status():
+    """(own input desktop, idle seconds, last-input tick), or unknown.
+
+    Poll only from the dispatcher; never switch desktops or inject input here.
+    Desktop handles need private, pointer-sized ctypes contracts (like the hook).
+    """
+    if sys.platform != 'win32':
+        return None
+    class LASTINPUTINFO(ctypes.Structure):
+        _fields_ = [('cbSize', ctypes.wintypes.UINT), ('dwTime', ctypes.wintypes.DWORD)]
+    info = LASTINPUTINFO()
+    info.cbSize = ctypes.sizeof(info)
+    if not _user32.GetLastInputInfo(ctypes.byref(info)):
+        return None
+    idle = ((_kernel32.GetTickCount() - info.dwTime) & 0xFFFFFFFF) / 1000.0
+    open_desktop = _user32['OpenInputDesktop']
+    open_desktop.argtypes = (ctypes.wintypes.DWORD, ctypes.wintypes.BOOL, ctypes.wintypes.DWORD)
+    open_desktop.restype = ctypes.c_void_p
+    desktop = open_desktop(0, False, 0x0001)  # DESKTOP_READOBJECTS
+    if not desktop:
+        return False, idle, info.dwTime
+    try:
+        thread_desktop = _user32['GetThreadDesktop']
+        thread_desktop.argtypes = (ctypes.wintypes.DWORD,)
+        thread_desktop.restype = ctypes.c_void_p
+        get_name = _user32['GetUserObjectInformationW']
+        get_name.argtypes = (ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p,
+                            ctypes.wintypes.DWORD, ctypes.c_void_p)
+        names = []
+        for handle in (desktop, thread_desktop(_kernel32.GetCurrentThreadId())):
+            name = ctypes.create_unicode_buffer(256)
+            needed = ctypes.wintypes.DWORD()
+            if not get_name(handle, 2, name, ctypes.sizeof(name), ctypes.byref(needed)):
+                return None
+            names.append(name.value)
+        return names[0] == names[1], idle, info.dwTime
+    finally:
+        close = _user32['CloseDesktop']
+        close.argtypes = (ctypes.c_void_p,)
+        close(desktop)
 
 
 def _coerce_suppress_buttons(value) -> frozenset:
@@ -293,6 +339,19 @@ class MouseHook:
         self._confirm_due = 0.0
         self._pump_sequence = 0
         self._pump_ack = 0
+        self._pump_checked_at = None
+        self._pump_ok = None
+        self._loop_state = 'not started'
+        self._last_event = None
+        self._probe_event = None
+        self._wake_queued = False
+        self._activity_active = False
+        self._input_paused = False
+        self._last_input_tick = None
+        self._last_real_input_at = None
+        self._probe_input_tick = None
+        self._retry_input_tick = None
+        self._input_retry_used = False
         self._hook_id = None
         self._thread = None
         self._thread_id = None
@@ -346,8 +405,16 @@ class MouseHook:
             suppress = False
             try:
                 self.callback_count += 1   # EVERY callback is liveness: move, wheel, any button (35)
-                if n_code >= 0 and (w_param == WM_XBUTTONDOWN or w_param == WM_XBUTTONUP):
+                if n_code >= 0:
                     info = ctypes.cast(l_param, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
+                    injected = bool(info.flags & LLMHF_INJECTED)
+                    self._last_event = (t0, int(w_param), int(info.flags))
+                    if info.dwExtraInfo == PROBE_TAG:
+                        self._probe_event = self._last_event
+                    if self.recovering and not self._wake_queued:
+                        self._wake_queued = True
+                        self._events.put(_WAKE)
+                if n_code >= 0 and (w_param == WM_XBUTTONDOWN or w_param == WM_XBUTTONUP):
                     name = 'mouse4' if ((info.mouseData >> 16) & 0xFFFF) == XBUTTON1 else 'mouse5'
                     events = self._events
                     events.put((name, w_param == WM_XBUTTONDOWN, t0, bool(info.flags & LLMHF_INJECTED)))
@@ -357,7 +424,11 @@ class MouseHook:
                             self.dropped_events += 1
                         except queue.Empty:
                             pass
-                    suppress = name in self.suppress_buttons
+                    # The first real press already proves life. Suppress it
+                    # now; app recovery runs before its dispatcher delivery.
+                    buttons = (self.requested_suppress_buttons if self.recovering and not injected
+                               else self.suppress_buttons)
+                    suppress = name in buttons
             except BaseException:
                 self.callback_errors += 1
                 suppress = False           # broken callback: never eat a click
@@ -382,6 +453,9 @@ class MouseHook:
     # ------------------------------------------------------------------
 
     def _deliver(self, item) -> None:
+        self._recover_from_callbacks()
+        if item is _WAKE:
+            return
         name, pressed, stamp, injected = item
         logger.debug("[MOUSE] hook %s pressed=%s injected=%s queued=%.1fms",
                      name, pressed, injected, (_perf() - stamp) * 1000.0)
@@ -404,7 +478,7 @@ class MouseHook:
             if item is _STOP:
                 continue
             self._deliver(item)
-            delivered += 1
+            delivered += item is not _WAKE
 
     def _dispatch_loop(self) -> None:
         while True:
@@ -489,25 +563,49 @@ class MouseHook:
         for any callback to arrive."""
         before = self.callback_count
         started = _perf()
+        self._probe_event = None
+        accepted = False
+        verdict = 'inconclusive'
         try:
-            if not _send_zero_move():
-                return 'inconclusive'
+            accepted = _send_zero_move()
+            if accepted:
+                deadline = started + PROBE_WAIT_S
+                while self.callback_count == before and _perf() < deadline:
+                    _sleep(0.01)
+                if self.callback_count != before:
+                    verdict = 'alive'
+                elif _perf() - started <= PROBE_WAIT_S * 2 and self._pump_responsive():
+                    verdict = 'alive' if self.callback_count != before else 'dead'
         except Exception:
-            return 'inconclusive'
-        deadline = started + PROBE_WAIT_S
-        while True:
-            if self.callback_count != before:
-                return 'alive'
-            if _perf() >= deadline:
-                # A starved dispatcher or hook pump cannot deliver a timely
-                # probe. A missed injection alone is never evidence of loss.
-                if _perf() - started > PROBE_WAIT_S * 2 or not self._pump_responsive():
-                    return 'inconclusive'
-                return 'alive' if self.callback_count != before else 'dead'
-            _sleep(0.01)
+            logger.debug('[MOUSE HOOK] self-test injection raised', exc_info=True)
+        finally:
+            # SendInput itself can reset GetLastInputInfo. Do not let our
+            # probes look like a returning user or keep an idle session active.
+            if accepted and self._last_real_input_at is not None:
+                status = _input_status()
+                if status is not None:
+                    self._probe_input_tick = status[2]
+            event = self._last_event
+            probe = self._probe_event
+            logger.info('[MOUSE HOOK] self-test=%s accepted=%s elapsed_ms=%.1f callbacks=%d '
+                        'tag_seen=%s probe_flags=%s probe_injected=%s probe_after_ms=%s '
+                        'last_message=%s last_flags=%s callback_age_s=%s '
+                        'thread=%s loop=%s pump_ok=%s pump_age_s=%s callback_max_ms=%.2f',
+                        verdict, accepted, (_perf() - started) * 1000, self.callback_count - before,
+                        probe is not None, None if probe is None else probe[2],
+                        None if probe is None else bool(probe[2] & LLMHF_INJECTED),
+                        None if probe is None else round((probe[0] - started) * 1000, 1),
+                        None if event is None else event[1], None if event is None else event[2],
+                        None if self.last_callback_at is None else round(_perf() - self.last_callback_at, 3),
+                        self._thread_id, self._loop_state, self._pump_ok,
+                        None if self._pump_checked_at is None else round(_perf() - self._pump_checked_at, 3),
+                        self.slow_callback_max_ms)
+        return verdict
 
     def _pump_responsive(self) -> bool:
         """Measure a fresh round trip through the installing thread's pump."""
+        self._pump_checked_at = _perf()
+        self._pump_ok = False
         if self._thread_id is None:
             return False
         self._pump_sequence += 1
@@ -517,9 +615,15 @@ class MouseHook:
             return False
         while _perf() - started < PROBE_WAIT_S:
             if self._pump_ack == sequence:
+                self._pump_ok = True
                 return True
             _sleep(0.01)
         return False
+
+    def _recover_from_callbacks(self) -> None:
+        """Dispatcher only: recover before routing the first returning press."""
+        if self.recovering and self.installed and self.callback_count != self._recovery_count:
+            self._recovered()
 
     def watchdog_tick(self) -> None:
         """Report counters and keep retrying until explicitly stopped."""
@@ -527,12 +631,47 @@ class MouseHook:
         if self._stopping.is_set():
             return
         now = _perf()
+        self._recover_from_callbacks()
+        # No installing thread means no session to sample (also supports
+        # non-Windows callers). Failed native installs retain their thread id.
+        status = _input_status() if self._thread_id is not None else None
+        resumed = False
+        if status is not None:
+            available, idle, tick = status
+            if tick == self._probe_input_tick and self._last_real_input_at is not None:
+                idle = max(idle, now - self._last_real_input_at)
+            else:
+                self._last_real_input_at = now - idle
+                self._last_input_tick = tick
+            self._activity_active = available and idle < INPUT_IDLE_S
+            if not self._activity_active:
+                self._input_paused = True
+                self._watch_pos, self._watch_count, self._silent_checks = None, self.callback_count, 0
+                self._input_retry_used = False
+                return
+            resumed, self._input_paused = self._input_paused, False
+            if self._retry_due is not None:
+                self._retry_due = min(self._retry_due, now + ACTIVE_RETRY_S)
+                if resumed or (not self._input_retry_used and self._last_input_tick != self._retry_input_tick):
+                    self._retry_due = now
+                    self._input_retry_used = True
+            elif resumed:
+                self._confirm_due = now
+        if resumed and not self.recovering and self.installed:
+            # A hook may have disappeared while checks were paused. Verify
+            # immediately instead of waiting for three more silent movements.
+            if self._self_test() == 'dead':
+                self._begin_recovery('mouse hook silent after input resumed')
+                self._stop_hook_thread()
+                self._attempt_install()
+            self._watch_pos, self._watch_count, self._silent_checks = None, self.callback_count, 0
+            return
         if self.recovering:
             self._begin_recovery(self.install_error or 'mouse hook interrupted')
         if self.recovering and self.installed:
             if self.callback_count != self._recovery_count:
                 self._recovered()
-            elif now >= self._confirm_due:
+            elif self._retry_due is None and now >= self._confirm_due:
                 self._confirm_due = now + SILENT_CHECKS * LIVENESS_CHECK_S
                 verdict = self._self_test()
                 if verdict == 'alive':
@@ -547,6 +686,7 @@ class MouseHook:
         if self._retry_due is not None:
             if now >= self._retry_due:
                 self._retry_due = None
+                self._stop_hook_thread()
                 self._attempt_install()
             return
         reason = self._hook_lost()
@@ -554,16 +694,21 @@ class MouseHook:
             self._reinstall(reason)
 
     def _reinstall(self, reason: str) -> None:
+        if self.recovering and self.installed and self.callback_count != self._recovery_count:
+            self._recovered()  # a late event outranks a missed probe
+            return
         self._begin_recovery(reason)
-        self._stop_hook_thread()
         if self._stopping.is_set():
             return
         now = _perf()
         while self._reinstalls and now - self._reinstalls[0] > REINSTALL_WINDOW_S:
             self._reinstalls.popleft()
         if len(self._reinstalls) >= REINSTALL_LIMIT or self._backoff_step:
+            # Keep the replacement listening with suppression off: a failed
+            # injection must never prevent a real returning event reaching us.
             self._schedule_retry(reason)
             return
+        self._stop_hook_thread()
         self._reinstalls.append(now)
         logger.warning("[MOUSE HOOK] hook lost (%s) -- reinstalling (%d/%d this minute)",
                        reason, len(self._reinstalls), REINSTALL_LIMIT)
@@ -586,11 +731,18 @@ class MouseHook:
     def _schedule_retry(self, reason: str, *, install_failed=False) -> None:
         delay = (INSTALL_RETRY_S if install_failed else
                  RETRY_BACKOFF_S[min(self._backoff_step, len(RETRY_BACKOFF_S) - 1)])
+        if self._activity_active:
+            delay = min(delay, ACTIVE_RETRY_S)
         self._backoff_step += 1
         self._retry_due = _perf() + delay
+        self._retry_input_tick = self._last_input_tick
         logger.warning("[MOUSE HOOK] %s; suppression off, retry in %.0fs", reason, delay)
 
     def _begin_recovery(self, reason: str) -> None:
+        if not self.recovering:
+            self._recovery_count = self.callback_count
+            self._wake_queued = False
+            self._input_retry_used = False
         self.suppress_buttons = frozenset()  # first: never eat a click while unhealthy
         self.recovering = True
         self._healthy_since = None
@@ -617,6 +769,7 @@ class MouseHook:
         if self._stopping.is_set():
             return
         self.recovering = False
+        self._wake_queued = False
         self._retry_due = None
         self.install_error = ''
         # 1019: app state follows each recovered blip; legacy notice/backoff
@@ -683,14 +836,17 @@ class MouseHook:
 
     def _run(self):
         self._thread_id = _kernel32.GetCurrentThreadId()
+        self._loop_state = 'installing'
         try:
             self._hook_id = _set_windows_hook_ex()(WH_MOUSE_LL, self._proc, None, 0)
         except (ctypes.ArgumentError, OSError, TypeError) as e:
             self.install_error = f"SetWindowsHookExW raised: {e}"
+            self._loop_state = 'install failed'
             logger.error(f"[MOUSE HOOK] {self.install_error}")
             self._ready.set()
             return
         if not self._hook_id:
+            self._loop_state = 'install failed'
             self.install_error = (f"SetWindowsHookExW returned 0 "
                                   f"(GetLastError={ctypes.get_last_error() or _kernel32.GetLastError()})")
             logger.error(f"[MOUSE HOOK] {self.install_error}")
@@ -706,6 +862,7 @@ class MouseHook:
             if self._stopping.is_set():
                 return
             # GetMessageW blocks until a message arrives; WM_QUIT breaks the loop.
+            self._loop_state = 'GetMessageW'
             while _user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
                 if msg.message == WM_HOOK_PING:
                     self._pump_ack = int(msg.wParam)
@@ -713,6 +870,7 @@ class MouseHook:
                 _user32.TranslateMessage(ctypes.byref(msg))
                 _user32.DispatchMessageW(ctypes.byref(msg))
         finally:
+            self._loop_state = 'ended'
             # Uninstall on the thread that installed it, however the loop ended.
             self._unhook('installing thread')
             logger.info("[MOUSE HOOK] message loop ended")
