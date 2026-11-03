@@ -50,17 +50,20 @@ def test_real_harmless_commands_dispatch_without_a_window(builtin_app, timers, p
 @pytest.mark.parametrize("reserved", [False, True])
 def test_declared_risk_controls_the_window_even_for_aliases(risk, reversible, delay, reserved):
     _register("test effect", [], aliases=["effect alias"], risk_class=risk, reversible=reversible)
-    assert ep.cancel_window_for("effect alias", _app(), reserved=reserved) == delay
+    assert ep.cancel_window_for("effect alias", _app(), reserved=reserved) == 0.0  # 1031a: no lane timers
 
 
 @pytest.mark.parametrize("phrase", ["submit", "enter", "delete", "close window", "close tab"])
 @pytest.mark.parametrize("reserved", [False, True])
 def test_real_submit_delete_close_commands_keep_a_window(builtin_app, timers, phrase, reserved):
     app, calls = builtin_app, []
-    manager = _manager(app, timers, calls, probe=_probe({phrase: (phrase, PRESERVE, reserved)}))
+    # 1031a: this checks production lane timing, not the explicit lifecycle harness.
+    manager = _manager(app, timers, calls, with_window=False,
+                       probe=_probe({phrase: (phrase, PRESERVE, reserved)}))
     outcome = _say(manager, app, phrase)
-    assert outcome.kind == "command_cancel_window" and outcome.detail["delay_s"] == 1.5
-    assert calls == [] and timers[0].seconds == 1.5
+    # 1031a: dispatch reaches authorization directly, without timer then question.
+    assert outcome.kind == "hands_free_command_executed"
+    assert calls == [phrase] and timers == []
 
 
 @pytest.mark.parametrize("phrase", ["send message", "delete permanently", "purchase", "shutdown", "restart"])
@@ -76,14 +79,17 @@ def test_irreversible_effect_waits_and_still_requires_explicit_confirmation(time
         return SimpleNamespace(matched=True, phrase=text, state="queued", awaiting_confirmation=True)
 
     manager._command_dispatch_fn = dispatch
-    assert _say(manager, app, phrase).kind == "command_cancel_window"
-    assert decisions == []
-    timers[0].fire()
+    # 1031a: protected effects ask immediately, never after a timer.
+    assert _say(manager, app, phrase).kind == "command_awaiting_confirmation"
+    assert timers == []
     assert len(decisions) == 1 and isinstance(decisions[0], ep.NeedsConfirmation)
 
 
 def _pending_close(app, timers):
     calls = []
+    # 1031a: keep 1029's timer/onset regression IDs using the explicit lifecycle harness.
+    _register("close window", [], risk_class="write")
+    app.command_executor.commands.pop("close window", None)
     manager = _manager(app, timers, calls, probe=_probe({"close window": ("close window", PRESERVE, False)}))
     assert _say(manager, app, "close window").kind == "command_cancel_window"
     return manager, calls, ep.pending_operation()
@@ -123,7 +129,7 @@ def test_unknown_effect_keeps_explicit_confirmation():
     app = _app()
     _register("unrated effect", [], risk_class="unknown")
     assert ep.cancel_window_for("unrated effect", app) == 0
-    assert isinstance(ep.authorize(ep.Invocation("unrated effect", generation=0), app=app), ep.NeedsConfirmation)
+    assert isinstance(ep.authorize(ep.Invocation("unrated effect", generation=0), app=app), ep.Allowed)  # 1031a: no new waits for unrated ordinary commands
     assert ep.cancel_window_for("unregistered effect", app) == 0
     assert isinstance(ep.authorize(ep.Invocation("unregistered effect", generation=0), app=app), ep.Denied)
 
@@ -132,7 +138,7 @@ def test_explicit_off_and_user_duration_remain_supported(builtin_app):
     builtin_app.config["command_mode"]["cancel_window_s"] = 0
     assert ep.cancel_window_for("close window", builtin_app) == 0
     builtin_app.config["command_mode"]["cancel_window_s"] = 3.0
-    assert ep.cancel_window_for("close window", builtin_app) == 3.0
+    assert ep.cancel_window_for("close window", builtin_app) == 0.0  # 1031a: T3 is never timed
     assert ep.cancel_window_for("snap left", builtin_app) == 0
 
 

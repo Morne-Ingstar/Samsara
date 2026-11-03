@@ -599,28 +599,28 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | examples | before you say it | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|---|---|
-| `message_chatgpt.chatgpt_message_submit` | `chatgpt message submit` | remainder:text* | `yes` | Only after Samsara asks whether to send your prepared ChatGPT message. | destructive | no |  | Sends a confirmed ChatGPT draft once and starts reading its reply. | `plugins/commands/message_chatgpt.py:149` |
-| `message_chatgpt.message_chat_gpt` | `ask chat gpt`, `ask chatgpt`, `message chat gpt`, `message chatgpt` | text:text | `message chatgpt explain how rainbows form` | Open the ChatGPT desktop app. Samsara asks before sending. | write | no |  | Prepares a message for the running ChatGPT desktop app and asks to send it. | `plugins/commands/message_chatgpt.py:111` |
-| `message_chatgpt.stop_chat_gpt` | `stop chat gpt`, `stop chatgpt` | - | - | - | ui | yes |  | Stops reading the latest agent reply aloud. | `plugins/commands/message_chatgpt.py:204` |
+| `message_chatgpt.chatgpt_message_submit` | `chatgpt message submit` | remainder:text* | `yes` | Only after Samsara asks whether to send your prepared ChatGPT message. | destructive | no |  | Sends an owned ChatGPT draft once and starts reading its reply. | `plugins/commands/message_chatgpt.py:140` |
+| `message_chatgpt.message_chat_gpt` | `ask chat gpt`, `ask chatgpt`, `message chat gpt`, `message chatgpt` | text:text | `message chatgpt explain how rainbows form` | Open the ChatGPT desktop app. Samsara asks before sending. | write | no |  | Sends your message to the verified ChatGPT conversation immediately. | `plugins/commands/message_chatgpt.py:111` |
+| `message_chatgpt.stop_chat_gpt` | `stop chat gpt`, `stop chatgpt` | - | - | - | ui | yes |  | Stops reading the latest agent reply aloud. | `plugins/commands/message_chatgpt.py:195` |
 
 ## message_claude (14)
 
 | canonical id | phrases | args | examples | before you say it | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|---|---|
-| `message_claude.claude_message_prepare` | `ask claude`, `claude message prepare`, `message claude`, `send claude`, `tell claude` | text:text | `message claude explain how rainbows form` | Open the Claude desktop app. Samsara asks before sending. | write | no |  | Drafts a message to the Claude desktop app and asks you to confirm. | `plugins/commands/message_claude.py:362` |
-| `message_claude.claude_message_submit` | `claude message submit` | remainder:text* | `yes` | Only after Samsara asks whether to send your prepared Claude message. | destructive | no |  | Sends the message you had prepared for Claude. | `plugins/commands/message_claude.py:423` |
-| `message_claude.how_long_is_it` | `how long is it` | - | - | - | ui | yes |  | Says the reply's approximate word, section, and code-block counts. | `plugins/commands/message_claude.py:569` |
-| `message_claude.next_section` | `next section` | - | - | - | ui | yes |  | Reads the next section of the latest reply. | `plugins/commands/message_claude.py:545` |
-| `message_claude.previous_section` | `previous section` | - | - | - | ui | yes |  | Reads the previous section of the latest reply. | `plugins/commands/message_claude.py:551` |
-| `message_claude.read_code_block` | `read code block` | text:text | `read code block two` | A recent agent reply must contain a second code block. Copies that block to the clipboard. | ui | yes |  | Copies the numbered code block from the latest reply. | `plugins/commands/message_claude.py:538` |
-| `message_claude.read_section` | `read section` | text:text | `read section 2` | A recent agent reply must contain a second section. The transcript must contain the digit 2. | ui | yes |  | Reads a numbered section of the latest reply. | `plugins/commands/message_claude.py:557` |
-| `message_claude.read_the` | `read the` | text:text | `read the installation` | A recent agent reply must have a heading containing installation. | ui | yes |  | Reads a reply section whose heading matches the words you say. | `plugins/commands/message_claude.py:563` |
-| `message_claude.read_the_code` | `read the code`, `read the first code block` | text:text | `read the code` | A recent agent reply must contain code. Copies the first code block to the clipboard. | ui | yes |  | Copies a reply's code block and tells you its line count and first line. | `plugins/commands/message_claude.py:531` |
-| `message_claude.read_the_rest` | `read the rest` | - | - | - | ui | yes |  | Reads the remaining part of Claude's most recent reply aloud. | `plugins/commands/message_claude.py:499` |
-| `message_claude.read_the_whole_thing` | `read the whole thing` | - | - | - | ui | yes |  | Reads the full agent reply in short, interruptible chunks. | `plugins/commands/message_claude.py:525` |
-| `message_claude.repeat_that` | `repeat that` | - | - | - | ui | yes |  | Repeats the part of Claude's reply that was last read aloud. | `plugins/commands/message_claude.py:506` |
-| `message_claude.stop_claude` | `quiet claude`, `stop claude`, `stop claude reply`, `stop the reply` | - | - | - | ui | yes |  | Stops reading Claude's reply aloud. | `plugins/commands/message_claude.py:513` |
-| `message_claude.whats_in_it` | `whats in it` | - | - | - | ui | yes |  | Summarizes the reply's sections and code blocks by count. | `plugins/commands/message_claude.py:575` |
+| `message_claude.claude_message_prepare` | `ask claude`, `claude message prepare`, `message claude`, `send claude`, `tell claude` | text:text | `message claude explain how rainbows form` | Open the Claude desktop app. Samsara asks before sending. | write | no |  | Sends your message to the verified Claude conversation immediately. | `plugins/commands/message_claude.py:370` |
+| `message_claude.claude_message_submit` | `claude message submit` | remainder:text* | `yes` | Only after Samsara asks whether to send your prepared Claude message. | destructive | no |  | Sends the message you had prepared for Claude. | `plugins/commands/message_claude.py:415` |
+| `message_claude.how_long_is_it` | `how long is it` | - | - | - | ui | yes |  | Says the reply's approximate word, section, and code-block counts. | `plugins/commands/message_claude.py:573` |
+| `message_claude.next_section` | `next section` | - | - | - | ui | yes |  | Reads the next section of the latest reply. | `plugins/commands/message_claude.py:549` |
+| `message_claude.previous_section` | `previous section` | - | - | - | ui | yes |  | Reads the previous section of the latest reply. | `plugins/commands/message_claude.py:555` |
+| `message_claude.read_code_block` | `read code block` | text:text | `read code block two` | A recent agent reply must contain a second code block. Copies that block to the clipboard. | ui | yes |  | Copies the numbered code block from the latest reply. | `plugins/commands/message_claude.py:542` |
+| `message_claude.read_section` | `read section` | text:text | `read section 2` | A recent agent reply must contain a second section. The transcript must contain the digit 2. | ui | yes |  | Reads a numbered section of the latest reply. | `plugins/commands/message_claude.py:561` |
+| `message_claude.read_the` | `read the` | text:text | `read the installation` | A recent agent reply must have a heading containing installation. | ui | yes |  | Reads a reply section whose heading matches the words you say. | `plugins/commands/message_claude.py:567` |
+| `message_claude.read_the_code` | `read the code`, `read the first code block` | text:text | `read the code` | A recent agent reply must contain code. Copies the first code block to the clipboard. | ui | yes |  | Copies a reply's code block and tells you its line count and first line. | `plugins/commands/message_claude.py:535` |
+| `message_claude.read_the_rest` | `read the rest` | - | - | - | ui | yes |  | Reads the remaining part of Claude's most recent reply aloud. | `plugins/commands/message_claude.py:503` |
+| `message_claude.read_the_whole_thing` | `read the whole thing` | - | - | - | ui | yes |  | Reads the full agent reply in short, interruptible chunks. | `plugins/commands/message_claude.py:529` |
+| `message_claude.repeat_that` | `repeat that` | - | - | - | ui | yes |  | Repeats the part of Claude's reply that was last read aloud. | `plugins/commands/message_claude.py:510` |
+| `message_claude.stop_claude` | `quiet claude`, `stop claude`, `stop claude reply`, `stop the reply` | - | - | - | ui | yes |  | Stops reading Claude's reply aloud. | `plugins/commands/message_claude.py:517` |
+| `message_claude.whats_in_it` | `whats in it` | - | - | - | ui | yes |  | Summarizes the reply's sections and code blocks by count. | `plugins/commands/message_claude.py:579` |
 
 ## mic_score_voice (2)
 

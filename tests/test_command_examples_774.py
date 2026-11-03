@@ -215,8 +215,30 @@ def _isolated_effects(monkeypatch, executor, app, phrase, tmp_path):
         stub('_send', {'success': True})
     elif stem in {'message_claude', 'message_chatgpt'}:
         monkeypatch.setattr(module, '_drafts', {})
+        # 1031a: prepare now sends immediately. Isolate the entire desktop
+        # boundary while keeping both real prepare and submit handlers running.
+        state = {'body': '', 'messages': []}
+
+        def paste(body, hwnd):
+            state['body'] = body
+            return effect('paste')(body, hwnd)
+
+        def invoke(button):
+            state['messages'].append(state['body'])
+            state['body'] = ''
+            return effect('invoke')(button)
+
         stub('_get_adapter', NS(resolve_window=lambda: (42, 'Sample chat', 'sample'),
-                                find_composer=effect('find_composer', object())))
+                                find_composer=effect('find_composer', object()),
+                                focus=effect('focus'), paste=paste,
+                                read_composer=lambda _composer: state['body'],
+                                find_send=effect('find_send', object()), invoke=invoke,
+                                is_foreground=lambda _hwnd: True,
+                                message_texts=lambda _hwnd: list(state['messages']),
+                                user_messages=lambda _hwnd: list(enumerate(state['messages'], 1))))
+        reply = module.claude_reply if stem == 'message_claude' else module.chatgpt_reply
+        monkeypatch.setattr(reply, 'before_send', lambda *_a: NS(after_message_index=0))
+        monkeypatch.setattr(reply, 'start_after_send', effect('reply_reader'))
         if stem == 'message_claude':
             app._cli_agent_voice_state = {
                 'agent': 'gpt', 'expires': time.monotonic() + 60,
@@ -388,6 +410,11 @@ def test_example_runs_real_handler_with_isolated_effects(catalog_router, monkeyp
         else:
             assert result.state in {DispatchState.COMPLETED, DispatchState.QUEUED}, (sentence, result)
         assert observed, (sentence, 'Handler did not request an effect')
+        if phrase in {'claude message prepare', 'message chat gpt'}:
+            # 1031a: an AI example proves the real submit ran once without yes.
+            assert result.state is DispatchState.COMPLETED
+            assert sum(name == 'invoke' for name, *_rest in observed) == 1
+            assert ask_ollama.get_pending_action() is None
     finally:
         ask_ollama.clear_pending_action()
 

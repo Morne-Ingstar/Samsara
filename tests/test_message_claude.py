@@ -151,7 +151,7 @@ class TestGrammar:
 
     def test_submit_requires_confirmation_under_the_policy(self, app):
         d = ep.authorize(ep.Invocation("claude message submit", {"remainder": "abc"}, ep.Route.EXACT, 3), app=app)
-        assert isinstance(d, ep.NeedsConfirmation)
+        assert isinstance(d, ep.Allowed)  # 1031a: explicit AI request is immediate
         d = ep.authorize(ep.Invocation("claude message prepare", {"remainder": "hi"}, ep.Route.EXACT, 3), app=app)
         assert isinstance(d, ep.Allowed)
 
@@ -189,18 +189,15 @@ class TestPrepare:
 
     def test_prepare_creates_draft_and_asks_send(self, app, adapter):
         result = mc.handle_claude_message_prepare(app, UTTERANCE)
-        assert result.state is DispatchState.QUEUED
-        assert result.detail["question"] == f"Send to Claude: {SHAPED}?"
+        assert result.state is DispatchState.COMPLETED  # 1031a: no AI-only send question
         draft = mc.get_draft(result.detail["draft_id"])
         assert draft.body == SHAPED and draft.hash == mc.body_hash(SHAPED)
         assert draft.hwnd == 4242 and draft.conversation == "Demo chat - Claude"
-        assert draft.state == "prepared"
-        pending = ask_ollama.get_pending_action()
-        assert pending is not None and pending["command"] == "claude message submit"
-        assert pending["draft_id"] == draft.id and pending["generation"] == 3
-        assert ("Send?", "pending") in _chips(app)
-        assert any(s.startswith("Send to Claude:") for s in _spoken(app))
-        assert not any(isinstance(c, tuple) and c[0] == "paste" for c in adapter.calls), "prepare never pastes"
+        assert draft.state == "sent"  # 1031a
+        assert ask_ollama.get_pending_action() is None
+        assert ("Sent to Claude", "success") in _chips(app)
+        assert not any(s.startswith("Send to Claude:") for s in _spoken(app))
+        assert ("paste", SHAPED) in adapter.calls
 
     def test_empty_text_fails(self, app, adapter):
         result = mc.handle_claude_message_prepare(app, "")
@@ -208,7 +205,7 @@ class TestPrepare:
 
     def test_question_previews_sixty_chars(self, app, adapter):
         result = mc.handle_claude_message_prepare(app, "word " * 40)
-        assert len(result.detail["question"]) <= len("Send to Claude: ") + 60 + 4
+        assert len(mc.get_draft(result.detail["draft_id"]).preview()) <= 63  # 1031a: preview helper retained
 
 
 # ---------------------------------------------------------------------------
@@ -216,8 +213,10 @@ class TestPrepare:
 # ---------------------------------------------------------------------------
 
 def _prepared(app):
-    result = mc.handle_claude_message_prepare(app, UTTERANCE)
-    return result.detail["draft_id"]
+    # 1031a: submit tests need a not-yet-submitted draft, since prepare sends immediately.
+    draft = mc.Draft("test-draft", SHAPED, mc.body_hash(SHAPED), 4242, "Claude", "Demo chat - Claude")
+    mc._store(draft)
+    return draft.id
 
 
 class TestSubmit:
@@ -245,7 +244,7 @@ class TestSubmit:
 
     def test_yes_runs_submit_and_observes_the_message(self, app, adapter):
         draft_id = _prepared(app)
-        ask_ollama.handle_ava_confirm(app)                       # the policy's confirmed path
+        mc.handle_claude_message_submit(app, draft_id)  # 1031a: AI submit needs no yes
         draft = mc.get_draft(draft_id)
         assert draft.state == "sent" and draft.outcome == "sent: observed"
         assert ("paste", SHAPED) in adapter.calls

@@ -106,6 +106,7 @@ class Invocation:
     # confirmation text comes from confirmation_prompt() (local templates).
     prompt: str = ""
     source_text: str = ""              # the utterance that led here, for logs
+    effect_target: object = None       # local snapshot, never supplied by model args
 
 
 @dataclass(frozen=True)
@@ -1005,20 +1006,22 @@ def authorize(inv: Invocation, *, app=None, executor=None, confirmed: bool = Fal
         emit(app, inv, a)
         return a
 
-    # 6. The policy table.
+    # 6. Resolve the effect locally, after every source/schema/availability gate.
+    from samsara.effect_policy import handling_for
+    handling = handling_for(inv, app=app, executor=executor)
     handler = (_plugin_entry(cid) or {}).get('func')
     # 820b: exact user commands may own a local confirmation; all earlier
     # generation/argument/pack/scope checks and all model-route gates remain.
     if inv.route == Route.EXACT and getattr(handler, 'handles_own_confirmation', False) is True:
         a = Allowed('handler_confirmation', risk=risk)
-    elif risk in (RISK_READ, RISK_UI):
-        a = Allowed("low_risk", risk=risk)
+    elif handling.mode == "explicit_confirm":
+        a = NeedsConfirmation(confirmation_prompt(cid, inv.args), risk=risk)
     elif risk == RISK_UNKNOWN and inv.route == Route.EXACT and cid in _SAFE_UNKNOWN_VERBS:
         a = Allowed("known_safe_verb", risk=_SAFE_UNKNOWN_VERBS[cid], hint="unknown metadata; known ui verb")
-    elif risk == RISK_WRITE and inv.route in USER_ROUTES:
-        a = Allowed("write_user_route", risk=risk)
-    elif risk == RISK_DESTRUCTIVE and _reversible and inv.route == Route.EXACT:
-        a = Allowed("undoable", risk=risk, hint="undoable")
+    elif inv.route in USER_ROUTES:
+        a = Allowed(handling.mode, risk=risk, hint="undoable" if _reversible else "")
+    elif risk in (RISK_READ, RISK_UI):
+        a = Allowed("low_risk", risk=risk)
     else:
         a = NeedsConfirmation(confirmation_prompt(cid, inv.args), risk=risk)
     emit(app, inv, a)
@@ -1069,6 +1072,8 @@ class PendingOperation:
                  clock: Callable[[], float] = time.monotonic):
         self.invocation = inv
         self.prompt = prompt
+        from samsara.effect_policy import handling_for
+        self.handling = handling_for(inv, app=app)
         self.op_id = uuid.uuid4().hex
         self.generation = inv.generation
         self.arg_hash = argument_hash(inv.command_id, inv.args)
@@ -1556,7 +1561,7 @@ def _install_record(app, record: dict) -> None:
             ask_ollama._pending_action = record
         old_op = old.get("op") if isinstance(old, dict) else None
         if isinstance(old_op, TimedOperation) and old_op.approved is None and not old_op.converted:
-            old_op.run_now("the next command arrived", release=False)
+            old_op.cancel(app, "superseded") if old_op.handling.mode == "short_send_grace" else old_op.run_now("the next command arrived", release=False)
         elif isinstance(old_op, PendingOperation):
             old_op.cancel(app, "superseded")
         elif isinstance(old, dict):
@@ -1759,21 +1764,7 @@ def cancel_window_settings(app) -> tuple:
 
 
 def cancel_window_for(command_id: str, app, *, executor=None, reserved: bool = False) -> float:
-    """Seconds of cancel window for a command recognised in the dictation
-    lane, or 0 for none. Risk governs both ordinary and reserved words:
-    submit/enter cannot bypass protection, nor can the legacy all-commands
-    preference delay harmless navigation. Explicit 0 still disables it."""
-    seconds, _everyday = cancel_window_settings(app)
-    if seconds <= 0:
-        return 0.0
-    try:
-        risk, reversible, _schema = classify(command_id, executor=executor, app=app)
-    except Exception as exc:
-        logger.debug("[POLICY] cancel window: classify(%s) failed: %s", command_id, exc)
-        return 0.0
-    if risk == RISK_DESTRUCTIVE or (risk == RISK_WRITE and not reversible):
-        return seconds
-    # Read/UI/undoable writes: immediate. Unknown: the existing yes/no path.
+    """1031a: no lane timer. The actual submit seam owns T2's single grace."""
     return 0.0
 
 
@@ -2053,7 +2044,7 @@ def answer_cancel_window(app, text: str, *, source: str = ANSWER_VOICE) -> Optio
         op.cancel(app, "you said no")
         return "rejected"
     reply = classify_reply(raw)
-    if reply == REPLY_YES:
+    if reply == REPLY_YES or normalized == "send now":
         return "approved" if op.run_now("you said yes") else f"refused:{op.cancel_reason or 'not live'}"
     if reply == REPLY_WAIT and not op.converted:
         if op.convert_to_question():
@@ -2069,6 +2060,8 @@ def flush_cancel_window(reason: str = "the next command arrived") -> bool:
     op = pending_operation()
     if not isinstance(op, TimedOperation) or op.approved is not None or op.converted:
         return False
+    if op.handling.mode == "short_send_grace":
+        return op.cancel(op._app, reason)
     return op.run_now(reason)
 
 
@@ -2101,5 +2094,9 @@ def after_utterance(app, outcome_kind: str) -> Optional[str]:
     if outcome_kind in DICTATION_OUTCOMES:
         _release_slot(op)
         op.cancel(app, "you kept talking")
+        return "cancelled"
+    if op.handling.mode == "short_send_grace":
+        _release_slot(op)
+        op.cancel(app, "different command")
         return "cancelled"
     return "ran" if op.run_now(f"next utterance was {outcome_kind}") else None

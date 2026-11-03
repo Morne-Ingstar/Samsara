@@ -98,9 +98,14 @@ def _chips(app):
 
 
 def _defer_fn(app, timers):
-    """The same decision dictation.py's _stage_hands_free_cancel_window makes."""
+    """1031a: explicit timer lifecycle harness; production lane timers are gone.
+
+    Write-labelled synthetic commands stand in for a deferred operation here.
+    Real send handling/grace is exercised in test_effect_policy_1031a.py.
+    """
     def defer(match, run):
-        delay = ep.cancel_window_for(match.phrase, app, reserved=match.reserved)
+        risk = ep.classify(match.phrase, app=app)[0]
+        delay = ep.CANCEL_WINDOW_DEFAULT_S if risk == ep.RISK_WRITE else 0.0
         if delay <= 0:
             ep.flush_cancel_window()
             return 0.0
@@ -178,16 +183,16 @@ class TestWhoGetsAWindow:
         _register("close tab", calls, risk_class="destructive", reversible=True)
         app = _app()
         assert ep.cancel_window_for("open panel", app) == 0.0
-        assert ep.cancel_window_for("paste it", app) == ep.CANCEL_WINDOW_DEFAULT_S == 1.5
-        assert ep.cancel_window_for("close tab", app) == 1.5          # closing may lose work
+        assert ep.cancel_window_for("paste it", app) == 0.0  # 1031a: ordinary writes immediate
+        assert ep.cancel_window_for("close tab", app) == 0.0  # 1031a: one question, no timer          # closing may lose work
         assert ep.cancel_window_for("what time", app) == 0.0          # read: immediate
-        assert ep.cancel_window_for("wipe drive", app) == 1.5         # also keeps yes/no
+        assert ep.cancel_window_for("wipe drive", app) == 0.0  # 1031a: no timer before question         # also keeps yes/no
         assert ep.cancel_window_for("no such command", app) == 0.0    # unknown: keeps yes/no
 
     def test_everyday_words_only_when_extended(self):
         _register("submit it", [], risk_class="write")
-        assert ep.cancel_window_for("submit it", _app(), reserved=True) == 1.5
-        assert ep.cancel_window_for("submit it", _app(everyday=True), reserved=True) == 1.5
+        assert ep.cancel_window_for("submit it", _app(), reserved=True) == 0.0  # 1031a: actual send seam owns grace
+        assert ep.cancel_window_for("submit it", _app(everyday=True), reserved=True) == 0.0  # 1031a: actual send seam owns grace
 
     @pytest.mark.parametrize("raw,expected", [
         (0, 0.0), ("0", 0.0), (1.5, 1.5), (9, ep.CANCEL_WINDOW_MAX_S),
@@ -274,7 +279,7 @@ class TestDictationLane:
     def test_destructive_command_still_requires_yes_no(self, timers):
         _register("wipe drive", [], risk_class="destructive", reversible=False)
         app = _app()
-        assert ep.cancel_window_for("wipe drive", app) == 1.5
+        assert ep.cancel_window_for("wipe drive", app) == 0.0  # 1031a: no timer before question
         decision = ep.authorize(Invocation("wipe drive", route=Route.EXACT, generation=0), app=app)
         assert isinstance(decision, NeedsConfirmation)
 
@@ -287,9 +292,8 @@ class TestDictationLane:
         m = _manager(app, timers, [], probe=_probe({"wipe drive": ("wipe drive", PRESERVE, False)}))
         m._command_dispatch_fn = dispatch
         outcome = _say(m, app, "wipe drive")
-        assert outcome.kind == "command_cancel_window"  # 1029: then the 58/63 yes/no path
-        assert calls == []
-        timers[0].fire()
+        assert outcome.kind == "command_awaiting_confirmation"  # 1031a: directly asks, no preceding timer
+        assert timers == []
         assert calls == ["wipe drive"]
 
     def test_disabled_reproduces_todays_behaviour_exactly(self, timers):

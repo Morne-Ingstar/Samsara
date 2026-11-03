@@ -552,10 +552,12 @@ class CommandExecutor:
             # was made -- None there is Denied(stale) at the choke point.
             generation = execution_policy.capture_generation(effective_app)
 
+        from samsara.effect_policy import bind_input_invocation, dispatch_input
         # THE choke point. Nothing below touches the keyboard/mouse/apps until
         # authorize() says Allowed; it also checks pack and scope through
         # command_availability(), on every route.
         inv = Invocation(canonical, dict(args or {}), route, generation, "", source_text)
+        inv = bind_input_invocation(inv, effective_app, self)
         decision = execution_policy.authorize(inv, app=effective_app, executor=self,
                                               confirmed=confirmed)
         if (route is Route.EXACT and not confirmed and entry is not None
@@ -567,6 +569,10 @@ class CommandExecutor:
             return DispatchResult(DispatchState.REJECTED, canonical, canonical,
                                   {'reason': decision.reason,
                                    'detail': getattr(decision, 'detail', '') or ''})
+        from samsara.effect_policy import input_refusal
+        refusal = input_refusal(inv, effective_app, self)
+        if refusal:
+            return DispatchResult(DispatchState.REJECTED, canonical, canonical, {'reason': refusal})
         if isinstance(decision, execution_policy.NeedsConfirmation):
             self._stage_confirmation(effective_app, inv, decision)
             return DispatchResult(DispatchState.QUEUED, canonical, canonical,
@@ -625,6 +631,9 @@ class CommandExecutor:
                 detail.setdefault('reason', 'the command could not complete')
             return DispatchResult(state, canonical, canonical, detail)
 
+        if canonical.startswith("key:"):
+            from samsara.effect_policy import raw_key_command
+            builtin = raw_key_command(canonical[4:])
         if builtin is None:
             # Authorized (a registry row exists) but nothing here can run it.
             logger.error("[EXEC] %r has no builtin entry and no plugin handler", canonical)
@@ -636,7 +645,12 @@ class CommandExecutor:
             return DispatchResult(DispatchState.FAILED, canonical, canonical,
                                   {'reason': 'unknown_type'})
         try:
-            success = handler.execute(builtin, self._build_context(app_instance))
+            result = dispatch_input(inv, effective_app, self,
+                                    lambda selected=builtin: handler.execute(selected, self._build_context(app_instance)),
+                                    confirmed=confirmed)
+            if isinstance(result, DispatchResult):
+                return result
+            success = result
         except Exception as e:
             print(f"[ERROR] Command execution error: {e}")
             return DispatchResult(DispatchState.FAILED, canonical, canonical, {'error': str(e)})
@@ -668,6 +682,10 @@ class CommandExecutor:
         (ask_ollama.handle_ava_confirm) re-enters execute_canonical with
         confirmed=True -- which re-authorizes, so a pack switched off or a
         scope left while the question was open refuses the effect."""
+        from samsara.effect_policy import stage_input_confirmation
+        if inv.effect_target is not None:
+            stage_input_confirmation(app, inv, self, decision.prompt)
+            return
         targets, target_probe, foreground_bound = execution_policy.bind_staged_target(inv, self)
 
         def _approve(op):

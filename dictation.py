@@ -8661,9 +8661,9 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                                 self._show_outcome_chip('Send refused; target focus changed', 'error')
                                 self._emit_wake_trace({"stage": "utterance_end", "result": "send_refused"})
                                 return
-                            pyautogui.press('return')
-                            self._wake_failed_draft = ''
-                            self.play_sound("success")
+                            from samsara.effect_policy import submit_wake_profile
+                            if not submit_wake_profile(self, _claude_reply_context):
+                                return
                             self.play_sound("text_sent")
                             logger.info(f"[WAKE-SESSION] sent — '{_matched_sw}' detected, Enter pressed")
                         else:

@@ -127,10 +127,11 @@ def stop_hermes(app, remainder=""):
 
 
 def start_services(app):
+    # 1031a: CLI questions inherit the same immediate AI effect as desktop sends.
     # Keep the legacy desktop command, but transfer its spoken ask alias before
     # CommandExecutor refreshes its frozen matcher.
     from samsara import plugin_commands
     old = plugin_commands._MODULE_ENTRIES["plugins.commands.message_claude"]["claude message prepare"]
     old["aliases"] = [alias for alias in old["aliases"] if alias != "ask claude"]
     command("ask claude", pack="core", risk_class="safe", reversible=True,
-            side_effects=["network", "audio", "ui", "file"])(ask_claude)
+            side_effects=["network", "audio", "ui", "file", "ai_request"])(ask_claude)

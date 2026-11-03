@@ -41,6 +41,7 @@ from samsara.execution_policy import (  # noqa: E402
     Allowed, Denied, Invocation, NeedsConfirmation, Route,
     RISK_DESTRUCTIVE, RISK_UI, RISK_UNKNOWN, RISK_WRITE, RISK_READ,  # 772: reference classification
 )
+from samsara.effect_policy import resolve_submit_target as _real_submit_target  # 1031a
 
 COMMANDS = {
     "switch window": {"type": "hotkey", "keys": ["alt", "tab"]},
@@ -86,7 +87,11 @@ def executor(tmp_path, effects, monkeypatch):
 
 
 @pytest.fixture
-def app(executor):
+def app(executor, monkeypatch):
+    from samsara import effect_policy
+    # 1031a: Enter/delete semantics must resolve from a local editor, never live focus.
+    monkeypatch.setattr(effect_policy, "resolve_submit_target", lambda app=None:
+                        effect_policy.SubmitTarget("editor", 1, "notepad.exe", "edit", "revision"))
     a = types.SimpleNamespace()
     a.config = {"ollama": {"enabled": True}}
     a.audio_coordinator = Mock()
@@ -197,7 +202,7 @@ class TestPolicyTable:
     @pytest.mark.parametrize("route", USER + MODEL)
     def test_destructive_close_depends_on_route(self, app, executor, route):
         d = ep.authorize(Invocation("close window", route=route, generation=7), app=app, executor=executor)
-        assert isinstance(d, Allowed if route == Route.EXACT else NeedsConfirmation)
+        assert isinstance(d, NeedsConfirmation)  # 1031a: close can lose unsaved work
         assert d.risk == RISK_DESTRUCTIVE
 
     @pytest.mark.parametrize("route", USER)
@@ -378,9 +383,10 @@ class TestExactRoute:
         assert len(effects) == 1
 
     def test_exact_undoable_close_runs_without_prompt(self, app, executor, effects):
-        assert executor.execute_command("close window", app, generation=7) is True
-        assert ask_ollama.get_pending_action() is None
-        assert [c.get("keys") for c in effects] == [["alt", "f4"]]
+        # 1031a: opening an app again does not restore unsaved content.
+        assert executor.execute_command("close window", app, generation=7) is False
+        assert ask_ollama.get_pending_action() is not None
+        assert effects == []
 
     def test_macro_is_classified_by_its_worst_step(self, app, executor, effects):
         assert executor.execute_command("tidy up", app) is False
@@ -464,8 +470,8 @@ class TestPluginPolicy:
     def test_undeclared_plugin_prompts_for_the_users_exact_phrase(self, plugin_registry, executor, app):
         result = executor.process_text("legacy thing", app, force_commands=True)
         assert tuple(result) == ("legacy thing", True)
-        assert plugin_registry == []
-        assert ask_ollama.get_pending_action()["command"] == "legacy thing"
+        assert plugin_registry == [("legacy thing", "")]  # 1031a: unrated ordinary user effect adds no question
+        assert ask_ollama.get_pending_action() is None
 
     def test_declared_destructive_plugin_prompts_on_exact(self, plugin_registry, executor, app):
         result = executor.process_text("wipe drive", app, force_commands=True)
@@ -802,11 +808,11 @@ def test_owner_decision_eight_commands(app, executor, monkeypatch, phrase, route
         # A plugin with no declared argument schema is unavailable to a model.
         assert isinstance(d, Denied) and d.reason == "unvalidated"
         return
-    prompt = phrase in {"permanent delete", "going dark"} or (
-        route == Route.MODEL and phrase in {"close tab", "close window"})
+    # 1031a: close is consequential; reviewed local macros have no added question.
+    prompt = phrase in {"permanent delete", "close tab", "close window"}
     assert isinstance(d, NeedsConfirmation if prompt else Allowed)
     if route == Route.EXACT and phrase in {"close tab", "close window"}:
-        assert d.hint == "undoable"
+        assert isinstance(d, NeedsConfirmation)  # 1031a: no false undo guarantee
 
 
 @pytest.mark.parametrize("route", [Route.EXACT, Route.MODEL])
@@ -834,7 +840,7 @@ def test_unknown_metadata_requires_prompt_except_explicit_safe_table(app, monkey
     elif phrase == "lock screen" and route == Route.EXACT:
         assert isinstance(d, Allowed) and d.hint
     else:
-        assert isinstance(d, NeedsConfirmation)
+        assert isinstance(d, Allowed)  # 1031a: ordinary unrated user effects add no question
 
 
 @pytest.mark.parametrize("value,allowed", [(True, True), (False, False), ("unknown", False), ("reversible", True)])
@@ -842,7 +848,7 @@ def test_declared_reversibility_controls_exact_destructive(app, monkeypatch, val
     monkeypatch.setattr(ep, "_plugin_entry", lambda cid: {"metadata": {
         "risk_class": "destructive", "reversibility": value}})
     d = ep.authorize(Invocation("going dark", generation=7), app=app)
-    assert isinstance(d, Allowed if allowed else NeedsConfirmation)
+    assert isinstance(d, Allowed)  # 1031a: local macro; metadata alone adds no wait
 
 
 @pytest.mark.parametrize("change_history", [False, True])
@@ -866,3 +872,85 @@ def test_unknown_metadata_respects_explicit_model_allowlist(app, monkeypatch):
     d = ep.authorize(Invocation("mystery action", route=Route.MODEL, generation=7), app=app)
     # Undeclared schema denies before the allow-list is even consulted.
     assert isinstance(d, Denied) and d.reason == "unvalidated"
+
+
+# 1031a: additional regressions for the actual input/submit boundaries.
+def test_1031a_unreadable_composer_cannot_be_approved(app, executor, effects, monkeypatch):
+    from samsara import effect_policy
+    monkeypatch.setattr(effect_policy, "resolve_submit_target", lambda app=None:
+                        effect_policy.SubmitTarget("unknown", 42, "outlook.exe"))
+    result = executor.execute_canonical("enter", app)
+    assert result.state.value == "rejected" and result.detail["reason"] == "composer unavailable"
+    assert effects == [] and ep.pending_operation() is None
+
+
+def test_1031a_macro_rechecks_destination_between_steps(app, executor, effects, monkeypatch):
+    from samsara import effect_policy
+    target = [effect_policy.SubmitTarget("editor", 1, "notepad.exe", "edit", "revision")]
+    monkeypatch.setattr(effect_policy, "resolve_submit_target", lambda app=None: target[0])
+    executor.commands["two edits"] = {"type": "macro", "steps": [
+        {"action": "press", "key": "a"}, {"action": "press", "key": "b"}]}
+
+    def execute(command, context):
+        effects.append(command)
+        target[0] = effect_policy.SubmitTarget("editor", 2, "notepad.exe", "other", "revision")
+        return True
+
+    monkeypatch.setattr(commands_mod, "get_handler", lambda kind: types.SimpleNamespace(execute=execute))
+    result = executor.execute_canonical("two edits", app)
+    assert result.state.value == "rejected" and len(effects) == 1
+    assert effects[0]["steps"] == [{"action": "press", "key": "a"}]
+
+
+def test_1031a_local_resolver_cannot_trust_another_window(app, monkeypatch):
+    from samsara import effect_policy
+    # Restore the real resolver for this test; it must validate a local port.
+    monkeypatch.setattr(ep, "foreground_window_identity", lambda: {"hwnd": 2, "process": "chat.exe"})
+    app._resolve_submit_target = lambda: effect_policy.SubmitTarget(
+        "known_person", 1, "chat.exe", "edit", "revision", "a", "c", "p")
+    assert effect_policy.send_handling(_real_submit_target(app)) == effect_policy.CONFIRM
+
+
+@pytest.mark.parametrize("provider", ["claude", "chatgpt"])
+def test_1031a_ai_invoke_exception_never_retries(app, monkeypatch, provider):
+    from plugins.commands import message_claude as claude, message_chatgpt as chatgpt
+    from tests.test_message_claude import FakeAdapter
+    module = claude if provider == "claude" else chatgpt
+    adapter = FakeAdapter()
+    adapter.is_foreground = lambda hwnd: True
+    adapter.user_messages = lambda hwnd: []
+    adapter.invoke = Mock(side_effect=RuntimeError("uncertain send"))
+    draft = claude.Draft("uncertain", "Synthetic question", claude.body_hash("Synthetic question"),
+                         4242, "Claude", "Demo chat - Claude")
+    monkeypatch.setattr(module, "_drafts", {draft.id: draft})
+    monkeypatch.setattr(module, "_get_adapter", lambda: adapter)
+    reader = module.claude_reply if provider == "claude" else module.chatgpt_reply
+    context = types.SimpleNamespace(after_message_index=0)
+    monkeypatch.setattr(reader, "before_send", lambda *args: context)
+    monkeypatch.setattr(reader, "start_after_send", Mock())
+    monkeypatch.setattr(module.time, "sleep", lambda seconds: None)
+    submit = getattr(module, f"handle_{provider}_message_submit")
+    result = submit(app, draft.id)
+    assert result.state.value == "failed" and draft.state == "unknown"
+    assert submit(app, draft.id).state.value == "rejected"
+    adapter.invoke.assert_called_once()
+
+
+def test_1031a_wake_receipt_uses_real_session_lifecycle(app, monkeypatch):
+    from samsara import effect_policy
+    target = effect_policy.SubmitTarget("ai", 42, "claude.exe", "edit", "revision")
+    monkeypatch.setattr(effect_policy, "resolve_submit_target", lambda app=None: target)
+    press = Mock()
+    monkeypatch.setitem(sys.modules, "pyautogui", types.SimpleNamespace(press=press))
+    app.config["auto_paste"] = True
+    app._wake_session_mode = "focus_dictate"
+    app._wake_session_target_hwnd = 42
+    app._wake_session_target_process = "claude.exe"
+    app._wake_session_started_at = 1.0
+    app._wake_session_delivered_text = "Synthetic question"
+    app.wake_dictation_buffer = []
+    assert effect_policy.submit_wake_profile(app) is True
+    assert effect_policy.submit_wake_profile(app) is False
+    app._wake_session_started_at = 2.0
+    assert effect_policy.submit_wake_profile(app) is True
+    assert press.call_count == 2

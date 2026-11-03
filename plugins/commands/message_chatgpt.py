@@ -1,4 +1,4 @@
-"""Confirm a desktop ChatGPT message, verify its send, then read the reply."""
+"""Send a desktop ChatGPT message, verify its send, then read the reply."""
 from __future__ import annotations
 
 import hashlib
@@ -10,7 +10,7 @@ from samsara.agent_channel import chatgpt_reply
 from samsara.command_registry import DispatchResult, DispatchState
 from samsara.execution_policy import Invocation, Route
 from samsara.plugin_commands import command
-from plugins.commands.message_claude import ClaudeUiaAdapter, Draft, _norm, shape_body, body_hash
+from plugins.commands.message_claude import ClaudeUiaAdapter, Draft, _norm, shape_body, body_hash, claim_submit
 
 _drafts = {}
 OBSERVE_TIMEOUT_S = 5.0
@@ -112,7 +112,7 @@ def _result(dispatch_state, **detail):
          pack="ai", risk_class="write", reversible=True,
          side_effects=["ui"], side_effect_category="draft")
 def handle_chatgpt_message_prepare(app, remainder):
-    """Prepares a message for the running ChatGPT desktop app and asks to send it."""
+    """Sends your message to the verified ChatGPT conversation immediately."""  # PLACEHOLDER COPY (1031a)
     adapter = _get_adapter()
     window = adapter.resolve_window()
     if window is None:
@@ -128,31 +128,22 @@ def handle_chatgpt_message_prepare(app, remainder):
         return _result(DispatchState.FAILED, reason="composer not found")
     draft = Draft(uuid.uuid4().hex[:8], body, body_hash(body), hwnd, title, conversation)
     _drafts[draft.id] = draft
-    question = f"Send to ChatGPT: {draft.preview()}?"
     inv = Invocation("chatgpt message submit", {"remainder": draft.id}, Route.EXACT,
-                     execution_policy.current_generation(app), prompt=question,
-                     source_text=remainder)
-
-    def approve(_operation):
-        decision = execution_policy.authorize(inv, app=app, confirmed=True)
-        if isinstance(decision, execution_policy.Allowed):
-            handle_chatgpt_message_submit(app, draft.id)
-        else:
-            _speak(app, "That request expired. Not sent.")
-
-    execution_policy.stage_pending(app, inv, question, on_approve=approve,
-                                   record_type="action", extra={"draft_id": draft.id})
-    _speak(app, question + " Say yes to send, or ava cancel.")
-    return _result(DispatchState.QUEUED, draft_id=draft.id, awaiting_confirmation=True)
+                     execution_policy.capture_generation(app), source_text=remainder)
+    decision = execution_policy.authorize(inv, app=app)
+    if not isinstance(decision, execution_policy.Allowed):
+        return DispatchResult(DispatchState.REJECTED, "chatgpt message prepare",
+                              "chatgpt message prepare", {"reason": decision.reason})
+    return handle_chatgpt_message_submit(app, draft.id)
 
 
 @command("chatgpt message submit", pack="ai", risk_class="destructive", reversible=False,
          side_effects=["message_sent"], side_effect_category="external_write",
          param_schema={"remainder": {"type": "str", "required": True}})
 def handle_chatgpt_message_submit(app, remainder):
-    """Sends a confirmed ChatGPT draft once and starts reading its reply."""
+    """Sends an owned ChatGPT draft once and starts reading its reply."""
     draft = _drafts.get((remainder or "").strip())
-    if draft is None or draft.state != "prepared":
+    if draft is None or not claim_submit(draft):
         return _result(DispatchState.REJECTED, reason="draft unavailable or already attempted")
     adapter = _get_adapter()
 

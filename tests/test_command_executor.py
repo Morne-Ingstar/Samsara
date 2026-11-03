@@ -134,8 +134,12 @@ class TestCommandExecution:
         assert mock_press.call_count >= 2  # ctrl + c
         assert mock_release.call_count >= 2
 
-    def test_execute_press_command(self, temp_commands_file):
+    def test_execute_press_command(self, temp_commands_file, monkeypatch):
         """Test executing a key press command"""
+        # 1031a: raw Return inherits the destination; never probe the live desktop.
+        from samsara import effect_policy, execution_policy
+        target = effect_policy.SubmitTarget("editor", 42, "notepad.exe", "edit", "revision")
+        monkeypatch.setattr(effect_policy, "resolve_submit_target", lambda app=None: target)
         executor = CommandExecutor(temp_commands_file)
 
         mock_press = Mock()
@@ -148,6 +152,7 @@ class TestCommandExecution:
         assert result is True
         mock_press.assert_called_once()
         mock_release.assert_called_once()
+        assert execution_policy.pending_operation() is None
 
     def test_execute_launch_command(self, temp_commands_file, mock_subprocess):
         """Test executing a launch command"""

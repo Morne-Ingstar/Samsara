@@ -264,11 +264,16 @@ def test_prepare_stages_confirmation_without_paste(monkeypatch):
     adapter.resolve_window.return_value = (42, "ChatGPT", "fingerprint")
     monkeypatch.setattr(command, "_adapter", adapter)
     stage = Mock()
+    submit = Mock(return_value=SimpleNamespace(state=DispatchState.COMPLETED))
+    monkeypatch.setattr(command, "handle_chatgpt_message_submit", submit)
+    from samsara import plugin_commands
+    plugin_commands._reinstall_module_commands(command)
     monkeypatch.setattr(command.execution_policy, "stage_pending", stage)
     monkeypatch.setattr(command.execution_policy, "current_generation", lambda app: 1)
     result = command.handle_chatgpt_message_prepare(current, "Explain this.")
-    assert result.state == DispatchState.QUEUED
-    stage.assert_called_once()
+    assert result.state == DispatchState.COMPLETED  # 1031a: immediate AI send
+    stage.assert_not_called()
+    submit.assert_called_once()
     adapter.paste.assert_not_called()
 
 

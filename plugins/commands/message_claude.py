@@ -13,12 +13,10 @@ Two phases, two registered commands:
         "tell claude <text>" / "ask claude <text>" / "message claude <text>" /
         "send claude <text>". Resolves the Claude desktop window and its
         composer, creates an OWNED DRAFT (id, body hash, window handle, the
-        conversation title as shown in the window) and stages the policy's
-        pending confirmation for the submit: the app asks "Send to Claude:
-        <first 60 chars>?". Returns DispatchResult QUEUED with that question.
+        conversation title as shown in the window) and immediately submits through policy. No AI-only question is staged.
 
-    claude message submit    (destructive, irreversible -> the policy asks)
-        Runs only on the confirmed path ("yes"). Re-verifies window and
+    claude message submit    (AI request -> immediate effect mode)
+        Re-verifies window and
         conversation title against the draft, focuses the window, pastes the
         body with the clipboard-preserving paste, READS THE COMPOSER BACK
         through UIA and requires it to equal the body, activates the Send
@@ -120,6 +118,7 @@ class Draft:
     created: float = field(default_factory=time.time)
     state: str = "prepared"          # prepared | sent | unknown | failed
     outcome: str = ""
+    attempt_lock: object = field(default_factory=threading.Lock, repr=False)
 
     def preview(self) -> str:
         return preview(self.body)
@@ -137,6 +136,15 @@ def get_draft(draft_id: str) -> Optional[Draft]:
 def _store(draft: Draft) -> None:
     with _drafts_lock:
         _drafts[draft.id] = draft
+
+
+def claim_submit(draft):
+    """One attempt per draft, including simultaneous calls and ambiguous errors."""
+    with draft.attempt_lock:
+        if draft.state != "prepared":
+            return False
+        draft.state = "preparing"
+        return True
 
 
 def clear_drafts() -> None:
@@ -364,7 +372,7 @@ def _failed(app, draft, reason, state="failed", chip="error", extra=None):
          pack="ai", risk_class="write", reversible=True, side_effects=["ui"],
          side_effect_category="draft")
 def handle_claude_message_prepare(app, remainder):
-    """Drafts a message to the Claude desktop app and asks you to confirm."""
+    """Sends your message to the verified Claude conversation immediately."""  # PLACEHOLDER COPY (1031a)
     body = shape_body(remainder)
     if not body:
         _speak(app, "Tell Claude what?")
@@ -391,33 +399,17 @@ def handle_claude_message_prepare(app, remainder):
                   window_title=title, conversation=conversation)
     _store(draft)
 
-    question = f"Send to Claude: {draft.preview()}?"
-    generation = execution_policy.current_generation(app)
-    inv = Invocation("claude message submit", {"remainder": draft.id}, Route.EXACT, generation,
-                     prompt=question, source_text=remainder)
-
-    def _approve(op, _draft_id=draft.id, _inv=inv):
-        # The policy's confirmed path: re-authorize (generation re-check) and
-        # only then submit -- the same shape commands.py uses for built-ins.
-        decision = execution_policy.authorize(_inv, app=app, confirmed=True)
-        if not isinstance(decision, execution_policy.Allowed):
-            _speak(app, "That request expired. Not sent.")
-            return
-        handle_claude_message_submit(app, _draft_id)
-
-    execution_policy.stage_pending(app, inv, question, on_approve=_approve, record_type="action",
-                                   extra={"draft_id": draft.id})
-    _speak(app, question + " Say yes to send, or ava cancel.")
-    _chip(app, "Send?", "pending")
-    logger.info("[CLAUDE] draft %s prepared for %r (%s): %s", draft.id, describe_text(conversation) or describe_text(title), draft.hash, describe_text(question))
-    return DispatchResult(DispatchState.QUEUED, "claude message prepare", "claude message prepare", {
-        "question": question, "draft_id": draft.id, "body": body, "hash": draft.hash,
-        "window": title, "conversation": conversation, "awaiting_confirmation": True,
-    })
+    inv = Invocation("claude message submit", {"remainder": draft.id}, Route.EXACT,
+                     execution_policy.capture_generation(app), source_text=remainder)
+    decision = execution_policy.authorize(inv, app=app)
+    if not isinstance(decision, execution_policy.Allowed):
+        return DispatchResult(DispatchState.REJECTED, "claude message prepare",
+                              "claude message prepare", {"reason": decision.reason})
+    return handle_claude_message_submit(app, draft.id)
 
 
 # ---------------------------------------------------------------------------
-# Phase 2: submit (confirmed path only)
+# Phase 2: submit (once per owned draft)
 # ---------------------------------------------------------------------------
 
 @command("claude message submit", pack="ai", risk_class="destructive", reversible=False,
@@ -426,9 +418,8 @@ def handle_claude_message_prepare(app, remainder):
 def handle_claude_message_submit(app, remainder):
     """Sends the message you had prepared for Claude.
 
-    Reached only after the policy's confirmation ('yes' -> stage_pending
-    approve, or the executor's own NeedsConfirmation for a spoken 'claude
-    message submit <id>'). Never retries an unknown outcome: a second submit of
+    An explicit AI request needs no extra send question. Never retries an
+    unknown outcome: a second submit of
     the same draft is refused.
     """
     draft_id = (remainder or "").strip()
@@ -443,6 +434,9 @@ def handle_claude_message_submit(app, remainder):
     if draft.state == "sent":
         return DispatchResult(DispatchState.REJECTED, "claude message submit", "claude message submit",
                               {"reason": "already sent", "state": "sent", "draft_id": draft.id})
+    if not claim_submit(draft):
+        return DispatchResult(DispatchState.REJECTED, "claude message submit", "claude message submit",
+                              {"reason": "draft unavailable or already attempted"})
 
     adapter = _get_adapter()
     window = adapter.resolve_window()
@@ -459,6 +453,10 @@ def handle_claude_message_submit(app, remainder):
     if composer is None:
         return _failed(app, draft, "composer not found, not sent")
 
+    if _norm(adapter.read_composer(composer)):
+        return _failed(app, draft, "composer already contains a draft, not sent")
+    if body_hash(draft.body) != draft.hash:
+        return _failed(app, draft, "draft body changed, not sent")
     if not adapter.paste(draft.body, hwnd):
         return _failed(app, draft, "paste refused (focus guard), not sent")
     time.sleep(0.15)
@@ -469,8 +467,14 @@ def handle_claude_message_submit(app, remainder):
 
     button = adapter.find_send(composer)
     reply_context = claude_reply.before_send(app, hwnd)
-    if button is None or not adapter.invoke(button):
+    if button is None:
         return _failed(app, draft, "send control not found; body left in the composer, not sent")
+    draft.state = "unknown"  # Latch before Invoke: exceptions cannot authorize another attempt.
+    try:
+        if not adapter.invoke(button):
+            raise RuntimeError("send outcome unknown")
+    except Exception:
+        return _failed(app, draft, "submitted, not observed -- do not retry automatically", state="unknown")
     submitted_at = time.time()
 
     deadline = time.monotonic() + OBSERVE_TIMEOUT_S
