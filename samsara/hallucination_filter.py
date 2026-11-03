@@ -222,7 +222,7 @@ def _finite_number(value):
 
 
 def _outro_is_unsupported(segment, audio, rate):
-    """Whole known phrase plus a silent span or failed confidence; fail open.
+    """Whole known phrase plus a near-silent PCM span; fail open.
 
     Measure the loudest 20 ms frame so a short spoken word cannot disappear
     into a long quiet timestamp span. Clear speech overrides weak scores.
@@ -250,10 +250,9 @@ def _outro_is_unsupported(segment, audio, rate):
                 return False
             if level <= .0001:
                 return True
-    no_speech = _finite_number(_value(segment, "no_speech_prob"))
-    logprob = _finite_number(_value(segment, "avg_logprob"))
-    return ((no_speech is not None and no_speech >= .5)
-            or (logprob is not None and logprob <= -1.0))
+    # 1026: low confidence cannot establish silence, even below the speech
+    # floor. Quiet speech and missing alignment must survive.
+    return False
 
 
 def transcribe_without_outro(model, audio, params, *, rate=16000, enabled=True):
@@ -271,7 +270,15 @@ def transcribe_without_outro(model, audio, params, *, rate=16000, enabled=True):
         if rate is not None and rate > 0 and np.isfinite(audio).all():
             pcm = audio
     if not enabled:
-        return model.transcribe(audio, **params)
+        segments, info = model.transcribe(audio, **params)
+        def counted():
+            from samsara.hold_final_policy import current_audit
+            audit = current_audit.get()
+            for segment in segments:
+                if audit is not None:
+                    audit.decoded += 1
+                yield segment
+        return counted(), info
     if pcm is not None:
         nonzero = np.flatnonzero(pcm)
         # All-silent captures stay on the decoder's native silence policy.
@@ -280,13 +287,19 @@ def transcribe_without_outro(model, audio, params, *, rate=16000, enabled=True):
     segments, info = model.transcribe(audio, **params)
 
     def screened():
+        from samsara.hold_final_policy import current_audit
+        audit = current_audit.get()
         pending = None
         for segment in segments:
+            if audit is not None:
+                audit.decoded += 1
             if pending is not None:
                 yield pending
             pending = segment
         if pending is not None:
             if _outro_is_unsupported(pending, pcm, rate):
+                if audit is not None:
+                    audit.drop('near_silent_outro')
                 import logging
                 logging.getLogger('Samsara').info('[HALLUCINATION] dropped final outro (audio/confidence)')
             else:

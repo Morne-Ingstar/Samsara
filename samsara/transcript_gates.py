@@ -29,6 +29,7 @@ import re
 import string
 from samsara.log import describe_text
 from samsara import diagnostics
+from samsara.hold_final_policy import current_audit, segment_level
 
 
 # --- Whisper hallucination prevention ("Gate and Reset" architecture) ---
@@ -541,7 +542,7 @@ def _keep_low_confidence_long_chunk(seg_list, text, duration_s):
     return no_speech is not None and no_speech <= 0.5
 
 
-def _apply_segment_quality_gates(seg_list, transcribe_params, audio_duration):
+def _apply_segment_quality_gates(seg_list, transcribe_params, audio_duration, *, audio=None, rate=16000):
     """Segment-level hallucination/quality gating for one full decode.
 
     Replaces the old per-chunk aggregate gating: on a single long decode,
@@ -552,9 +553,8 @@ def _apply_segment_quality_gates(seg_list, transcribe_params, audio_duration):
 
     Returns (text, low_confidence):
       text: the text to deliver (possibly "").
-      low_confidence: True only when every segment that survived
-        hallucination screening still failed the quality gate, and the
-        never-silently-empty floor below delivered the raw text anyway.
+      low_confidence: True when an uncertain final segment was retained or
+        the sustained low-confidence whole-decode floor supplied the text.
 
     Order of operations:
     1. Whole-decode hallucination check, over every segment and the full
@@ -569,7 +569,9 @@ def _apply_segment_quality_gates(seg_list, transcribe_params, audio_duration):
        embedded in an otherwise-real long recording, which whole-decode
        diversity/dominance checks could miss once diluted by the
        surrounding real speech) or when it individually fails
-       _is_quality_exhausted. Surviving segments are joined in order.
+       _is_quality_exhausted. A low-confidence final segment is retained
+       unless aligned PCM establishes near-silence; compression and text
+       hallucination checks remain. Surviving segments are joined in order.
     3. If every non-hallucinated segment was dropped for QUALITY and the
        unfiltered text is non-empty, never silently return empty on
        quality grounds alone: apply the SAME "plausible long dictation"
@@ -580,22 +582,56 @@ def _apply_segment_quality_gates(seg_list, transcribe_params, audio_duration):
     """
     log = logging.getLogger("Samsara")
     raw_text = "".join(getattr(seg, "text", "") or "" for seg in seg_list).strip()
+    from types import SimpleNamespace
+    audit = current_audit.get()
+    tail = seg_list[-1] if seg_list else None
+    level = segment_level(tail, audio, rate)
+    compression = getattr(tail, 'compression_ratio', None)
+    uncertain_tail = (tail is not None and _is_quality_exhausted([tail], transcribe_params)
+                      and (compression is None or compression <= _COMPRESSION_RATIO_THRESHOLD)
+                      and ((level is not None and level > .0001)
+                           or (level is None and len(seg_list) > 1)))
+    # A decoder's no-speech score is not acoustic corroboration. Keep the
+    # existing text/repetition checks while ignoring that score for this tail.
+    screen_tail = SimpleNamespace(compression_ratio=compression, no_speech_prob=0.)
+    screen_segments = seg_list[:-1] + [screen_tail] if uncertain_tail else seg_list
 
-    if _is_hallucinated_segments(seg_list, raw_text):
+    if _is_hallucinated_segments(screen_segments, raw_text):
+        if audit is not None:
+            audit.drop('hallucination_backstop', len(seg_list))
         log.info(f"[GUARD] Suppressed hallucination: {describe_text(raw_text)!r}")
         return "", False
 
+    # Preserve the existing whole-decode floor before keeping just its tail;
+    # otherwise the tail would prevent the old all-quality-failed fallback.
+    if (raw_text and seg_list and all(_is_quality_exhausted([seg], transcribe_params) for seg in seg_list)
+            and _keep_low_confidence_long_chunk(seg_list, raw_text, audio_duration)
+            and not any(_is_hallucinated_segments([seg], getattr(seg, 'text', '')) for seg in seg_list)):
+        log.info('[QUALITY] preserving sustained low-confidence decode')
+        return raw_text, True
+
     kept = []
+    kept_uncertain_tail = False
     dropped_for_quality = False
     for seg in seg_list:
         seg_text = (getattr(seg, "text", "") or "").strip()
         if not seg_text:
             continue
-        if _is_hallucinated_segments([seg], seg_text):
+        if _is_hallucinated_segments([screen_tail if uncertain_tail and seg is tail else seg], seg_text):
+            if audit is not None:
+                audit.drop('hallucination_backstop')
             log.info(f"[GUARD] Suppressed hallucinated segment: {describe_text(seg_text)!r}")
             continue
         if _is_quality_exhausted([seg], transcribe_params):
+            # 1026: preserve the last decoded words when only confidence
+            # fails. Unknown PCM cannot prove a mixed decode's tail silent.
+            if seg is tail and uncertain_tail:
+                kept.append(seg)
+                kept_uncertain_tail = True
+                continue
             dropped_for_quality = True
+            if audit is not None:
+                audit.drop('segment_quality')
             sig = diagnostics.segment_signals([seg])
             log.info(
                 f"[QUALITY] dropped low-confidence segment (logprob "
@@ -607,7 +643,7 @@ def _apply_segment_quality_gates(seg_list, transcribe_params, audio_duration):
 
     text = "".join(getattr(seg, "text", "") or "" for seg in kept).strip()
     if text or not dropped_for_quality:
-        return text, False
+        return text, kept_uncertain_tail
 
     # Every segment that survived hallucination screening still failed
     # quality. Never silently return empty on quality grounds alone.

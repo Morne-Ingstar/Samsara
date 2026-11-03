@@ -1694,7 +1694,8 @@ class StreamingWorker(threading.Thread):
                 return
             params = self._final_params()
             t0 = time.time()
-            seg_list, info, text = mic_score.stream_final(self, audio, params)
+            from samsara.hold_final_policy import final_decode, log_delivery
+            seg_list, info, text = final_decode(self, audio, params)
             detected_lang = getattr(info, 'language', None)
             duration_s = len(audio) / app.model_rate
             elapsed_ms = int((time.time() - t0) * 1000)
@@ -1704,6 +1705,7 @@ class StreamingWorker(threading.Thread):
                 logger.debug(f"[STREAM] segment signal extraction failed: {e}")
                 diag_sig = {}
             if not text:
+                log_delivery(self._session, None)
                 self._session.on_final(None, duration_s=duration_s,
                                        elapsed_ms=elapsed_ms)
                 return
@@ -1750,9 +1752,7 @@ class StreamingWorker(threading.Thread):
             # pass through this method and are deliberately left as raw
             # transcription text.
             cleaned = app._apply_formatting_tokens(cleaned)
-            # Diagnostics record -- total measured from transcribe start to
-            # just before handoff to on_final (the streaming equivalent of
-            # "just before paste").
+            log_delivery(self._session, cleaned)
             try:
                 diagnostics.record(diagnostics.DiagRecord(
                     mode="streaming",
@@ -1841,7 +1841,7 @@ class StreamingWorker(threading.Thread):
         if not reason and not partial and _is_hallucinated_segments(segments, text):
             reason = 'batch_hallucination_backstop'
         if reason and not partial:
-            # Signals only: no discarded transcript in the guard log.
+            from samsara.hold_final_policy import record_guard; record_guard(reason, segments)
             logger.info(
                 '[GUARD] streaming final discarded: %s avg_logprob=%s '
                 'compression_ratio=%s temperature=%s speech_level=%s',

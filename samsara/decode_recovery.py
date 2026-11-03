@@ -14,6 +14,7 @@ import numpy as np
 from samsara.log import get_logger
 from samsara.vocabulary_decode import transcribe_with_vocabulary
 from samsara.runtime import thread_registry
+from samsara.hold_final_policy import audited_batch
 
 logger = get_logger(__name__)
 # Stand-ins: owner wording is collected in ASK.json.
@@ -142,7 +143,16 @@ def _params(app, params, audio_s, *, retry=False):
 
 
 def _transcribe(app, audio, params, deadline, cancel):
+    from samsara.hold_final_policy import current_audit
+    audit = current_audit.get()
     def decode(abandoned):
+        token = current_audit.set(audit)
+        try:
+            return decode_segments(abandoned)
+        finally:
+            current_audit.reset(token)
+
+    def decode_segments(abandoned):
         segments, info = transcribe_with_vocabulary(app, audio, path="hold_final", **params)
         kept = []
         segments = iter(segments)
@@ -209,7 +219,8 @@ def stream_final(worker, audio, params):
             session._decode_audio = audio
             reason = 'explicit_retry'
         if text and not reason:
-            return segments, info, text
+            from samsara.hold_final_policy import preserve_preview_tail
+            return segments, info, preserve_preview_tail(session, text)
         partial = getattr(session, '_last_partial', '')
         if isinstance(partial, str) and partial and reason != 'explicit_retry':
             # Only on_partial's already-guarded text; never the rejected final.
@@ -282,6 +293,7 @@ def supersede_final(app):
     app._stop_in_flight = False
 
 
+@audited_batch
 def decode_hold(app, audio, params, duration_s):
     """Batch free-form seam; leave Command/Ava paths with their own decoder."""
     from samsara.audio_tools import _HotkeyDecodeResult, _suspected_silent_data_loss
@@ -291,7 +303,7 @@ def decode_hold(app, audio, params, duration_s):
     original = None
     try:
         segs, info = _transcribe(app, audio, effective, deadline, cancel)
-        text, low = _apply_segment_quality_gates(segs, effective, duration_s)
+        text, low = _apply_segment_quality_gates(segs, effective, duration_s, audio=audio, rate=app.model_rate)
         if text and not app._filter_dictation_language(text, info):
             return _HotkeyDecodeResult('', False, segs, getattr(info, 'language', None), 'hold_618', True)
         original = _HotkeyDecodeResult(text, low, segs, getattr(info, 'language', None), 'hold_618')
@@ -305,7 +317,7 @@ def decode_hold(app, audio, params, duration_s):
         retry_params = _params(app, params, 5, retry=True)
         for chunk in _chunks(audio, app.model_rate):
             segs, info = _transcribe(app, chunk, retry_params, deadline, cancel)
-            piece, low = _apply_segment_quality_gates(segs, retry_params, len(chunk) / app.model_rate)
+            piece, low = _apply_segment_quality_gates(segs, retry_params, len(chunk) / app.model_rate, audio=chunk, rate=app.model_rate)
             if not piece or not app._filter_dictation_language(piece, info):
                 raise ValueError('hold recovery rejected')
             pieces.append(piece)

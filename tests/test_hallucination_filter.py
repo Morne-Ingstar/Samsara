@@ -93,7 +93,7 @@ def test_measured_owner_signoff_fixture_drops():
         audio_duration_s=0.740,
     )
     # 1021: the same measured evidence is checked at the final segment seam.
-    assert _outro_is_unsupported(dict(context.segments[0], text="Thanks for watching!"), None, 16000)
+    assert not _outro_is_unsupported(dict(context.segments[0], text="Thanks for watching!"), None, 16000)  # 1026: scores alone cannot prove silence.
 
 
 def test_measured_owner_mixed_output_fixture_is_kept():

@@ -88,7 +88,7 @@ def test_known_phrase_in_a_middle_segment_is_not_removed():
 def test_low_confidence_final_outro_drops_without_pcm_timing(signals):
     real = seg('Preserve this introduction.')
     outro = seg(' Subscribe.', start=None, end=None, **signals)
-    assert decode([real, outro], pcm())[0] == [real]
+    assert decode([real, outro], pcm())[0] == [real, outro]  # 1026: scores alone cannot prove silence.
 
 
 @pytest.mark.parametrize('signals', [dict(no_speech_prob=None, avg_logprob=None),
