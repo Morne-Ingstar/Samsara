@@ -5,16 +5,34 @@ import re
 
 from samsara.ava_edit import intent, model, sanitize, session
 
+# PLACEHOLDER COPY (1036a): cleanup model instruction.
 DEFAULT_INSTRUCTION = (
     "Fix dictation artifacts only: spurious periods and capitals from pauses, "
     "merge fragments into sentences, fix punctuation and obvious homophones. "
+    "A period followed by a capital letter that only marks a pause in speech is "
+    "an artifact: remove it and join the two parts into one sentence when the "
+    "result is grammatical. "
     "Do not reword, shorten, change tone, or add information."
 )
 _CLEANUP_VERBS = {"clean", "tidy", "fix", "correct", "punctuate"}
 _LOWERCASE_WORDS = frozenset(
     "a an the and or but so to of in on at for from with as by into is are was "
     "were be been being am have has had do does did can could would should "
-    "will went bought store some this that it my your our their then".split())
+    "will went bought store some this that it my your our their then "
+    "live helps help tells tell instead which who because these done ready "
+    "working reviewed finished available".split())
+_CLAUSE_VERBS = frozenset(
+    "am is are was were have has had do does did will would can could should "
+    "may might must live lives help helps tell tells want wants need needs "
+    "went go goes bought buy buys saw see sees waved wave waves arrived "
+    "left stayed finished stopped like likes know knows think thinks said told "
+    "use uses work works let lets make makes feel feels hear hears watch watches"
+    .split())
+_UNFINISHED = frozenset(
+    "to of in on at for with from into by as and or but because that which who "
+    "the a an my your our their this these is are was were has have had will "
+    "would can could should must".split())
+_CONTINUATIONS = frozenset("and but or so then because instead being".split())
 
 
 def check_transform(raw, original, instruction, operation):
@@ -133,24 +151,67 @@ def _transform(app, original, target, operation, argument, *, generation=None):
 def deterministic_cleanup(text: str) -> str:
     """Conservative offline pause repair; retains paragraphs, names and acronyms.
 
-    A short following fragment or lowercase continuation can join a period.
-    Only common function words lose capitals inside a sentence; a general
-    title-case rule would damage names without a language model.
+    Require an unfinished left clause or a compatible continuation on the
+    right. Shortness alone is not evidence that a sentence end was a pause.
+    Ambiguous independent clauses stay separate; this is no grammar parser.
     """
+    def join_pause(left, following):
+        fragment = re.split(r"[.!?\r\n]", following, maxsplit=1)[0]
+        words = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", fragment.lower())
+        previous = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", left.lower())
+        if not words or not previous or not re.match(r"[A-Za-z]", following):
+            return False
+        ending = previous[-1]
+        # Titles, initials/initialisms, ellipses and questions are hard bounds.
+        if (ending in {"mr", "mrs", "ms", "dr", "prof", "etc", "vs", "e", "g"}
+                or (len(ending) == 1 and ending != "i") or left.endswith(".")
+                or re.match(r"[^.!?\r\n]*\?", following)
+                or previous[0] in {"is", "are", "was", "were", "do", "does", "did",
+                                    "can", "could", "will", "would", "should",
+                                    "what", "why", "how", "when", "where"}):
+            return False
+        first = words[0]
+        # An explicit new subject normally starts a real independent clause.
+        independent = (first in {"i", "you", "he", "she", "it", "we", "they", "there"}
+                       or (following[0].isupper() and first not in _LOWERCASE_WORDS
+                           and len(words) > 1
+                           and words[1] in _CLAUSE_VERBS))
+        if independent:
+            return False
+        if ending in _UNFINISHED or (ending == "so" and previous == ["so"]):
+            return True
+        # Catenative verbs license an object followed by a bare infinitive:
+        # "helps me. Live ..."; an arbitrary verb + pronoun does not.
+        if (ending in {"me", "you", "him", "her", "us", "them"}
+                and len(previous) > 1
+                and previous[-2] in {"help", "helps", "helped", "let", "lets",
+                                     "make", "makes", "made", "hear", "hears",
+                                     "see", "sees", "watch", "watches", "feel", "feels"}
+                and first in (_CLAUSE_VERBS - {"am", "is", "are", "was", "were",
+                                              "has", "had", "does", "did"}) | {"to"}):
+            return True
+        noun_phrase = (len(previous) > 1
+                       and previous[0] in {"a", "an", "the", "my", "your", "our",
+                                           "their", "this", "these", "whatever"}
+                       and not any(word in _CLAUSE_VERBS for word in previous))
+        continuation = (following[0].islower() or first in _CONTINUATIONS
+                        or (first in _CLAUSE_VERBS and noun_phrase))
+        if first == "instead" and words[1:2] != ["of"]:
+            return False
+        if (first == "then" and len(words) > 1
+                and words[1] in {"i", "you", "he", "she", "it", "we", "they"}):
+            return False
+        return continuation and (len(previous) <= 5 or noun_phrase)
+
     text = re.sub(r"[ \t]{2,}", " ", text or "")
     parts = re.split(r"(\.[ \t]+)", text)
     result = parts[0]
     for index in range(1, len(parts), 2):
         separator, following = parts[index:index + 2]
-        fragment = re.split(r"[.!?\n]", following, maxsplit=1)[0]
-        words = fragment.split()
-        previous = re.findall(r"[A-Za-z]+", result)
-        abbreviation = previous and previous[-1].lower() in {
-            "mr", "mrs", "ms", "dr", "prof", "etc", "vs"}
-        merge = words and not abbreviation and (
-            len(words) < 4 or words[0][:1].islower())
-        if merge:
-            if words[0].lower() in _LOWERCASE_WORDS and not words[0].isupper():
+        left = re.split(r"[.!?\r\n]", parts[index - 1])[-1].strip()
+        if join_pause(left, following):
+            word = following.split()[0]
+            if word.lower() in _LOWERCASE_WORDS and not word.isupper():
                 following = following[0].lower() + following[1:]
             separator = " "
         result += separator + following

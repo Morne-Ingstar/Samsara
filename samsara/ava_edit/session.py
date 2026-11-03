@@ -198,11 +198,29 @@ def propose(text: str, instruction: str, app, *, offline=False, cleanup=False,
     failure cannot become a partial edit even if the caller ignores `ok`.
     """
     original = text or ""
+    path = "offline" if offline else "model"
+
+    def finish(proposal):
+        if cleanup:
+            import difflib
+            import re
+            rewritten = proposal.rewritten
+            boundaries = {match.start() for match in re.finditer(r"\.(?=[ \t]+\S)", original)}
+            joins = sum(
+                sum(start <= pos < end for pos in boundaries)
+                for tag, start, end, new_start, new_end in difflib.SequenceMatcher(
+                    None, original.lower(), rewritten.lower(), autojunk=False).get_opcodes()
+                if tag in {"delete", "replace"}
+                and not re.search(r"[.!?\r\n]", rewritten[new_start:new_end]))
+            logger.info(f"[AVA-EDIT] cleanup path={path} joins_made={joins} "
+                        f"chars_before={len(original)} chars_after={len(rewritten)}")
+        return proposal
+
     if not original.strip():
-        return Proposal.none("there is nothing to edit", original=original,
-                             instruction=instruction)
+        return finish(Proposal.none("there is nothing to edit", original=original,
+                                    instruction=instruction))
     if not (instruction or "").strip():
-        return Proposal.none("no instruction", original=original, instruction=instruction)
+        return finish(Proposal.none("no instruction", original=original, instruction=instruction))
 
     if offline:
         from samsara.ava_edit.selection import deterministic_cleanup
@@ -210,10 +228,11 @@ def propose(text: str, instruction: str, app, *, offline=False, cleanup=False,
     else:
         raw, reason = model.rewrite(original, instruction, app)
         if cleanup and raw is None and reason == "no model available":
+            path = "offline"
             from samsara.ava_edit.selection import deterministic_cleanup
             raw = deterministic_cleanup(original)
     if raw is None:
-        return Proposal.none(reason, original=original, instruction=instruction)
+        return finish(Proposal.none(reason, original=original, instruction=instruction))
 
     if transform in {"translate", "summarize"}:
         from samsara.ava_edit.selection import check_transform
@@ -224,9 +243,9 @@ def propose(text: str, instruction: str, app, *, offline=False, cleanup=False,
         refusal = "not derived from the text"
     if refusal is not None:
         logger.info(f"[AVA-EDIT] rewrite refused by the sanitizer: {refusal}")
-        return Proposal.none(refusal, original=original, instruction=instruction)
+        return finish(Proposal.none(refusal, original=original, instruction=instruction))
 
-    return Proposal.build(original, sanitize.clean(raw), instruction=instruction)
+    return finish(Proposal.build(original, sanitize.clean(raw), instruction=instruction))
 
 
 def stage(app, proposal: Proposal, *, selection_target=None, selection_mode="replace", draft_target=None) -> bool:
