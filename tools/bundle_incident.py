@@ -20,7 +20,7 @@ from __future__ import annotations
 import argparse
 import collections
 import re
-import shutil
+import json
 import subprocess
 import sys
 from datetime import datetime
@@ -31,6 +31,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from samsara.paths import samsara_home_dir
+from samsara.support_bundle import _scrub_log_line, scrub_config
 
 _FLIGHT_EVENT_LIMIT = 500
 _LOG_LINE_LIMIT = 300
@@ -40,6 +41,13 @@ _FREEZE_FALLBACK_LINES = 200
 # followed shortly by an ISO-ish timestamp (e.g. "Dump #94 2026-08-02
 # 14:03:11" or "--- 2026-08-02T14:03:11 ---").
 _DUMP_BOUNDARY_RE = re.compile(r'^\S.{0,40}\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}')
+
+
+def _scrub_event(line: str) -> str:
+    # Preserve JSONL framing when a private event is excluded.
+    if _scrub_log_line(line) != line:
+        return json.dumps({"event": "redacted", "reason": "private content"}) + "\n"
+    return line
 
 
 def _tail_lines(path: Path, limit: int) -> list[str]:
@@ -96,25 +104,25 @@ def bundle_incident(samsara_home: Path, repo_root: Path = ROOT) -> Path:
     incident_dir.mkdir(parents=True, exist_ok=True)
 
     flight_events = _tail_flight_events(samsara_home / 'flight', _FLIGHT_EVENT_LIMIT)
-    (incident_dir / 'flight_events.jsonl').write_text(''.join(flight_events), encoding='utf-8')
+    (incident_dir / 'flight_events.jsonl').write_text(''.join(_scrub_event(line) for line in flight_events), encoding='utf-8')
 
     log_lines = _tail_lines(samsara_home / 'logs' / 'samsara.log', _LOG_LINE_LIMIT)
-    (incident_dir / 'samsara_log_tail.txt').write_text(''.join(log_lines), encoding='utf-8')
+    (incident_dir / 'samsara_log_tail.txt').write_text(''.join(_scrub_log_line(line) for line in log_lines), encoding='utf-8')
 
     freeze_stacks = _tail_freeze_dumps(
         samsara_home / 'freeze_stacks.txt', _FREEZE_DUMP_COUNT, _FREEZE_FALLBACK_LINES,
     )
     if freeze_stacks:
-        (incident_dir / 'freeze_stacks_tail.txt').write_text(freeze_stacks, encoding='utf-8')
+        (incident_dir / 'freeze_stacks_tail.txt').write_text(''.join(_scrub_log_line(line) for line in freeze_stacks.splitlines(keepends=True)), encoding='utf-8')
 
     for name in ('probe.log', 'guard.log'):
         source = samsara_home / name
         if source.exists():
-            shutil.copy2(source, incident_dir / name)
+            (incident_dir / name).write_text(''.join(_scrub_log_line(line) for line in source.read_text(encoding='utf-8', errors='replace').splitlines(keepends=True)), encoding='utf-8')
 
     config_source = samsara_home / 'config.json'
     if config_source.exists():
-        shutil.copy2(config_source, incident_dir / 'config.json')
+        (incident_dir / 'config.json').write_text(json.dumps(scrub_config(json.loads(config_source.read_text(encoding='utf-8'))), indent=2), encoding='utf-8')
 
     (incident_dir / 'git_head.txt').write_text(_git_head(repo_root) + '\n', encoding='utf-8')
 

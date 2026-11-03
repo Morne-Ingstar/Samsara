@@ -47,6 +47,9 @@ _PRIVATE_LOG_LINE = re.compile(
         |SMART|SNIPPET|GUARD|SKIP|PAUSED|CMD MODE|CMD|AVA)\]
     | \[STREAM\]\s*Partial:
     | \[DICTATE-PREVIEW\].*(?:correction choice|fixed in the draft)
+    | \[(?:PLUGINS?|EXEC|REGISTRY|SHOW_LATENCY|SCOPE|CHAIN|GRAMMAR|CMD-COMPACT)\]
+    | personal_plugins|samsara_personal_|Plugin\s+command|Plugin\s+['"]
+    | "(?:phrase|command(?:_name|_id)?|canonical(?:_id)?|matched_phrase|aliases|source_text)"\s*:
     | User said:|No command matched:|is a command in the disabled pack|not spoken|trailing text
     """
 )

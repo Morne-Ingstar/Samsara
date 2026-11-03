@@ -49,6 +49,11 @@ def tracked_tree_datas(
     source_prefix = Path(source_dir)
     destination_prefix = Path(destination_dir)
     for relative in sorted(relative_files, key=lambda value: value.as_posix()):
+        # 1050: exclude private payloads even if accidentally tracked.
+        if any(part.lower() in {"personal_plugins", "backups"} for part in relative.parts):
+            continue
+        if relative.name == "demo_commands.py" or relative.name.startswith("local_"):
+            continue
         absolute = root / relative
         if not absolute.is_file():
             raise FileNotFoundError(f"tracked release file is missing: {absolute}")

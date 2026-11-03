@@ -205,8 +205,7 @@ def _register(entry):
         conflicts = [key for key in [entry['phrase'], *entry['aliases']]
                      if key in reserved or (key in _REGISTRY and _REGISTRY[key] is not entry)]
         if conflicts:
-            logger.warning("[PLUGINS] Skipped personal command %r: phrase or alias collision",
-                           entry['phrase'])
+            logger.warning("[PLUGINS] Skipped personal command: phrase or alias collision")
             return
         entry['source'] = 'personal'
     identity = (entry['source'], getattr(func, '__qualname__', None))
