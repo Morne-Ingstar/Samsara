@@ -224,6 +224,7 @@ class CommandExecutor:
             # window and active tags at match time (samsara.command_scope).
             matcher.set_context_provider(_command_scope.capture_context)
             self._matcher = matcher
+            self._capability_generation = getattr(self, '_capability_generation', 0) + 1
             if self._resources is None:
                 _plugin_commands.set_shared_matcher(matcher)
             return matcher
@@ -514,6 +515,22 @@ class CommandExecutor:
             names.append(phrase)
             used += cost
         return names
+
+    def capability_index(self, *, app=None, context=None, documentation=()):
+        """Inventory the loaded registry; failure offers zero executable tools.
+
+        Rich discovery stays separate from the legacy no-argument name menu.
+        Rebuilding from live inputs makes pack/schema/metadata changes visible
+        even when they did not pass through rebuild_matcher().
+        """
+        from .ava_capabilities import CapabilityIndex
+        return CapabilityIndex.from_executor(self, app=app, context=context,
+                                             documentation=documentation)
+
+    def capability_request(self, request_id: str, *, app=None, context=None):
+        """Request-owned discovery/offer state for queued model responses."""
+        from .ava_capabilities import CapabilityRequest
+        return CapabilityRequest(self, request_id, app=app, context=context)
 
     # ── The one execution API (queue 107) ───────────────────────────────────
 

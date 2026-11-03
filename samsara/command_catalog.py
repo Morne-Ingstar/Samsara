@@ -1073,6 +1073,18 @@ def guidance_catalog(rows=None, *, catalog_path: Optional[Path] = None) -> Optio
     return load_catalog_json(catalog_path)
 
 
+def capability_metadata(rows, *, builtin_commands: dict, plugin_registry: dict) -> list:
+    """Descriptions/documentation IDs for an already loaded registry snapshot.
+
+    Unlike guidance_catalog, an empty or failed live snapshot never falls back
+    to static records. Inferred args/risk in these records are documentation
+    only; the capability index obtains callable contracts from runtime policy.
+    Supplying both tables also avoids another plugin loader or config read.
+    """
+    return catalog_from_registry_rows(rows, builtin_commands=builtin_commands,
+                                      plugin_registry=plugin_registry)
+
+
 def canonical_phrase(record: dict) -> str:
     """The canonical spoken form of a record: its "phrase", else the alias
     whose slug is the canonical_id's suffix."""

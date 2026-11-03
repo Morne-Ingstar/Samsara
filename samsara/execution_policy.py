@@ -902,10 +902,10 @@ def confirmation_prompt(command_id: str, args: Optional[dict] = None) -> str:
     return f"{_template_value(cid).capitalize()}?"
 
 
-def _quiet_emit(app, inv, decision):
-    """The no-op stand-in for _emit when a decision is only being asked
-    about, not made (authorize(quiet=True))."""
-    return None
+def describe_capability(command_id: str, *, executor, app=None, context=None) -> dict:
+    """Read-only discovery before arguments exist; this never grants authority."""
+    from .ava_capabilities import _describe_capability
+    return _describe_capability(command_id, executor=executor, app=app, context=context)
 
 
 def authorize(inv: Invocation, *, app=None, executor=None, confirmed: bool = False,
@@ -923,7 +923,7 @@ def authorize(inv: Invocation, *, app=None, executor=None, confirmed: bool = Fal
     """
     cid = (inv.command_id or "").strip().lower()
     # One decision function; `quiet` only silences the record of it.
-    emit = _quiet_emit if quiet else _emit
+    emit = (lambda *_args: None) if quiet else _emit
 
     # 1. Request identity: anything from a superseded request is dead, and a
     # request that never captured a generation has no identity at all.
