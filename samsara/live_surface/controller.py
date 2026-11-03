@@ -384,17 +384,41 @@ class LiveSurfaceController:
             if callable(save): save()
 
     def reset_placement(self) -> bool:
-        """One recovery action: bottom-centre, visible, draft untouched."""
+        """Restore the default bottom-left placement and active-form size."""
         screens = self._screens()
         if not screens:
             return False
         raw, records = self._placement_config()
-        screen = next((item for item in screens if item.id == raw.get("preferred_monitor")),
-                      next((item for item in screens if item.primary), screens[0]))
-        records[screen.id] = placement_record(Placement(Edge.BOTTOM, .5))
+        screen = next((item for item in screens if item.primary), screens[0])
+        records[screen.id] = placement_record(Placement(Edge.BOTTOM, 0.0))
         self._save_placement({"preferred_monitor": screen.id, "monitors": records})
         if self.widget is not None:
+            reset_size = getattr(self.widget, "reset_default_size", None)
+            if callable(reset_size):
+                reset_size()
             self._place_widget(); self.widget.show()
+        return True
+
+    def find_on_current_monitor(self) -> bool:
+        """Keep the saved edge/position while moving it to the pointer's screen."""
+        screens = self._screens()
+        if not screens:
+            return False
+        from PySide6.QtGui import QCursor, QGuiApplication
+        current = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
+        screen = next((item for item in screens if current is not None and item.id == current.name()), None)
+        screen = screen or next((item for item in screens if item.primary), screens[0])
+        raw, records = self._placement_config()
+        prior = records.get(raw.get("preferred_monitor"))
+        if prior is None and records:
+            prior = next(iter(records.values()))
+        records[screen.id] = (records.get(screen.id) or prior
+                              or placement_record(Placement(Edge.BOTTOM, 0.0)))
+        self._save_placement({"preferred_monitor": screen.id, "monitors": records})
+        self._placement_anchor = None
+        if self.widget is not None:
+            self._place_widget()
+            self.widget.show()
         return True
 
     def move_to_foreground_screen(self) -> bool:

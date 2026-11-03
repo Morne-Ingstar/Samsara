@@ -51,6 +51,53 @@ def _view_from(source: Any) -> SurfaceView:
     return candidate
 
 
+class _FindOutline(QWidget):
+    """Mouse-transparent teal perimeter used only while a FIND command runs."""
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
+        self._remaining = 0
+        self._on = False
+        self._timer = QTimer(self)
+        self._timer.setInterval(180)
+        self._timer.timeout.connect(self._advance)
+
+    def flash(self) -> None:
+        self._remaining = 6
+        self._on = True
+        self.show()
+        self.raise_()
+        self._timer.start()
+        self.update()
+
+    def _advance(self) -> None:
+        self._remaining -= 1
+        self._on = not self._on
+        if self._remaining <= 0:
+            self._timer.stop()
+            self._on = False
+            self.hide()
+            return
+        self.update()
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        del event
+        if not self._on:
+            return
+        painter = QPainter(self)
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(QPen(theme.qcolor(theme.ACCENT), 3))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(QRectF(self.rect()).adjusted(2, 2, -2, -2),
+                                    CARD_RADIUS, CARD_RADIUS)
+        finally:
+            painter.end()
+
+
 def _capture_mark(view: SurfaceView) -> tuple[str, str]:
     if view.snoozed:
         return "idle", "asleep"
@@ -495,6 +542,22 @@ class LiveSurfaceWidget(QWidget):
         self._placement_edge = placed.edge
         self.setGeometry(round(bounds.x), round(bounds.y), round(bounds.width), round(bounds.height))
         self._layout_children(); self._update_mask()
+
+    def reset_default_size(self) -> None:
+        """Restore the active form's design size while keeping its placement owner."""
+        target = self._form_rect(self._display_form())
+        self.setGeometry(target)
+        self._layout_children()
+        self._update_mask()
+
+    def flash_find(self) -> None:
+        """Pulse the teal perimeter three times to make the surface easy to spot."""
+        outline = getattr(self, "_find_outline", None)
+        if outline is None:
+            outline = _FindOutline(self)
+            self._find_outline = outline
+        outline.setGeometry(self.rect())
+        outline.flash()
 
     def refresh(self, view: SurfaceView | None = None, *, animate: bool = True) -> None:
         self._apply_view(_view_from(self._controller) if view is None else view, animate=animate)

@@ -2,7 +2,7 @@
 import weakref
 
 from PySide6.QtCore import QEvent, QRectF, Qt, QTimer
-from PySide6.QtGui import QPainter, QPainterPath, QRegion
+from PySide6.QtGui import QPainter, QPainterPath, QPen, QRegion
 from PySide6.QtWidgets import QApplication, QWidget
 
 
@@ -30,6 +30,7 @@ class _PillWindow(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         self._owner._paint_pill(painter, QRectF(self.rect()), *self._owner._resolve_colors())
+        self._owner._paint_find_outline(painter, QRectF(self.rect()))
         painter.end()
 
     def mousePressEvent(self, event):
@@ -68,6 +69,31 @@ class _PillWindow(QWidget):
 
 
 class IndicatorDrag:
+    def _paint_find_outline(self, painter, rect):
+        if not getattr(self, "_find_flash_on", False):
+            return
+        from samsara.ui import theme
+        painter.setPen(QPen(theme.qcolor(theme.ACCENT), 3))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRoundedRect(rect.adjusted(2, 2, -2, -2), rect.height() / 2, rect.height() / 2)
+
+    def flash_find(self):
+        """Pulse the teal pill outline three times."""
+        self._find_flash_remaining = 6
+        self._find_flash_on = True
+        self._find_flash_timer.start()
+        self.update()
+
+    def _advance_find_flash(self):
+        self._find_flash_remaining -= 1
+        self._find_flash_on = not self._find_flash_on
+        if self._find_flash_remaining <= 0:
+            self._find_flash_timer.stop()
+            self._find_flash_on = False
+        window = getattr(self, "_pill_window", None)
+        if window is not None:
+            window.update()
+
     def _update_input_mask(self):
         # The backing/receipt window stays transparent and unmasked. Only the
         # separate pill window is masked; it paints nothing beyond its pill.

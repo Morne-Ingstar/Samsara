@@ -225,7 +225,7 @@ def reset_indicator_placement(app) -> bool:
     if not isinstance(config, dict):
         return False
     changes = {
-        "listening_indicator_position": "bottom-center",
+        "listening_indicator_position": "bottom-left",
         "listening_indicator_custom_position": None,
     }
     update = getattr(app, "update_config_and_save", None)
@@ -326,6 +326,12 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         self._flash_timer.setSingleShot(True)
         self._flash_timer.setInterval(_FLASH_STEP_INTERVAL)
         self._flash_timer.timeout.connect(self._flash_tick)
+
+        self._find_flash_remaining = 0
+        self._find_flash_on = False
+        self._find_flash_timer = QTimer(self)
+        self._find_flash_timer.setInterval(180)
+        self._find_flash_timer.timeout.connect(self._advance_find_flash)
 
         # Outcome chip. _chip_label None means no chip. _chip_only is True
         # when the chip had to show the widget itself because the indicator

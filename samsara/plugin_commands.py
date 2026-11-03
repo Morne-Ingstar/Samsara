@@ -88,7 +88,7 @@ def command(phrase, aliases=None, pack='core', debounce=0.0, app_overrides=None,
             risk_class=_UNSET, ai_composable=_UNSET, side_effects=_UNSET,
             preconditions=_UNSET, voice_triggerable=_UNSET, param_schema=_UNSET,
             reversible=_UNSET, preview_template=_UNSET,
-            side_effect_category=_UNSET, scope=None):
+            side_effect_category=_UNSET, scope=None, whole_utterance=False):
     """Decorator: register a function as a voice command.
 
     The decorated function is called as `func(app, remainder)` where `remainder`
@@ -166,6 +166,7 @@ def command(phrase, aliases=None, pack='core', debounce=0.0, app_overrides=None,
         return default if value is _UNSET else value
 
     def decorator(func):
+        func.whole_utterance = bool(whole_utterance)
         entry = {
             'func': func,
             'phrase': phrase.lower().strip(),
@@ -275,9 +276,20 @@ def find_command(text):
         entry = _REGISTRY[text_lower]
         return (entry, '') if _live(entry) else (None, '')
 
+    # Commands marked whole_utterance accept only their complete normalized
+    # phrase. Use the same punctuation/case view as CommandMatcher so Whisper's
+    # sentence punctuation remains harmless.
+    from samsara.command_registry import view_tokens  # noqa: PLC0415
+    normalized = ' '.join(norm for norm, _start, _end in view_tokens(text))
+    exact_entry = _REGISTRY.get(normalized)
+    if exact_entry is not None and getattr(exact_entry.get('func'), 'whole_utterance', False):
+        return (exact_entry, '') if _live(exact_entry) else (None, '')
+
     # Longest-phrase-first prevents "open" matching before "open browser"
     for phrase in sorted(_REGISTRY, key=len, reverse=True):
         entry = _REGISTRY[phrase]
+        if getattr(entry.get('func'), 'whole_utterance', False):
+            continue
         if not _live(entry):
             continue
 

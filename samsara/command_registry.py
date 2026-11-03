@@ -655,6 +655,9 @@ class CommandMatcher:
                 continue
             n = len(phrase_tokens)
             if n <= len(text_tokens) and text_tokens[:n] == phrase_tokens:
+                if (getattr(entry.handler, 'whole_utterance', False)
+                        and clean_lower != ' '.join(phrase_tokens)):
+                    continue
                 start = tokens[n - 1][2]
                 remainder = argument_text(text, start)
                 if getattr(entry.handler, 'verbatim_argument', False):
