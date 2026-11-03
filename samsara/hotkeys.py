@@ -17,6 +17,7 @@ from samsara.constants import DEFAULT_CONTINUOUS_COMMIT_HOTKEY, DEFAULT_CONTINUO
 from samsara.runtime import thread_registry
 from samsara.recovery_notifications import notice_for
 from samsara.session_modes import SessionMode
+from samsara import hold_backstop
 
 logger = logging.getLogger("Samsara")
 
@@ -49,7 +50,13 @@ def _serialized_main_hotkey(callback):
         # start_recording is synchronous: keep ownership until activation has
         # completed so a concurrent release cannot consume an unfinished start.
         with _main_hotkey_lock(self):
-            return callback(self, *args, **kwargs)
+            before = hold_backstop.health(self)
+            if hold_backstop.ignores_release(self, callback.__name__, args):
+                return
+            try:
+                return callback(self, *args, **kwargs)
+            finally:
+                hold_backstop.sync(self, before)
     return serialized
 
 
@@ -1010,11 +1017,13 @@ class HotkeyCluster:
             until = 'until automatic recovery' if recovering else 'until re-enabled'
             logger.warning(f"[MOUSE] {why}: main hotkey {hotkey} runs on {fallback} {until} "
                            f"(config unchanged, not saved)")
-        if getattr(self, '_hold_down_mouse', False):
-            self._hold_down_mouse = False
-            if getattr(self, '_main_hotkey_source', 'key') == 'mouse' and getattr(self, 'recording', False):
-                self._main_hotkey_source = 'key'
-                thread_registry.spawn('stop-rec', self.stop_recording, daemon=True)
+        with _main_hotkey_lock(self):
+            if (getattr(self, '_hold_down_mouse', False)
+                    and not hold_backstop.protects(self, 'mouse')):
+                self._hold_down_mouse = False
+                if getattr(self, '_main_hotkey_source', 'key') == 'mouse' and getattr(self, 'recording', False):
+                    self._main_hotkey_source = 'key'
+                    thread_registry.spawn('stop-rec', self.stop_recording, daemon=True)
         def show_warning():
             try:
                 # PLACEHOLDER COPY (867)

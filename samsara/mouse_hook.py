@@ -376,6 +376,8 @@ class MouseHook:
         self.last_callback_ms = 0.0
         self.last_callback_at = None
         self._callback_started_at = None
+        self._hold_recovery_count = 0
+        self._hold_healthy_at = 0.0
         self._reported = {'dropped': 0, 'slow': 0, 'errors': 0}
         self._drop_burst_open = False
         # Watchdog state.
@@ -400,6 +402,7 @@ class MouseHook:
     def _hook_callback(self, n_code, w_param, l_param):
         """Time the entire callback, including a downstream native hook wait."""
         t0 = _perf()
+        injected = True
         self._callback_started_at = self.last_callback_at = t0
         try:
             suppress = False
@@ -447,6 +450,16 @@ class MouseHook:
                 self.slow_callbacks += 1
                 if elapsed > self.slow_callback_max_ms:
                     self.slow_callback_max_ms = elapsed
+            elif n_code >= 0 and not injected and w_param != WM_XBUTTONUP:
+                self._hold_healthy_at = _perf()
+
+    def hold_health(self):
+        """Lock-free counters for the independent active-hold release worker."""
+        running = self._callback_started_at
+        elapsed = 0.0 if running is None else max(0.0, (_perf() - running) * 1000)
+        return ((self.slow_callbacks, self._hold_recovery_count),
+                self.recovering or elapsed > SLOW_CALLBACK_MS,
+                self._hold_healthy_at, max(elapsed, self.last_callback_ms))
 
     # ------------------------------------------------------------------
     # Dispatcher (its own thread): delivery + watchdog
@@ -740,6 +753,7 @@ class MouseHook:
 
     def _begin_recovery(self, reason: str) -> None:
         if not self.recovering:
+            self._hold_recovery_count += 1
             self._recovery_count = self.callback_count
             self._wake_queued = False
             self._input_retry_used = False
