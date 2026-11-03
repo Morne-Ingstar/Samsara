@@ -1,8 +1,8 @@
 """Queue 69: make a wrong execution cheap instead of chasing a smarter gate.
 
-A non-read command recognised inside the dictation lane waits behind a short
+A risky command recognised inside the dictation lane waits behind a short
 cancel window ("running <X>... say no") and runs when it elapses unless the
-user cancels. Read commands run at once; destructive ones keep their yes/no
+user cancels. Read/UI commands run at once; destructive ones keep their yes/no
 (queue 63); a window of 0 is today's behaviour exactly.
 
 Never imports dictation (the app may be running from source); dictation.py's
@@ -168,6 +168,7 @@ def _say(manager, app, text):
 # ---------------------------------------------------------------------------
 
 class TestWhoGetsAWindow:
+    # 1029: UI is immediate; risky reserved words and destructive effects wait.
     def test_risk_classes(self):
         calls = []
         _register("open panel", calls, risk_class="ui")
@@ -176,21 +177,25 @@ class TestWhoGetsAWindow:
         _register("wipe drive", calls, risk_class="destructive", reversible=False)
         _register("close tab", calls, risk_class="destructive", reversible=True)
         app = _app()
-        assert ep.cancel_window_for("open panel", app) == ep.CANCEL_WINDOW_DEFAULT_S == 3.0
-        assert ep.cancel_window_for("paste it", app) == 3.0
-        assert ep.cancel_window_for("close tab", app) == 3.0          # undoable
+        assert ep.cancel_window_for("open panel", app) == 0.0
+        assert ep.cancel_window_for("paste it", app) == ep.CANCEL_WINDOW_DEFAULT_S == 1.5
+        assert ep.cancel_window_for("close tab", app) == 1.5          # closing may lose work
         assert ep.cancel_window_for("what time", app) == 0.0          # read: immediate
-        assert ep.cancel_window_for("wipe drive", app) == 0.0         # keeps yes/no
+        assert ep.cancel_window_for("wipe drive", app) == 1.5         # also keeps yes/no
         assert ep.cancel_window_for("no such command", app) == 0.0    # unknown: keeps yes/no
 
     def test_everyday_words_only_when_extended(self):
         _register("submit it", [], risk_class="write")
-        assert ep.cancel_window_for("submit it", _app(), reserved=True) == 0.0
-        assert ep.cancel_window_for("submit it", _app(everyday=True), reserved=True) == 3.0
+        assert ep.cancel_window_for("submit it", _app(), reserved=True) == 1.5
+        assert ep.cancel_window_for("submit it", _app(everyday=True), reserved=True) == 1.5
 
     @pytest.mark.parametrize("raw,expected", [
         (0, 0.0), ("0", 0.0), (1.5, 1.5), (9, ep.CANCEL_WINDOW_MAX_S),
-        (-1, 3.0), ("garbage", 3.0), (None, 3.0), (float("nan"), 3.0),
+        # 1029: keep HEAD node IDs while changing the intended default.
+        pytest.param(-1, 1.5, id="-1-3.0"),
+        pytest.param("garbage", 1.5, id="garbage-3.0"),
+        pytest.param(None, 1.5, id="None-3.0"),
+        pytest.param(float("nan"), 1.5, id="nan-3.0"),
     ])
     def test_setting_is_clamped_to_an_honest_value(self, raw, expected):
         app = _app()
@@ -209,19 +214,20 @@ class TestWhoGetsAWindow:
 # ---------------------------------------------------------------------------
 
 class TestDictationLane:
+    # 1029: lifecycle fixtures use write risk so they still exercise a window.
     def test_non_read_command_opens_the_window_and_runs_after_it_elapses(self, timers):
-        _register("open panel", [], risk_class="ui")
+        _register("open panel", [], risk_class="write")
         app, calls, deferred = _app(), [], []
         m = _manager(app, timers, calls, deferred=deferred,
                      probe=_probe({"open panel": ("open panel", PRESERVE, False)}))
 
         outcome = _say(m, app, "Open panel.")
         assert outcome.kind == "command_cancel_window"
-        assert outcome.detail["delay_s"] == 3.0
+        assert outcome.detail["delay_s"] == 1.5
         assert outcome_chip(outcome.kind, outcome.detail) == ("running open panel" + chr(0x2026) + " say no", "pending")
         assert calls == []                                   # nothing ran yet
         assert isinstance(ep.pending_operation(), ep.TimedOperation)
-        assert len(timers) == 1 and timers[0].seconds == 3.0
+        assert len(timers) == 1 and timers[0].seconds == 1.5
 
         timers[0].fire()
         assert calls == ["open panel"]
@@ -230,7 +236,7 @@ class TestDictationLane:
 
     @pytest.mark.parametrize("word", ["No.", "no", "Cancel", "stop", "Nope!", "don't"])
     def test_cancel_inside_the_window_prevents_execution_and_is_logged(self, timers, caplog, word):
-        _register("open panel", [], risk_class="ui")
+        _register("open panel", [], risk_class="write")
         app, calls, deferred = _app(), [], []
         m = _manager(app, timers, calls, deferred=deferred,
                      probe=_probe({"open panel": ("open panel", PRESERVE, False)}))
@@ -268,7 +274,7 @@ class TestDictationLane:
     def test_destructive_command_still_requires_yes_no(self, timers):
         _register("wipe drive", [], risk_class="destructive", reversible=False)
         app = _app()
-        assert ep.cancel_window_for("wipe drive", app) == 0.0
+        assert ep.cancel_window_for("wipe drive", app) == 1.5
         decision = ep.authorize(Invocation("wipe drive", route=Route.EXACT, generation=0), app=app)
         assert isinstance(decision, NeedsConfirmation)
 
@@ -281,8 +287,10 @@ class TestDictationLane:
         m = _manager(app, timers, [], probe=_probe({"wipe drive": ("wipe drive", PRESERVE, False)}))
         m._command_dispatch_fn = dispatch
         outcome = _say(m, app, "wipe drive")
-        assert outcome.kind == "command_awaiting_confirmation"   # the 58/63 yes/no path
-        assert timers == [] and calls == ["wipe drive"]
+        assert outcome.kind == "command_cancel_window"  # 1029: then the 58/63 yes/no path
+        assert calls == []
+        timers[0].fire()
+        assert calls == ["wipe drive"]
 
     def test_disabled_reproduces_todays_behaviour_exactly(self, timers):
         _register("open panel", [], risk_class="ui")
@@ -308,8 +316,10 @@ class TestDictationLane:
         _register("submit", [], risk_class="write")
         app, calls = _app(), []
         m = _manager(app, timers, calls, probe=_probe({"submit": ("submit", PRESERVE, True)}))
-        assert _say(m, app, "submit").kind == "hands_free_command_executed"
-        assert calls == ["submit"] and timers == []
+        assert _say(m, app, "submit").kind == "command_cancel_window"
+        assert calls == [] and timers[0].seconds == 1.5
+        timers[0].fire()
+        assert calls == ["submit"]
 
 
 # ---------------------------------------------------------------------------
@@ -317,8 +327,9 @@ class TestDictationLane:
 # ---------------------------------------------------------------------------
 
 class TestWindowLifecycle:
+    # 1029: retain every lifecycle check with risky write fixtures.
     def _open(self, timers, *, deferred=None):
-        _register("open panel", [], risk_class="ui")
+        _register("open panel", [], risk_class="write")
         app, calls = _app(), []
         m = _manager(app, timers, calls, deferred=deferred,
                      probe=_probe({"open panel": ("open panel", PRESERVE, False),
@@ -353,7 +364,7 @@ class TestWindowLifecycle:
         assert calls == [] and ep.pending_operation() is None
 
     def test_speech_already_under_way_when_staged_holds_at_once(self, timers):
-        _register("open panel", [], risk_class="ui")
+        _register("open panel", [], risk_class="write")
         app, calls = _app(), []
         m = _manager(app, timers, calls, probe=_probe({"open panel": ("open panel", PRESERVE, False)}))
         ep.note_utterance_start()
@@ -380,7 +391,7 @@ class TestWindowLifecycle:
 
     def test_next_command_flushes_the_open_window_in_order(self, timers):
         app, calls, m = self._open(timers)
-        _register("close panel", [], risk_class="ui")
+        _register("close panel", [], risk_class="write")
         assert _say(m, app, "close panel").kind == "command_cancel_window"
         assert calls == ["open panel"]                       # the first ran, not superseded
         timers[-1].fire()
@@ -493,13 +504,14 @@ def test_dictation_wires_the_window_into_the_lane():
 
 
 def test_settings_control_round_trips(qapp):
+    # 1029: shorter default; explicit Off and compatibility flag still round-trip.
     from tests.test_modes_config_keys_62 import _reload, _win
     app, win, save = _win({"command_mode": {}})
-    assert win._widgets['cmd_cancel_window'].value() == 3.0
+    assert win._widgets['cmd_cancel_window'].value() == 1.5
     assert win._widgets['cmd_cancel_window'].specialValueText() == "Off"
     assert win._widgets['cmd_cancel_window_all'].isChecked() is False
     cm = save({})['command_mode']
-    assert cm['cancel_window_s'] == 3.0 and cm['cancel_window_all_commands'] is False
+    assert cm['cancel_window_s'] == 1.5 and cm['cancel_window_all_commands'] is False
 
     win._widgets['cmd_cancel_window'].setValue(0.0)
     win._widgets['cmd_cancel_window_all'].setChecked(True)

@@ -123,4 +123,4 @@ def test_cube_reference_has_no_cancel_window(phrase, monkeypatch):
 def test_other_ui_actions_keep_cancel_window(method):
     app = SimpleNamespace(config={}, command_executor=SimpleNamespace(
         commands={'action': {'type': 'method', 'method': method}}))
-    assert policy.cancel_window_for('action', app) == 3
+    assert policy.cancel_window_for('action', app) == 0  # 1029: all UI actions are immediate.

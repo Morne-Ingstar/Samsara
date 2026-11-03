@@ -1698,7 +1698,7 @@ def answer_pending(app, text: str, *, source: str = ANSWER_VOICE, capture_path: 
 # ---------------------------------------------------------------------------
 #
 # No comparable tool solved command-vs-dictation with a classifier (queue 66);
-# they make a wrong execution cheap instead. A non-read command recognised
+# they make a wrong execution cheap instead. A risky command recognised
 # INSIDE the dictation lane is staged here for a short window, shown on the
 # chip as "running <X>... say no", and runs when the window elapses unless:
 #
@@ -1713,16 +1713,16 @@ def answer_pending(app, text: str, *, source: str = ANSWER_VOICE, capture_path: 
 #   * a stop bumped the generation, the session ended, or the foreground
 #     window changed -> refused, never run.
 #
-# Read commands never get a window; destructive ones keep their spoken yes/no
-# (queue 63) and unknown-risk ones keep the NeedsConfirmation path. Only the
-# dictation lane opens windows; ordinary dictation never touches this code.
+# 1029: read/UI and explicitly reversible writes run immediately. Other
+# writes and all destructive effects retain the window, including submit/enter.
+# Existing irreversible/unknown authorization still requires confirmation.
 #
-# Default 3.0 s: a short utterance takes a
-# median 1.78 s (p90 2.41 s) from speech onset to dispatch, so a window cannot
-# wait for a cancel to be DECIDED; it only has to see it START (the hold), and
-# 3.0 s leaves room to notice the chip and begin speaking.
+# Default 1.5 s is an onset budget, not a transcription deadline. Historically
+# speech onset to dispatch is median 1.78 s (p90 2.41 s); the window only needs
+# to see a cancellation START. The six-second hold below lets it finish
+# after the window expires.
 
-CANCEL_WINDOW_DEFAULT_S = 3.0
+CANCEL_WINDOW_DEFAULT_S = 1.5
 CANCEL_WINDOW_MAX_S = 5.0
 #: Longest a held window waits for the utterance that started inside it.
 CANCEL_HOLD_MAX_S = 6.0
@@ -1760,20 +1760,20 @@ def cancel_window_settings(app) -> tuple:
 
 def cancel_window_for(command_id: str, app, *, executor=None, reserved: bool = False) -> float:
     """Seconds of cancel window for a command recognised in the dictation
-    lane, or 0 for none. `reserved`: matched as one of the lane's curated
-    everyday words (submit, enter, next tab, focus ...), which only get a
-    window when the user extends it to them."""
-    seconds, everyday = cancel_window_settings(app)
-    if seconds <= 0 or (reserved and not everyday):
+    lane, or 0 for none. Risk governs both ordinary and reserved words:
+    submit/enter cannot bypass protection, nor can the legacy all-commands
+    preference delay harmless navigation. Explicit 0 still disables it."""
+    seconds, _everyday = cancel_window_settings(app)
+    if seconds <= 0:
         return 0.0
     try:
         risk, reversible, _schema = classify(command_id, executor=executor, app=app)
     except Exception as exc:
         logger.debug("[POLICY] cancel window: classify(%s) failed: %s", command_id, exc)
         return 0.0
-    if risk in (RISK_UI, RISK_WRITE) or (risk == RISK_DESTRUCTIVE and reversible):
+    if risk == RISK_DESTRUCTIVE or (risk == RISK_WRITE and not reversible):
         return seconds
-    # read: immediate. destructive (not undoable) / unknown: the yes/no path.
+    # Read/UI/undoable writes: immediate. Unknown: the existing yes/no path.
     return 0.0
 
 
