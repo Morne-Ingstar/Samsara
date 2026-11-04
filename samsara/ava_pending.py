@@ -127,7 +127,7 @@ def _live(app, q):
 def _expire(app, q):
     if getattr(app, "_ava_question", None) is not q:
         return
-    _clear(app, q, "Not saved." if q.kind == "teaching" else
+    _clear(app, q, "" if q.kind == 'edit' else "Not saved." if q.kind == "teaching" else
            "Cancelled." if isinstance(q.runner, policy._ConfirmationListener) else "Ava question expired.")
     expired = getattr(q.runner, "expired", None)
     if callable(expired):
@@ -141,7 +141,7 @@ def _expire(app, q):
 def _tick(app, q):
     with ownership_lock(app):
         if not _live(app, q):
-            if q.kind == "teaching" or isinstance(q.runner, policy._ConfirmationListener):
+            if q.kind in {"teaching", "edit"} or isinstance(q.runner, policy._ConfirmationListener):
                 _expire(app, q)
             else:
                 _clear(app, q, "Ava question closed.")  # Stand-in copy (624).
@@ -150,7 +150,7 @@ def _tick(app, q):
             if short_answer_question(app) is q and not q.reprompted:
                 missed_capture(app, "timeout (retry)")
                 return
-            if q.kind != "teaching":
+            if q.kind not in {"teaching", "edit"}:
                 _capture_history(app, q, "timeout")
             _expire(app, q)
             return
@@ -197,7 +197,8 @@ def _open(app, q):
         opened = getattr(q.runner, "opened", None)
         if callable(opened):
             opened()
-        _feedback(app, q.label or "Ava is waiting for your answer. " + q.text, q)
+        if q.kind != 'edit':
+            _feedback(app, q.label or "Ava is waiting for your answer. " + q.text, q)
         _tick(app, q)
 
 
@@ -207,6 +208,10 @@ def ask(app, runner, kind, text, options, *, operation=None, duration=None, labe
         if not runner.eligible() or (policy.pending_operation() is not operation):
             return ava.TurnOutcome("ask", "refused", reason="another_confirmation")
         old = getattr(app, "_ava_question", None)
+        from samsara.ava_edit import session
+        if ((old is not None and (old.kind == 'edit' or kind == 'edit'))
+                or (kind != 'edit' and session.pending() is not None)):
+            return ava.TurnOutcome('ask', 'refused', reason='edit_pending')
         if old is not None:
             if old.kind == "teaching":
                 _expire(app, old)
@@ -225,7 +230,7 @@ def ask(app, runner, kind, text, options, *, operation=None, duration=None, labe
         return ava.TurnOutcome("ask", "queued", name="question")
 
 
-def consume(app, text, *, capture_path=None, acknowledgement=None):
+def consume(app, text, *, capture_path=None, acknowledgement=None, source=policy.ANSWER_VOICE):
     """True means this utterance belongs to Ava, even if it is not a valid answer."""
     from samsara.message_lifetime import consume_acknowledgement
     if consume_acknowledgement(app, text, receipt=acknowledgement):
@@ -235,6 +240,10 @@ def consume(app, text, *, capture_path=None, acknowledgement=None):
         q = getattr(app, "_ava_question", None)
         if q is None:
             return False
+        if source not in {policy.ANSWER_VOICE, policy.ANSWER_DIALOG} or capture_path in {'model', 'echo'}:
+            return True
+        if q.kind == 'edit':
+            return _consume_edit(app, q, text, source, capture_path)
         if policy.is_stop_utterance(text):
             if q.kind == "teaching":
                 _expire(app, q)
@@ -320,3 +329,90 @@ def consume_before_dispatch(app, remainder, generation, on_done):
         return True
     from samsara import ava_tickets
     return ava_tickets.consume(app, remainder, generation, on_done)
+
+
+class _EditReply:
+    short_answer = False
+
+    def __init__(self, app, staged):
+        self.app, self.staged = app, staged
+        self.generation = policy.current_generation(app)
+        self.deadline = float('inf')
+
+    def eligible(self):
+        from samsara.ava_edit import session
+        return policy.is_current(self.app, self.generation) and session.pending() is self.staged
+
+    def expired(self):
+        from samsara.ava_edit import session
+        timed_out = (time.monotonic() >= self.deadline
+                     or self.staged._clock() - self.staged.created_at >= session.PROPOSAL_TTL_S)
+        if self.staged.request is not None:
+            snap = self.staged.request.snapshot
+            timed_out = timed_out or snap.clock() - snap.created_at >= session.PROPOSAL_TTL_S
+        with session._lock:
+            if session._pending is self.staged:
+                session.clear()
+        if self.staged.request is not None:
+            self.staged.request.snapshot.release()
+        if timed_out:
+            # PLACEHOLDER COPY (1036d): existing refusal vocabulary on expiry.
+            session._chip(self.app, 'edit_refused', {'reason': 'expired'})
+
+
+def retire_finished_edit(app):
+    with ownership_lock(app):
+        q = getattr(app, '_ava_question', None)
+        if q is not None and q.kind == 'edit' and not _live(app, q):
+            _expire(app, q)
+
+
+def own_edit(app, staged):
+    """Attach capture to the existing proposal; no second proposal storage/readback."""
+    with ownership_lock(app):
+        if getattr(app, '_ava_question', None) is not None or policy.pending_operation() is not None:
+            return False
+        runner = _EditReply(app, staged)
+        remaining = max(0, 120 - (staged._clock() - staged.created_at))
+        if staged.request is not None:
+            snap = staged.request.snapshot
+            remaining = min(remaining, max(0, 120 - (snap.clock() - snap.created_at)))
+        # Keep the editor's existing Compact/Full chip and spoken diff. This
+        # question owns capture and expiry only; it does not repaint the chip.
+        q = Question(runner, 'edit', '', (), deadline=time.monotonic() + remaining,
+                     duration=remaining)
+        app._ava_question = q
+        _open(app, q)
+        runner.deadline = q.deadline
+        return True
+
+
+def _consume_edit(app, q, text, source, capture_path):
+    from samsara.ava_edit import intent, session
+    from plugins.commands import ask_ollama as ava
+    if source not in {policy.ANSWER_VOICE, policy.ANSWER_DIALOG} or capture_path in {'model', 'echo'}:
+        return True
+    if not _live(app, q) or time.monotonic() >= q.deadline:
+        _expire(app, q)
+        return True
+    discard = intent.is_discard_utterance(text) or policy.is_stop_utterance(text)
+    apply = intent.is_apply_utterance(text)
+    if discard:
+        session.discard(app)
+        _clear(app, q)
+        return True
+    if apply:
+        if (source == policy.ANSWER_VOICE
+                and getattr(getattr(app, 'audio_coordinator', None), 'is_speaking', False)):
+            return True
+        session.apply(app)
+        if session.pending() is not q.runner.staged:
+            _clear(app, q)
+        return True
+    if intent.is_edit_request(text) or policy.classify_reply(text) is not None:
+        if not q.answer_guidance_given:
+            q.answer_guidance_given = True
+            # PLACEHOLDER COPY (1036d)
+            ava.speak(app, 'Say apply or discard. To change the request, discard and ask again.')
+        return True
+    return False

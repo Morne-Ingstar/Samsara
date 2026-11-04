@@ -56,11 +56,15 @@ class RequestSnapshot:
     committed: BoundTarget | None
     clock: object = time.monotonic
     released: bool = False
+    expiry_timer: object = None
 
     def release(self):
         self.released = True
         self.selection = SelectionCapture()
         self.draft = self.latest = self.committed = None
+        timer, self.expiry_timer = self.expiry_timer, None
+        if timer is not None:
+            timer.cancel()
 
 
 @dataclass(frozen=True, repr=False)
@@ -130,7 +134,7 @@ def snapshot(app, *, selection_needed=True, clock=time.monotonic):
         captured, draft, latest, committed, clock)
     # Text expires even when a queued router request is never consumed.
     from samsara.runtime import thread_registry
-    thread_registry.timer('ava-edit-source-expiry', TTL_S, result.release, daemon=True)
+    result.expiry_timer = thread_registry.timer('ava-edit-source-expiry', TTL_S, result.release, daemon=True)
     return result
 
 

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from samsara import execution_policy as policy
 from samsara.command_registry import DispatchState
 from samsara.execution_policy import Invocation, Route
+from samsara.ava_capabilities import CapabilityError
 
 
 PROTOCOL = """
@@ -55,6 +56,7 @@ def prepare_request(app, utterance, system, enabled):
 class Step:
     command_id: str
     app_name: str = ""
+    binding: object = None
 
     @property
     def label(self):
@@ -70,12 +72,35 @@ def grounded_app_name(name, utterance):
                                for i in range(len(said) - len(target) + 1))
 
 
-def validate_plan(plan, menu, utterance, *, empty=False):
+def validate_plan(plan, menu, utterance, *, empty=False, request=None):
     from plugins.commands import ask_ollama as ava
     if not isinstance(plan, list) or not (0 if empty else 1) <= len(plan) <= 4:
         raise ValueError("plan length")
     steps = []
     for item in plan:
+        if request is not None and request.capabilities is not None:
+            from samsara.command_invocation_adapters import bind
+            caps = request.capabilities
+            cid = item if isinstance(item, str) else item.get('id') if isinstance(item, dict) else None
+            if cid == 'edit_text':
+                raise ValueError('standalone edit required')
+            offered_id = cid if caps and cid in caps.offered else next((
+                key for key, value in (caps.offered.items() if caps else ())
+                if value.record()['canonical_phrase'] == cid), None)
+            if offered_id is not None:
+                if isinstance(item, dict) and set(item) != {'id', 'args'}:
+                    raise ValueError('step shape')
+                binding = bind(caps, offered_id, item['args'] if isinstance(item, dict) else {}, utterance)
+                inv = binding.invocation()
+                if not ava.action_is_grounded(inv.command_id, utterance):
+                    raise ValueError('ungrounded app')
+                steps.append(Step(inv.command_id, binding=binding))
+                continue
+            # The established APP adapter has its own grounding/schema/policy
+            # choke point. No other unoffered names may use this compatibility.
+            if not (isinstance(item, dict) and cid in request.app_ids):
+                descriptor = caps.index.by_id.get(cid) if caps else None
+                raise CapabilityError((descriptor.record()['reason'] if descriptor else '') or 'unoffered')
         if isinstance(item, str):
             step = Step(item)
         elif (isinstance(item, dict) and set(item) == {"id", "args"}
@@ -88,7 +113,8 @@ def validate_plan(plan, menu, utterance, *, empty=False):
             step = Step(item["id"], name)
         else:
             raise ValueError("step shape")
-        if step.command_id not in menu or not ava.action_is_grounded(step.command_id, utterance):
+        if (((request is None or request.capabilities is None) and step.command_id not in menu)
+                or not ava.action_is_grounded(step.command_id, utterance)):
             raise ValueError("plan authority")
         if step.command_id in {"open", "close", "focus"} and not step.app_name:
             raise ValueError("missing app")
@@ -96,13 +122,14 @@ def validate_plan(plan, menu, utterance, *, empty=False):
     return tuple(steps)
 
 
-def handle_json(app, response, utterance, generation):
+def handle_json(app, response, utterance, generation, *, request=None):
     from plugins.commands import ask_ollama as ava
     from samsara import ava_pending
     if not response.lstrip().startswith(("{", "[")):
         return None  # Existing conversation history may still use the old grammar.
     try:
-        data = json.loads(response)
+        from samsara.ava_capability_protocol import parse
+        data = parse(response)
         if not isinstance(data, dict):
             raise ValueError("object required")
         kind = data.get("type")
@@ -113,24 +140,44 @@ def handle_json(app, response, utterance, generation):
             return ava.TurnOutcome("plan", "stale", reason="stale")
         if getattr(app, "_ava_question", None) is not None or policy.pending_operation() is not None:
             return ava.TurnOutcome("plan", "refused", reason="question_pending")
+        from samsara.ava_edit import session
+        if session.pending() is not None:
+            return ava.TurnOutcome("plan", "refused", reason="edit_pending")
         menu = getattr(ava._turn_local, "plan_menu", None)
-        if menu is None:
+        if request is not None:
+            menu = request.menu
+        elif menu is None:
             menu = ava.offered_menu(app, utterance) or ()
         if kind == "app" and set(data) == {"type", "verb", "argument"}:
             if any(not isinstance(data[k], str) or "\n" in data[k] or "\r" in data[k]
                    for k in ("verb", "argument")):
                 raise ValueError("app fields")
+            if (data['verb'] not in {'open', 'close', 'focus'}
+                    or not 1 <= len(data['argument'].strip()) <= 120
+                    or not grounded_app_name(data['argument'], utterance)
+                    or (request is not None and request.capabilities is not None
+                        and data['verb'] not in request.app_ids)):
+                raise ValueError('ungrounded app')
             return ava.handle_response(app, f"CONFIRM App.\nAPP {data['verb']} | {data['argument']}",
                                        original_text=utterance, generation=generation)
         if kind == "schedule" and set(data) == {"type", "seconds", "command"}:
-            if type(data["seconds"]) is not int or data["command"] not in menu:
+            if type(data["seconds"]) is not int or not isinstance(data['command'], str):
                 raise ValueError("schedule fields")
+            if request is not None and request.capabilities is not None:
+                caps = request.capabilities
+                invocation = (caps.bind(data['command'], source_text=utterance) if data['command'] in caps.offered
+                              else caps.bind_legacy(data['command'], source_text=utterance))
+                data['command'] = invocation.command_id
+            elif data['command'] not in menu:
+                raise ValueError('schedule authority')
             return ava.handle_response(app, f"CONFIRM Schedule.\nSCHEDULE {data['seconds']} {data['command']}",
-                                       original_text=utterance, generation=generation)
+                original_text=utterance, generation=generation,
+                capabilities=request.capabilities if request is not None else None)
         if kind not in {"plan", "ask"}:
             raise ValueError("unknown response")
-        plan = validate_plan(data.get("plan"), menu, utterance, empty=kind == "ask" and data.get("kind") != "yes_no")
-        runner = Plan(app, plan, tuple(menu), utterance, generation)
+        plan = validate_plan(data.get("plan"), menu, utterance,
+            empty=kind == "ask" and data.get("kind") != "yes_no", request=request)
+        runner = Plan(app, plan, tuple(menu), utterance, generation, request=request)
         if kind == "plan":
             if set(data) != {"type", "plan"}:
                 raise ValueError("plan fields")
@@ -149,6 +196,9 @@ def handle_json(app, response, utterance, generation):
                 or len({o.strip().casefold() for o in options}) != len(options)):
             raise ValueError("choice options")
         return ava_pending.ask(app, runner, ask_kind, question.strip(), tuple(options))
+    except CapabilityError as exc:
+        from samsara.ava_capability_protocol import refusal
+        return refusal(app, exc.reason)
     except (ValueError, TypeError, KeyError):
         # Stand-in copy (624). Refuse the entire response before any effect.
         ava.speak(app, "I couldn't use that plan. Nothing was run.")
@@ -156,12 +206,18 @@ def handle_json(app, response, utterance, generation):
 
 
 class Plan:
-    def __init__(self, app, steps, menu, utterance, generation):
+    def __init__(self, app, steps, menu, utterance, generation, *, request=None):
         self.app, self.steps, self.menu = app, steps, menu
         self.utterance, self.generation, self.index = utterance, generation, 0
+        self.request = request
 
     def eligible(self):
         from plugins.commands import ask_ollama as ava
+        if self.request is not None and self.request.capabilities is not None:
+            try:
+                self.request.capabilities._fresh()
+            except (ValueError, AttributeError):
+                return False
         return ava._ai_state(self.app).allowed and policy.is_current(self.app, self.generation)
 
     def failure(self, reason, *, index=None):
@@ -175,6 +231,8 @@ class Plan:
         return ava.TurnOutcome("plan", "failed", reason=reason, name=str(index + 1))
 
     def invocation(self, step):
+        if step.binding is not None:
+            return step.binding.invocation()
         # Named apps use the same APP choke point for preflight and execution.
         return Invocation(f"action2:{step.command_id}" if step.app_name else step.command_id,
             {"target": step.app_name} if step.app_name else {},
@@ -189,8 +247,11 @@ class Plan:
                 return ava.TurnOutcome("plan", "stale", reason="stale")
             if self.index == 0:
                 for i, step in enumerate(self.steps):
-                    decision = policy.authorize(self.invocation(step), app=self.app,
-                        executor=self.app.command_executor, quiet=True)
+                    try:
+                        decision = policy.authorize(self.invocation(step), app=self.app,
+                            executor=self.app.command_executor, quiet=True)
+                    except ValueError:
+                        return self.failure('stale_contract', index=i)
                     if isinstance(decision, policy.Denied):
                         return self.failure(decision.reason, index=i)
                 # NeedsConfirmation is only a preview; each step still asks locally.
@@ -200,7 +261,10 @@ class Plan:
                 step = self.steps[self.index]
                 cid = step.command_id
                 executor = self.app.command_executor
-                inv = self.invocation(step)
+                try:
+                    inv = self.invocation(step)
+                except ValueError:
+                    return self.failure('stale_contract')
                 decision = policy.authorize(inv, app=self.app, executor=executor, confirmed=approved)
                 if isinstance(decision, policy.Denied):
                     return self.failure(decision.reason)
@@ -221,8 +285,9 @@ class Plan:
                             generation=self.generation, source_text=self.utterance, confirmed=approved)
                         state = DispatchState.COMPLETED if result is ActionResult.DONE else DispatchState.FAILED
                     else:
+                        extra = ({'args': inv.args, 'binding': step.binding} if step.binding else {})
                         result = executor.execute_canonical(cid, self.app, route=Route.MODEL,
-                            generation=self.generation, source_text=self.utterance, confirmed=approved)
+                            generation=self.generation, source_text=self.utterance, confirmed=approved, **extra)
                         state = result.state
                 except Exception:
                     return self.failure("exception")

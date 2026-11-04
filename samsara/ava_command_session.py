@@ -165,6 +165,9 @@ class CommandMissResolver:
                 response = ask_ollama.ask_ollama(utterance, self.app, model=model, system=system)
             if self._cancelled(request_id, deadline) or not isinstance(response, str) or response == "__OLLAMA_DOWN__":
                 return None
+            if hasattr(response, 'context'):
+                from samsara.ava_capability_protocol import miss_proposal
+                return miss_proposal(self.app, response, utterance, provider)
             # Repeat the existing APP/ACTION wire lines to carry a list. Keep
             # the existing single-step prompt byte-identical until a live
             # format evaluation is available; never truncate an invalid list.

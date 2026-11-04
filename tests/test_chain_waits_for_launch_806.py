@@ -13,6 +13,16 @@ from samsara.handlers import CommandContext, HotkeyHandler
 from tests.test_several_commands_399 import rig
 
 
+@pytest.fixture(autouse=True)
+def inert_effect_target(monkeypatch):
+    # 1036d: the timing fixture must not compare two live UIA snapshots while
+    # the owner uses the desktop. Keep the real destination guard and policy.
+    from samsara import effect_policy
+    target = effect_policy.SubmitTarget(kind='editor', hwnd=20, process='notepad.exe',
+                                       control='synthetic-editor', revision='synthetic-revision')
+    monkeypatch.setattr(effect_policy, 'resolve_submit_target', lambda app=None: target)
+
+
 class Clock:
     now = 0.0
 

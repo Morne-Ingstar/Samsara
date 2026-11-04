@@ -66,6 +66,9 @@ def rig(monkeypatch, tmp_path):
     monkeypatch.setattr(ava.ava_profile, "build_context_section", lambda *_a: "")
     monkeypatch.setattr(ava.ava_corrections, "build_context_section", lambda **_kw: "")
     monkeypatch.setattr(ava, "_assistant_recall_allowed", lambda *_a: False)
+    # 1036d: command-capable turns capture locally before provider latency.
+    from samsara.ava_edit import selection, targets
+    monkeypatch.setattr(selection, 'capture_result', lambda *_: targets.SelectionCapture('verified_empty'))
     monkeypatch.setattr(policy, "foreground_window_identity", lambda: {"hwnd": 42, "pid": 100})
     monkeypatch.setattr(policy, "resolve_target", lambda _name: {"hwnd": 43, "pid": 101})
 
@@ -121,6 +124,14 @@ def test_fake_provider_plan_uses_json_and_runs_in_order_with_local_close_confirm
     monkeypatch.setattr(ai_transport, "post_local", post)
     monkeypatch.setattr(ai_transport, "post_cloud", post)
     monkeypatch.setattr(app_verbs, "do_close", lambda name: r.effects.append(("close " + name, {})) or app_verbs.ActionResult.DONE)
+    # 1036d: provider turns discover the loaded registry, not a rebuilt name menu.
+    from samsara.command_registry import CommandMatcher
+    r.executor._matcher = CommandMatcher()
+    r.executor._matcher.load_builtins(r.executor.commands)
+    r.executor._matcher.freeze()
+    r.executor._plugin_registry = {}
+    r.executor._app = r.app
+    del r.executor._registry_entry
     reply = ava.ask_model("open chrome and close notepad", r.app, allow_search=True)
     assert reply.ok
     payload = r.payloads[0]

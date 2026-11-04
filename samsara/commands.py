@@ -537,7 +537,7 @@ class CommandExecutor:
     def execute_canonical(self, command_id: str, app_instance: Any = None, *,
                           route: Route = Route.EXACT, generation: "int | None" = None,
                           args: "dict | None" = None, source_text: str = "",
-                          confirmed: bool = False) -> DispatchResult:
+                          confirmed: bool = False, binding=None) -> DispatchResult:
         """Execute ONE canonical command id (builtin or plugin) and report what
         really happened.
 
@@ -561,6 +561,16 @@ class CommandExecutor:
         cid = (command_id or "").strip().lower()
         entry = self._registry_entry(cid)
         canonical = entry.phrase if entry is not None else cid
+        from samsara.command_invocation_adapters import delivery_problem
+        try:
+            if binding is not None:
+                binding.check(self, effective_app, canonical, dict(args or {}), generation, source_text)
+            problem = delivery_problem(self, entry, args, route)
+            if problem:
+                raise ValueError(problem)
+        except ValueError as exc:
+            return DispatchResult(DispatchState.REJECTED, canonical, canonical,
+                                  {'reason': str(exc)})
         from samsara.window_overview_flow import before_command
         before_command(effective_app, source_text or canonical)
         builtin = self.commands.get(canonical)
@@ -606,7 +616,7 @@ class CommandExecutor:
         if refusal:
             return DispatchResult(DispatchState.REJECTED, canonical, canonical, {'reason': refusal})
         if isinstance(decision, execution_policy.NeedsConfirmation):
-            self._stage_confirmation(effective_app, inv, decision)
+            self._stage_confirmation(effective_app, inv, decision, binding=binding)
             return DispatchResult(DispatchState.QUEUED, canonical, canonical,
                                   {'awaiting_confirmation': True, 'prompt': decision.prompt})
 
@@ -710,7 +720,7 @@ class CommandExecutor:
             args=args, source_text=source_text, confirmed=confirmed,
         ).state is DispatchState.COMPLETED
 
-    def _stage_confirmation(self, app, inv: Invocation, decision) -> None:
+    def _stage_confirmation(self, app, inv: Invocation, decision, *, binding=None) -> None:
         """Park a NeedsConfirmation in the shared pending slot and ask. "yes"
         (ask_ollama.handle_ava_confirm) re-enters execute_canonical with
         confirmed=True -- which re-authorizes, so a pack switched off or a
@@ -723,7 +733,7 @@ class CommandExecutor:
 
         def _approve(op):
             self.execute_canonical(inv.command_id, app, route=inv.route, generation=inv.generation,
-                                   confirmed=True, args=inv.args, source_text=inv.source_text)
+                                   confirmed=True, args=inv.args, source_text=inv.source_text, binding=binding)
 
         def _reject(op):
             if foreground_bound and getattr(op, "target_change", None):

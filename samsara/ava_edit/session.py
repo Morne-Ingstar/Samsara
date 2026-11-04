@@ -8,8 +8,8 @@ anything else falls through to Ava as an ordinary turn with the proposal
 still standing.
 
 ONE slot, module-level, like execution_policy's pending operation: a second
-proposal supersedes the first visibly rather than queueing behind it, so a
-late "apply" can never reach a proposal the user has stopped looking at.
+proposal is refused while the first owns replies. Only Apply, Discard or
+expiry retires that proposal, so a late reply cannot silently choose another.
 
 The chip is the surface. `pending` is the one chip kind with no TTL
 (listening_indicator._NO_TTL_KINDS), so a staged proposal stays on screen
@@ -261,7 +261,13 @@ def propose(text: str, instruction: str, app, *, offline=False, cleanup=False,
     return finish(Proposal.build(original, sanitize.clean(raw), instruction=instruction))
 
 
-def stage(app, proposal: Proposal, *, selection_target=None, selection_mode="replace", draft_target=None,
+def stage(app, proposal: Proposal, **targets) -> bool:
+    from samsara.ava_turn_queue import ownership_lock
+    with ownership_lock(app):
+        return _stage_owned(app, proposal, **targets)
+
+
+def _stage_owned(app, proposal: Proposal, *, selection_target=None, selection_mode="replace", draft_target=None,
           bound_target=None, request=None) -> bool:
     """Show the proposal and leave it standing. Applies NOTHING.
 
@@ -272,6 +278,10 @@ def stage(app, proposal: Proposal, *, selection_target=None, selection_mode="rep
         _say(app, proposal.describe())
         logger.info(f"[AVA-EDIT] not staged: {proposal.reason}")
         return False
+    from samsara import ava_pending, execution_policy
+    if (pending() is not None or getattr(app, '_ava_question', None) is not None
+            or execution_policy.pending_operation() is not None):
+        return False
     staged = _stage(proposal, selection_target, selection_mode, draft_target)
     staged.bound_target, staged.request = bound_target, request
     _chip(app, "edit_proposed", {"changes": proposal.change_count})
@@ -279,6 +289,7 @@ def stage(app, proposal: Proposal, *, selection_target=None, selection_mode="rep
     if draft_target is not None:
         description = description.replace("Say apply to make it so.", "Choose Accept or Cancel.")
     _say(app, description)
+    ava_pending.own_edit(app, staged)
     if selection_mode == "below":
         _say(app, "The summary will be added below the selection.")  # Stand-in copy (635).
     logger.info(f"[AVA-EDIT] staged: {proposal.change_count} change(s), awaiting apply")
@@ -449,6 +460,9 @@ def handle_utterance(app, text: str) -> bool:
     try:
         if not (text or "").strip():
             return False
+        if _worker_app is app and pending() is None and intent.is_discard_utterance(text):
+            discard(app)
+            return True
         staged = pending()
         from samsara.ava_edit import selection
         capture = selection.should_capture(app, text)

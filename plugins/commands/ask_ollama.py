@@ -16,13 +16,14 @@ from samsara import ava_profile
 from samsara import ava_persona
 from samsara import ava_readiness
 from samsara import cloud_llm, ava_local_context, ava_turn_queue, ava_plan, ava_pending
+from samsara import ava_capability_protocol
 from samsara import teach_patterns, execution_policy
 from samsara.ava_memory import AvaMemory, PersonalMemory, log_conversation
 from samsara.paths import samsara_home_dir
 from samsara.languages import LANGUAGES
 from samsara.plugin_commands import command
 from samsara.runtime import thread_registry
-from samsara.ava_suggest import suggest_command_miss
+from samsara.ava_suggest import suggest_command_miss as _suggest_command_miss
 from samsara.execution_policy import Invocation, Route
 from samsara.intent.grammar import asks_to_run_action, catalog_question_goal
 
@@ -33,6 +34,11 @@ logger = get_logger(__name__)
 _LANG_CODE_TO_NAME = dict(LANGUAGES)
 
 # ── System prompts ────────────────────────────────────────────────────────────
+
+def suggest_command_miss(app, command_id, **kwargs):
+    if hasattr(command_id, 'response'):
+        return ava_capability_protocol.dispatch_miss(app, command_id, **kwargs)
+    return _suggest_command_miss(app, command_id, **kwargs)
 
 _AVA_IDENTITY = """You are Ava, software built into Samsara, a voice-control app for
 people with chronic pain and accessibility needs."""
@@ -1557,6 +1563,7 @@ def ask_ollama(prompt, app, model=None, system=None):
 
 
 @ava_turn_queue.serialize_model
+@ava_capability_protocol.model_request
 def ask_model(prompt, app, model=None, system=None, allow_search=False):
     """allow_search: offer DeepSeek's web_search server tool on this call
     (queue 59). Only the Ava conversation turn (handle_ask_ava) passes True;
@@ -1583,40 +1590,8 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
         finally:
             _turn_local.prompt_cloud = previous_cloud
 
-    # Build fully-resolved system prompt
-    global _system_prompt_logged
-    if system and "{COMMAND_LIST}" in system:
-        # ONE menu source (model command menu): every name here is one the
-        # executor will accept, builtin AND plugin, ranked by relevance to
-        # this very prompt and bounded by a character budget. The old
-        # `sorted(names)[:100]` was builtin-only and cut the alphabet at
-        # "mute tab", so "volume up" and "submit" were never offered at all.
-        menu = None
-        executor = getattr(app, "command_executor", None)
-        if executor is not None and hasattr(executor, "ava_menu"):
-            try:
-                menu = executor.ava_menu(prompt, app=app, route=Route.MODEL)
-            except Exception as exc:
-                logger.warning("[AVA PROMPT] menu unavailable (%s); using the fallback list", describe_text(exc))
-                menu = None
-        _log_menu(prompt, menu)
-        if menu:
-            cmd_list = ", ".join(menu)
-        else:
-            cmd_list = (
-                "open chrome, close tab, refresh page, scroll up, scroll down, "
-                "volume up, volume down, mute, screenshot, maximize, minimize"
-            )
-        system = system.replace("{COMMAND_LIST}", cmd_list)
-        if not _system_prompt_logged:
-            print(f"[AVA PROMPT] Model: {model}")
-            print(f"[AVA PROMPT] Command list length: {len(cmd_list.split(','))}")
-            _system_prompt_logged = True
-    elif not _system_prompt_logged:
-        print(f"[AVA PROMPT] Model: {model}")
-        _system_prompt_logged = True
-
-    system = ava_plan.prepare_request(app, prompt, system, allow_search)
+    # One request-pinned catalog supplies both persona placeholders and authority.
+    system = ava_capability_protocol.prepare_request(app, prompt, system)
     # Personal facts and aliases stay on this device.
     personal_context_allowed = state.provider.identity == "ollama"
     profile_ctx = ''
@@ -1730,7 +1705,7 @@ def ask_model(prompt, app, model=None, system=None, allow_search=False):
         "messages": messages,
         "stream": False,
     }
-    if allow_search: payload["format"] = "json"
+    payload["format"] = "json"
 
     def _local_failed(kind):
         if not ava_turn_queue.can_deliver(app):
@@ -1996,7 +1971,7 @@ def _conversational_refusal(app, request, command_name, generation):
     return TurnOutcome("conversation", "spoken", reason="action_refused_conversational")
 
 
-def handle_response(app, response, original_text=None, *, generation=None):
+def handle_response(app, response, original_text=None, *, generation=None, capabilities=None):
     """Route one model response. The model can only NAME a tool id (ACTION)
     or an ACTION2 verb + argument; whether it runs, is confirmed first, or
     is refused is decided by samsara.execution_policy at the executor,
@@ -2021,7 +1996,7 @@ def handle_response(app, response, original_text=None, *, generation=None):
 
     if generation is None:
         generation = execution_policy.current_generation(app)
-    structured = ava_plan.handle_json(app, response, original_text or "", generation)
+    structured = ava_capability_protocol.handle(app, response, original_text or "", generation)
     if structured is not None: return structured
 
     # The legacy executable protocol ("EXECUTE <free text>") is gone
@@ -2066,7 +2041,8 @@ def handle_response(app, response, original_text=None, *, generation=None):
         # command absent from it must not reach the executor, even when it is
         # otherwise registered: AI-hidden controls such as "ava forget" and
         # "yes" deliberately exist but are never model-callable.
-        menu = offered_menu(app, original_text or "")
+        menu = ava_capability_protocol.legacy_menu(response)
+        if menu is None: menu = offered_menu(app, original_text or "")
         names = {str(item).lower() for item in menu} if menu is not None else set()
         if command_name not in names:
             status = "menu unavailable" if menu is None else "not offered"
@@ -2091,6 +2067,8 @@ def handle_response(app, response, original_text=None, *, generation=None):
         # write/destructive/unknown for "yes", or refuses -- and says which.
         # The model's CONFIRM text is never forwarded: the question the user
         # hears is execution_policy.confirmation_prompt() (local template).
+        if not ava_capability_protocol.check_legacy(app, response, command_name, original_text or "", generation):
+            return ava_capability_protocol.refusal(app, 'stale_contract')
         result = executor.execute_canonical(command_name, app, route=Route.MODEL,
                                             generation=generation,
                                             source_text=original_text or "")
@@ -2138,6 +2116,7 @@ def handle_response(app, response, original_text=None, *, generation=None):
                            name=parsed.get("raw", ""))
 
     elif parsed["type"] == "schedule":
+        capabilities = capabilities or getattr(getattr(response, 'context', None), 'capabilities', None)
         # Queue 126: refused BEFORE staging, so a sub-floor interval never
         # becomes a pending question the user could answer "yes" to.
         interval_error = schedule_interval_error(parsed["interval_seconds"])
@@ -2153,6 +2132,7 @@ def handle_response(app, response, original_text=None, *, generation=None):
         confirm_text = (f"Repeat {execution_policy._template_value(what)} every "
                         f"{int(parsed['interval_seconds'])} seconds?")
         task = {
+            "capabilities": capabilities,
             "interval_seconds": parsed["interval_seconds"],
             "command": parsed["command"],
             "key": parsed["key"],
@@ -2164,6 +2144,7 @@ def handle_response(app, response, original_text=None, *, generation=None):
             logger.warning("[AVA SCHEDULER] dropped stale schedule (generation %r)", generation)
             return TurnOutcome("schedule", "stale", reason="stale", name=str(what))
 
+        if not ava_capability_protocol.schedule_current(task): return ava_capability_protocol.refusal(app, 'stale_contract')
         # 1031e: setup consent cannot authorize a repeated external effect.
         # Only ordinary, policy-admitted effects may repeat unattended.
         from samsara.composition_policy import scheduled_invocation
@@ -2272,7 +2253,7 @@ def schedule_interval_error(interval) -> "str | None":
 def _execute_safe(app, action, *, stop=None):
     """Execute a command or keypress from any thread, marshalling to main thread."""
     import copy
-    action = copy.deepcopy(action)
+    action = copy.deepcopy(action, {id(action.get('capabilities')): action.get('capabilities')})
     generation = action.get("generation")
     if (stop is not None and stop.is_set()) or not execution_policy.is_fresh(app, generation):
         _stop_schedule()
@@ -2283,6 +2264,9 @@ def _execute_safe(app, action, *, stop=None):
                 _stop_schedule()
                 return
             try:
+                if not ava_capability_protocol.schedule_current(action):
+                    _stop_schedule()
+                    return
                 from samsara.composition_policy import scheduled_invocation
                 inv = scheduled_invocation(app, action)
                 result = app.command_executor.execute_canonical(
@@ -2378,7 +2362,8 @@ def _start_schedule(app, task):
     """
     global _scheduled_task, _scheduler_thread
     import copy
-    task = copy.deepcopy(task)
+    task = copy.deepcopy(task, {id(task.get('capabilities')): task.get('capabilities')})
+    if not ava_capability_protocol.schedule_current(task): return None
     interval_error = schedule_interval_error(task.get("interval_seconds"))
     if interval_error is not None:
         logger.warning("[AVA SCHEDULER] refusing to start: %s", interval_error)

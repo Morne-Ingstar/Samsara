@@ -54,6 +54,12 @@ def from_action(app, args, *, snapshot, original_utterance):
 def propose_and_stage(app, request):
     from samsara.ava_edit import session, selection, model
     captured = request.snapshot
+    from samsara import ava_pending, execution_policy as policy
+    from samsara.ava_turn_queue import ownership_lock
+    ava_pending.retire_finished_edit(app)
+    if getattr(app, '_ava_question', None) is not None or policy.pending_operation() is not None:
+        captured.release()
+        return False
     bound, reason = targets.bind(request)
     if (bound is None or not targets.request_valid(app, captured)
             or not targets.source_valid(app, bound)):
@@ -70,7 +76,7 @@ def propose_and_stage(app, request):
         selection._notice(app, 'This edit needs Ava. Turn Ava on and choose a model first.')
         captured.release()
         return False
-    with session._lock:
+    with ownership_lock(app), session._lock:
         if session.pending() is not None:
             captured.release()
             return False
@@ -86,15 +92,19 @@ def propose_and_stage(app, request):
         offline=cleanup and not session.enabled(app), cleanup=cleanup,
         before_submit=lambda: (targets.request_valid(app, captured)
                                and targets.source_valid(app, bound)))
-    with session._lock:
+    with ownership_lock(app), session._lock:
         if (not targets.request_valid(app, captured) or not targets.source_valid(app, bound)
-                or session.pending() is not None):
+                or session.pending() is not None or getattr(app, '_ava_question', None) is not None
+                or policy.pending_operation() is not None):
             captured.release()
             return False
         draft_target = None
         if bound.kind == 'draft':
             draft_target = (bound.manager, bound.document_id, bound.revision,
                             bound.full_text, bound.start, bound.end)
-        return session.stage(app, proposal,
+        staged = session.stage(app, proposal,
             selection_target=bound.selection.target if bound.kind == 'selection' else None,
             draft_target=draft_target, bound_target=bound, request=request)
+        if not staged:
+            captured.release()
+        return staged
