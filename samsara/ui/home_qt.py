@@ -64,7 +64,7 @@ from samsara.ui.command_cheatsheet_qt import UNAVAILABLE_TEXT
 # One wrapping row layout, shared with the History view that introduced it
 # (queue 79): controls wrap to the next line instead of clipping.
 from samsara.ui.history_view import _FlowLayout as FlowLayout
-from samsara.ui.home_notice_qt import build_problem_notice, refresh_problem_notice
+from samsara.ui.home_notice_qt import build_problem_notice, dismiss_problem_notice, refresh_problem_notice
 from samsara.ui.tray_qt import MarkFrame, paint_mark
 
 logger = get_logger(__name__)
@@ -2127,32 +2127,32 @@ class HomePage(QWidget):
         report_notice(self._app, self._notice)
 
     def _on_notice_action(self):
-        """The notice's one button. A repair runs and the page re-reads state
-        immediately, so the notice disappears when -- and only when -- the
-        capability actually came back."""
+        """Re-read capability state after a repair, retaining any active fault."""
+        def refresh_after_recovery():
+            self._notice_card._recovery_notice = notice
+            if home_signals.problem_notice(self._app) != notice:
+                dismiss_problem_notice(self._notice_card)
+            self.refresh()
         notice = self._notice
         if notice is not None and notice.action == "acknowledge_wake_fallback":
             wake = dict(self._app.config.get('wake_word_config') or {})
             wake['phrase_fallback_pending'] = False
             self._app.update_config({'wake_word_config': wake})
-            self.refresh()
-            return
-        if notice is not None and notice.action == "calibrate_wake_word":
+            refresh_after_recovery()
+        elif notice is not None and notice.action == "calibrate_wake_word":
             from samsara.ui.mic_setup_wizard_qt import open_wake_calibration
             guide = open_wake_calibration(self._app, parent=self)
-            guide.finished.connect(lambda _: self.refresh())
-            return
-        if notice is not None and notice.action == home_signals.ACTION_RESTART_HANDS_FREE:
+            guide.finished.connect(lambda _: refresh_after_recovery())
+        elif notice is not None and notice.action == home_signals.ACTION_RESTART_HANDS_FREE:
             restart_hands_free(self._app)
-            self.refresh()
-            return
-        if notice is not None and notice.action == home_signals.ACTION_SETUP_MICROPHONE:
+            refresh_after_recovery()
+        elif notice is not None and notice.action == home_signals.ACTION_SETUP_MICROPHONE:
             setup = getattr(self._app, "open_mic_setup_guide", None)
             if callable(setup):
                 setup()
-            self.refresh()
-            return
-        self._open_page(VOICE_HELP)
+            refresh_after_recovery()
+        else:
+            self._open_page(VOICE_HELP)
 
     def eligible_diagnostics(self) -> list:
         """The DIAGNOSTIC tier only (89), minus what the user dismissed.

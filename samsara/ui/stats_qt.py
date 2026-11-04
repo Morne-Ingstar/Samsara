@@ -9,6 +9,14 @@ from PySide6.QtWidgets import (
 from samsara.ui import theme
 from samsara.usage_stats import read_stats
 
+TYPE = {
+    'body': theme.TYPE_BODY,
+    'caption': theme.TYPE_MIN,
+    'heading': theme.TYPE_HEADING,
+    'title': theme.TYPE_TITLE,
+    'figure': theme.TYPE_FIGURE,
+}
+
 
 class StatsCard(QPushButton):
     def __init__(self):
@@ -18,6 +26,7 @@ class StatsCard(QPushButton):
         self.setFocusPolicy(Qt.StrongFocus)
 
     def bind(self, navigate):
+        from samsara.ui.home_qt import _px
         self.setAccessibleName('Words today - open stats')
         self.setToolTip('Open stats')
         self.clicked.connect(lambda: navigate('Stats'))
@@ -27,7 +36,7 @@ class StatsCard(QPushButton):
             QPushButton#homeCard:hover, QPushButton#homeCard:focus {{ border-color: {theme.ACCENT}; }}
         ''')
         self._hint = QLabel('Stats', self)
-        self._hint.setStyleSheet(f'color: {theme.ACCENT}; background: transparent; font-size: 12px;')
+        self._hint.setStyleSheet(f'color: {theme.ACCENT}; background: transparent; font-size: {_px(theme.TYPE_MIN)}px;')
         self._hint.setAttribute(Qt.WA_TransparentForMouseEvents)
         for label in self.findChildren(QLabel):
             label.setAttribute(Qt.WA_TransparentForMouseEvents)
@@ -114,6 +123,7 @@ class StatsPage(QScrollArea):
             self._box.setFixedWidth(max(1, min(1100, self.viewport().width() - 64)))
 
     def reload(self):
+        from samsara.ui.home_qt import _px
         body = QWidget()
         outer = QVBoxLayout(body)
         outer.setContentsMargins(32, 28, 32, 28)
@@ -125,15 +135,15 @@ class StatsPage(QScrollArea):
         lay = QVBoxLayout(box)
         lay.setSpacing(18)
 
-        def label(text, size=14, color=None):
+        def label(text, role='body', color=None):
             widget = QLabel(text)
             widget.setWordWrap(True)
             widget.setTextFormat(Qt.PlainText)
-            widget.setStyleSheet(f'font-size: {size}px; color: {color or theme.TEXT_PRIMARY}; background: transparent;')
+            widget.setStyleSheet(f'font-size: {_px(TYPE[role])}px; color: {color or theme.TEXT_PRIMARY}; background: transparent;')
             return widget
 
-        lay.addWidget(label('Stats', 32))
-        lay.addWidget(label('Your voice, over time', 18, theme.TEXT_SECONDARY))
+        lay.addWidget(label('Stats', 'title'))
+        lay.addWidget(label('Your voice, over time', 'heading', theme.TEXT_SECONDARY))
         try:
             stats = read_stats(getattr(self._app, 'history_store', None))
         except Exception:
@@ -164,7 +174,7 @@ class StatsPage(QScrollArea):
             for i, (value, title) in enumerate(metrics):
                 cell = QVBoxLayout()
                 cell.setSpacing(3)
-                figure = label(value, 26, theme.ACCENT)
+                figure = label(value, 'figure', theme.ACCENT)
                 figure.setMinimumHeight(40)
                 cell.addWidget(figure)
                 title_label = label(title, color=theme.TEXT_SECONDARY)
@@ -177,19 +187,19 @@ class StatsPage(QScrollArea):
             divider.setFixedHeight(1)
             divider.setStyleSheet(f'background: {theme.BORDER};')
             lay.addWidget(divider)
-            lay.addWidget(label('Words per day · Last 30 days', 18))
+            lay.addWidget(label('Words per day · Last 30 days', 'heading'))
             lay.addWidget(DailyBars(stats['daily']))
             dates = QHBoxLayout()
-            dates.addWidget(label(stats['daily'][0][0].strftime('%d %b'), 12, theme.TEXT_SECONDARY))
+            dates.addWidget(label(stats['daily'][0][0].strftime('%d %b'), 'caption', theme.TEXT_SECONDARY))
             dates.addStretch()
-            dates.addWidget(label('Today', 12, theme.TEXT_SECONDARY))
+            dates.addWidget(label('Today', 'caption', theme.TEXT_SECONDARY))
             lay.addLayout(dates)
-            lay.addWidget(label('Top commands', 18))
+            lay.addWidget(label('Top commands', 'heading'))
             for command, count in stats['top_commands']:
                 lay.addWidget(label(f'{command}   ·   {count:,}'))
             if not stats['top_commands']:
                 lay.addWidget(label('No commands yet', color=theme.TEXT_SECONDARY))
-            lay.addWidget(label('Successful entries only. Week starts Monday. Holds are hold-mode dictations; holds per day includes inactive days since first retained use. Streak includes yesterday if today is still quiet. Ava turns and correction usage are not recorded.', 12, theme.TEXT_SECONDARY))
+            lay.addWidget(label('Successful entries only. Week starts Monday. Holds are hold-mode dictations; holds per day includes inactive days since first retained use. Streak includes yesterday if today is still quiet. Ava turns and correction usage are not recorded.', color=theme.TEXT_SECONDARY))
         old = self.takeWidget()
         self.setWidget(body)
         if old is not None:

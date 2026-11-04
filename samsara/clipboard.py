@@ -433,7 +433,8 @@ def save_clipboard() -> "ClipboardSnapshot":
                 finished.set()
 
         try:
-            threading.Thread(target=snapshot, name='clipboard-snapshot', daemon=True).start()
+            from samsara.runtime import thread_registry
+            thread_registry.spawn('clipboard-snapshot', snapshot, daemon=True)
         except Exception:
             _snapshot_worker_lock.release()
             raise

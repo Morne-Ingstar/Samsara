@@ -32,7 +32,9 @@ def build_problem_notice(grid, card_factory, label_factory, button_factory,
     layout.addWidget(text, stretch=1)
     button = button_factory("Voice troubleshooting", primary=True)
     button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
-    button.clicked.connect(lambda: (dismiss_problem_notice(card), action_callback()))
+    # Recovery refreshes the actual capability state; a failed attempt must
+    # keep its explanation and retry action available (1117).
+    button.clicked.connect(action_callback)
     actions = QWidget(card)
     actions.setObjectName("homeNoticeActions")
     action_layout = QHBoxLayout(actions)
@@ -97,6 +99,13 @@ def refresh_problem_notice(card, text_widget, button, notice,
         card._incoming_notice = None
         card._dismissed_notice = None
     if notice != card._incoming_notice:
+        # A repair can finish after its callback returns (for example a mic
+        # reconnect). Retire that fault only when polling confirms it changed.
+        if (card._incoming_notice is not None and
+                card._incoming_notice == getattr(card, '_recovery_notice', None)):
+            card._messages.dismiss(next_action=True)
+            card._announcer.reset()
+            card._recovery_notice = None
         card._incoming_notice = notice
         card._dismissed_notice = None
         if notice is not None:

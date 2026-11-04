@@ -369,10 +369,8 @@ def complete_incident(session, text):
         previous_timer = getattr(store, 'expiry', None)
         if previous_timer is not None:
             previous_timer.cancel()
-        timer = threading.Timer(30, expire)
-        store.expiry = timer
-        timer.daemon = True
-        timer.start()
+        from samsara.runtime import thread_registry
+        store.expiry = thread_registry.timer('hold-incident-expiry', 30, expire, daemon=True)
         # Do not retain a finished session through the app for 30 seconds.
         if getattr(session.app, '_incident_session_1052a', None) is session:
             session.app._incident_session_1052a = None
