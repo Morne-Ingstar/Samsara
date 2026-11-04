@@ -68,8 +68,8 @@ class RepetitionResult:
 
 
 _LOOP_WORD = re.compile(r"[^\W_]+(?:['’][^\W_]+)*", re.UNICODE)
-# PLACEHOLDER COPY (1052b)
-LOOP_WARNING = 'Part of that was unclear - check the text'
+# PLACEHOLDER COPY (1118)
+LOOP_WARNING = 'Some audio was left out. Say try again.'
 
 
 def gate_repetition_text(text):
@@ -130,6 +130,12 @@ class _ScreenedSegment:
 
     def __getattr__(self, name):
         return getattr(self._original, name)
+
+    def __copy__(self):
+        # 1118: copy.copy must not probe an uninitialized proxy recursively.
+        result = object.__new__(type(self))
+        result.__dict__.update(self.__dict__)
+        return result
 
 
 def gate_repetition_segments(segments):

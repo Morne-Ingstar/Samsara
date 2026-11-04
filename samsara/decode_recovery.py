@@ -22,6 +22,9 @@ logger = get_logger(__name__)
 # Stand-ins: owner wording is collected in ASK.json.
 UNCLEAR = 'Words unclear. Say try again.'
 LOST = 'Audio lost. Dictate again.'
+# 1118: independent speech evidence required before bypassing a native skip.
+NO_SPEECH_RETRY_TOTAL_S = .256
+NO_SPEECH_RETRY_RUN_S = .128
 _admission = threading.Lock()
 
 
@@ -314,6 +317,26 @@ class DecodedHold:
     low: bool = False
 
 
+def _can_retry_no_speech(evidence, rate, samples, chunk, params, capture):
+    """A native empty result exposes no skip telemetry; corroborate locally.
+
+    Require 256 ms total and 128 ms continuous speech above .1 in THIS
+    source chunk, outside press/earcon grace. Unknown evidence fails closed.
+    """
+    if params.get('no_speech_threshold') is None or not _valid_evidence(evidence, rate, samples):
+        return False
+    grace = capture.offsets()[0] / 1000 if capture is not None else 0.
+    start, end = max(chunk.start / rate, grace), chunk.end / rate
+    total = longest = run = 0.
+    for index, score in enumerate(evidence.probabilities):
+        width = max(0., min(end, (index + 1) * .032, evidence.samples / 16000)
+                    - max(start, index * .032))
+        run = run + width if width and score > .1 else 0.
+        total += width if score > .1 else 0.
+        longest = max(longest, run)
+    return total + 1e-9 >= NO_SPEECH_RETRY_TOTAL_S and longest + 1e-9 >= NO_SPEECH_RETRY_RUN_S
+
+
 def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None):
     from samsara.hold_final_policy import current_audit
     from samsara.speech_presence import measure
@@ -348,11 +371,11 @@ def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None):
                 pcm = audio[chunk.start:chunk.end]
                 effective = _params(app, params, len(pcm) / app.model_rate)
                 effective['word_timestamps'] = sparse or params.get('word_timestamps', False)
-                reason, accepted = None, []
+                reason, accepted, relaxed, chunk_warning = None, [], False, False
                 try:
                     for retry in (False, True):
                         check()
-                        if retry:
+                        if retry and not relaxed:
                             effective = _params(app, effective, len(pcm) / app.model_rate, retry=True)
                         iterator, result.info = transcribe_with_vocabulary(app, pcm, path='hold_final', **effective)
                         raw = []
@@ -362,12 +385,21 @@ def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None):
                         if not retry and _cpu(app):
                             # A resilient model may have switched devices during iteration.
                             effective['temperature'] = temperature_ladder(app)
+                        if (not raw and not retry and _can_retry_no_speech(
+                                evidence, app.model_rate, len(audio), chunk, effective, capture)):
+                            # One additional decode of the same PCM, under the same
+                            # deadline. Compression/logprob and all output gates stay.
+                            effective = dict(effective, no_speech_threshold=None)
+                            relaxed = True
+                            logger.info('[HOLD_FINAL] no_speech_retry start_s=%.3f end_s=%.3f attempt=1',
+                                        chunk.start / app.model_rate, chunk.end / app.model_rate)
+                            continue
                         missing_timing = len(chunks) > 1 and any(
                             getattr(s, 'start', None) is None or getattr(s, 'end', None) is None for s in raw)
                         raw = _clip_timing(raw, len(pcm) / app.model_rate)
                         screened = gate_repetition_segments(raw)
                         combined = gate_repetition_text(screened.text)
-                        result.warning |= screened.changed or combined.changed
+                        chunk_warning = screened.changed or combined.changed
                         needs_retry = screened.needs_retry or combined.needs_retry
                         accepted = list(screened.segments)
                         if needs_retry:
@@ -380,7 +412,12 @@ def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None):
                             if sparse:
                                 accepted = _aligned(accepted, bounds, app.model_rate, chunk.start / app.model_rate)
                             text = ''.join(s.text for s in accepted).strip()
-                            verdict = guard(accepted, text, effective, pcm) if text and guard else None
+                            # A relaxed native skip must not admit known silence
+                            # sign-offs, including in the batch path (1118).
+                            from samsara.hallucination_filter import signoff_failure_reason
+                            verdict = (signoff_failure_reason(text, accepted, len(pcm) / app.model_rate,
+                                       app.config, user_held_key=True) if relaxed and text else None)
+                            verdict = verdict or (guard(accepted, text, effective, pcm) if text and guard else None)
                             if isinstance(verdict, tuple):
                                 reason, replacement = verdict
                                 accepted = _replace_text(accepted, replacement)
@@ -388,7 +425,7 @@ def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None):
                                 reason = verdict
                             reason = reason or ('empty_spoken_chunk' if not text else None)
                             reason = reason or ('missing_chunk_timestamps' if missing_timing else None)
-                        break  # Only a loop may cause the one .4 re-decode.
+                        break  # At most one extra decode: loop OR native empty.
                 except TimeoutError:
                     raise
                 except Exception:
@@ -397,11 +434,11 @@ def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None):
                     start, end = chunk.core_start / app.model_rate, chunk.core_end / app.model_rate
                     result.failures.append((start, end, reason))
                     result.last_failed = index == len(chunks) - 1
-                    result.warning = True
                     logger.warning('[HOLD_FINAL] failed start_s=%.3f end_s=%.3f reason=%s audio_retained=1', start, end, reason)
                     # Good segments survive a failed loop retry; the failed loop never does.
                     if reason not in ('repetition_loop', 'missing_chunk_timestamps'):
                         continue
+                result.warning |= chunk_warning
                 _append(result.segments, [_offset(s, chunk.start / app.model_rate) for s in accepted])
             return result
         finally:
@@ -501,6 +538,8 @@ def stream_final(worker, audio, params):
             if not text:
                 from samsara.transcript_gates import LOOP_WARNING
                 session._decode_failure = LOOP_WARNING
+        elif decoded.warning:
+            retain(app, audio, params, 'repetition_loop')
         from samsara.hold_final_policy import preserve_preview_tail
         return decoded.segments, decoded.info, preserve_preview_tail(session, text)
     except Exception as exc:
@@ -596,11 +635,15 @@ def decode_hold(app, audio, params, duration_s):
             text = ''.join(s.text for s in decoded.segments).strip()
         if decoded.failures:
             retain(app, audio, params, decoded.failures[0][2])
-        if decoded.warning:
-            _warn(app)
+        elif decoded.warning:
+            retain(app, audio, params, 'repetition_loop')
         language_rejected = bool(text and not app._filter_dictation_language(text, decoded.info))
         if language_rejected:
             text = ''
+        if decoded.warning and not language_rejected:
+            _warn(app)
+        elif decoded.failures and not text and not language_rejected:
+            app._show_outcome_chip(UNCLEAR, 'warning')
         return _HotkeyDecodeResult(text, low, decoded.segments, getattr(decoded.info, 'language', None),
                                    'hold_1052d', language_rejected or bool(decoded.failures and not text))
     except Exception:

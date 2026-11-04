@@ -370,5 +370,5 @@ def test_batch_guard_failure_has_recovery_and_failure_is_not_empty_speech(build_
     assert not result.text and result.diag_path == 'hold_1052d'
     assert result.language_rejected
     assert len(calls) == 1
-    session.app._show_outcome_chip.assert_called_once_with(LOOP_WARNING, 'warning')
+    session.app._show_outcome_chip.assert_called_once_with(recovery.UNCLEAR, 'warning')  # 1118: no loop omitted.
     np.testing.assert_array_equal(session.app._hold_retry_audio.audio, audio)
