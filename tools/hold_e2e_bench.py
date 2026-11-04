@@ -234,6 +234,40 @@ def build_preduck_fixtures(output):
     return cases
 
 
+def build_last_word_fixtures(output):
+    """1100: public source 0, soft ending and a release inside its last word.
+
+    Corpus reference is independent of the decoder. Source timing inspection
+    places the last word at 4.82..5.26 s; keep original speech samples/timing.
+    The soft take changes only gain from 4.75 s, to -32 dBFS over that span.
+    """
+    output = Path(output)
+    output.mkdir(parents=True, exist_ok=True)
+    meta = json.loads((FIXTURES / 'sources.json').read_text(encoding='utf-8'))
+    original = peak(source('speech_0')[:round(5.35*RATE)], .995)
+    cases = []
+    for case, release in [('1100_soft', 5.3), ('1100_midword', 5.0)]:
+        audio = original.copy()
+        if case == '1100_soft':
+            onset = round(4.75*RATE)
+            gain = 10**(-32/20)/rms(audio[onset:])
+            envelope = np.full(len(audio)-onset, gain, dtype=np.float32)
+            envelope[:round(.02*RATE)] = np.linspace(1., gain, round(.02*RATE))
+            audio[onset:] *= envelope
+        audio = np.concatenate([audio, np.zeros(round(.45*RATE))])
+        for variant, gain in [('peak0995', 1.), ('peak_minus12', 10**(-12/20)/.995)]:
+            take = (audio*gain).astype(np.float32)
+            wav = output / (case+'_'+variant+'.wav')
+            sf.write(wav, take, RATE, subtype='PCM_16')
+            cases.append(dict(id=wav.stem, case=case, wav=str(wav.resolve()),
+                              reference=meta['text']['0'], release_s=release,
+                              last_word='gospel', last_word_span_s=[4.82, 5.26],
+                              duration_s=len(take)/RATE,
+                              last_word_rms_dbfs=20*np.log10(rms(take[round(4.82*RATE):round(5.26*RATE)])),
+                              sha256=hashlib.sha256(wav.read_bytes()).hexdigest()))
+    return cases
+
+
 class TraceModel:
     """Observe real lazy faster-whisper results without replacing any metric."""
     def __init__(self, model):
@@ -419,8 +453,13 @@ def run_case(case, model, output, *, device='cpu', partials=False, drop_playback
             raise RuntimeError('fixture capture did not activate')
         checkpoints = sorted({x for x in [13., 30., 55., len(audio)/RATE-.5]
                               if .5 <= x < len(audio)/RATE}) if partials else []
+        if 'release_s' in case:
+            # This replay thread is also the PCM producer. Finish preview
+            # probes before release so native decode cannot stall its tail.
+            checkpoints = sorted({min(x, case['release_s']-.5) for x in checkpoints})
         next_checkpoint = 0
-        release_index = max(0, ((len(audio)-round(.3*RATE))//FRAME_SIZE)*FRAME_SIZE)
+        release_index = (round(case['release_s']*RATE) if 'release_s' in case else
+                         max(0, ((len(audio)-round(.3*RATE))//FRAME_SIZE)*FRAME_SIZE))
 
         def release_tail():
             try:
@@ -430,6 +469,10 @@ def run_case(case, model, output, *, device='cpu', partials=False, drop_playback
                     speech_threshold=HOLD_RELEASE_TAIL_SPEECH_THRESHOLD,
                     should_abort=session.cancel_event.is_set)
                 session._release_tail_signals = dict(tail, speech_floor=HOLD_RELEASE_TAIL_SPEECH_THRESHOLD)
+                if 'release_s' in case:
+                    # Mirror the production release caller: freeze admission
+                    # now, even though the ring and final worker stay alive.
+                    consumer.finish_capture(force=True)
             except Exception as exc:
                 tail_errors.append(exc)
 
@@ -521,6 +564,10 @@ def run_case(case, model, output, *, device='cpu', partials=False, drop_playback
             verdicts['no_cue_while_recording'] = not cue_result['cue_while_recording'] and cue_result['wake_armed']
             verdicts['no_repeated_token_run'] = repeated_run(delivered) is None
             verdicts['speech_delivered'] = bool(delivered.strip())
+        elif 'release_s' in case:
+            tokens = words(delivered)
+            verdicts['last_word_retained'] = bool(tokens) and tokens[-1] == case['last_word']
+            verdicts['no_repeated_token_run'] = repeated_run(delivered) is None
         elif timed_onset:
             tokens = words(delivered)
             if case['user_onset']:
@@ -543,7 +590,14 @@ def run_case(case, model, output, *, device='cpu', partials=False, drop_playback
             if drop_playback_preroll:
                 expected[:case['suppressed_prefix_blocks']*FRAME_SIZE] = 0
             expected = expected.reshape(-1, FRAME_SIZE)[allowed].ravel()
-        pcm_check = 'selected_input_pcm_preserved' if timed_onset else 'complete_input_pcm_preserved'
+        if 'release_s' in case:
+            # Post-cutoff silence may be omitted; every admitted sample must
+            # still be the original contiguous prefix, including the last word.
+            verdicts['last_word_audio_captured'] = (captured is not None and
+                len(captured)/RATE >= case['last_word_span_s'][1])
+            expected = expected[:len(captured)] if captured is not None else expected
+        pcm_check = ('captured_input_pcm_preserved' if 'release_s' in case else
+                     'selected_input_pcm_preserved' if timed_onset else 'complete_input_pcm_preserved')
         verdicts[pcm_check] = captured is not None and np.array_equal(captured, expected)
         verdicts['delivery_completed'] = session._state == session.STATE_DONE
         result = dict(case=case, delivered_text=delivered, metrics=metric,
@@ -595,7 +649,7 @@ def main(argv=None):
     parser.add_argument('--device', choices=['cpu', 'cuda'], default='cpu')
     parser.add_argument('--compute-type', default='int8')
     parser.add_argument('--partials', action='store_true', help='exercise real partials at fixed audio checkpoints, including on CPU')
-    parser.add_argument('--case', choices=['1026', '1043', '1042', '1051', '1070', '1070_firstword', '1070_overlap'], action='append')
+    parser.add_argument('--case', choices=['1026', '1043', '1042', '1051', '1070', '1070_firstword', '1070_overlap', '1100_soft', '1100_midword'], action='append')
     parser.add_argument('--variant', choices=['peak0995', 'peak_minus12'])
     parser.add_argument('--prepare-only', action='store_true')
     parser.add_argument('--revision', default='unspecified', help='source revision label supplied by the caller')
@@ -605,7 +659,8 @@ def main(argv=None):
     sys.path.insert(0, str(ROOT))
     logging.basicConfig(filename=args.output / 'bench.log', level=logging.INFO,
                         format='%(asctime)s %(name)s %(levelname)s %(message)s')
-    cases = build_fixtures(args.output / 'fixtures') + build_preduck_fixtures(args.output / 'fixtures')
+    cases = (build_fixtures(args.output / 'fixtures') + build_preduck_fixtures(args.output / 'fixtures')
+             + build_last_word_fixtures(args.output / 'fixtures'))
     if args.prepare_only:
         print(f'Prepared {len(cases)} real-human audio WAVs in {args.output / "fixtures"}')
         return 0

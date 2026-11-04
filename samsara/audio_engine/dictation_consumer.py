@@ -39,6 +39,7 @@ stop_recording treats None as "no audio captured" and plays an error earcon.
 
 import threading
 import time
+from logging import DEBUG
 
 import numpy as np
 
@@ -86,6 +87,7 @@ class DictationSessionConsumer:
         self._capture_overflows = 0
         self._last_capture_seq = -1
         self._streaming_capturing = False
+        self._streaming_tail_audit = None
 
     # ── Utterance lifecycle ───────────────────────────────────────────────────
 
@@ -374,7 +376,42 @@ class DictationSessionConsumer:
         result = self._wait_for_release_quiet(next_rms, threshold, silence_ms,
                                               max_tail_ms, should_abort)
         result['speech_level'] = speech_level
+        # 1100: numeric evidence only; the waiter and admission policy above
+        # remain authoritative. Keep the release boundary until final drain.
+        self._streaming_tail_audit = dict(result, release_frame=len(held))
         return result
+
+    def _log_streaming_tail_capture(self, frames):
+        """Compare release/cutoff with final PCM energy, never log speech text.
+
+        RMS activity is not a speech verdict. The weaker floor exposes soft
+        endings below the tail threshold without changing any capture gate.
+        End offsets are 100 ms block boundaries in the final audio timeline.
+        """
+        audit = self._streaming_tail_audit
+        self._streaming_tail_audit = None
+        if audit is None or not logger.isEnabledFor(DEBUG):
+            return
+        threshold = audit['threshold']
+        weak_floor = threshold * .1
+        levels = [float(np.sqrt(np.mean(frame * frame))) for frame in frames]
+        last_active = max((i + 1 for i, level in enumerate(levels) if level >= threshold), default=0)
+        last_weak = max((i + 1 for i, level in enumerate(levels) if level >= weak_floor), default=0)
+        count = len(frames)
+        logger.debug(
+            '[TAIL_CAPTURE] reason=%s release_audio_ms=%d captured_audio_ms=%d '
+            'admitted_tail_ms=%d observed_tail_frames=%d threshold=%.6f '
+            'last_active_end_ms=%d active_end_gap_ms=%d weak_floor=%.6f '
+            'last_weak_end_ms=%d weak_end_gap_ms=%d last_frame_rms=%.6f '
+            'last_frame_peak=%.6f cutoff_set=%d',
+            audit['reason'], audit['release_frame'] * FRAME_MS, count * FRAME_MS,
+            (count - audit['release_frame']) * FRAME_MS, audit['frames'], threshold,
+            last_active * FRAME_MS, (count - last_active) * FRAME_MS, weak_floor,
+            last_weak * FRAME_MS, (count - last_weak) * FRAME_MS,
+            levels[-1] if levels else 0.,
+            float(np.max(np.abs(frames[-1]))) if frames else 0.,
+            self._capture_not_after is not None,
+        )
 
     def cancel(self) -> bool:
         """Discard accumulated frames without assembling audio.
@@ -551,6 +588,7 @@ class DictationSessionConsumer:
         _streaming_frames for StreamingWorker to snapshot.
         """
         self._streaming_frames: list = []
+        self._streaming_tail_audit = None
         self._streaming_capturing = True
         self._streaming_stop  = threading.Event()
         self._capture_not_before = self._select_capture_boundary()
@@ -638,6 +676,7 @@ class DictationSessionConsumer:
         with self._streaming_lock:
             frames = list(self._streaming_frames)
             self._streaming_frames = []
+        self._log_streaming_tail_capture(frames)
         if not frames:
             return None
         return np.concatenate(frames)
