@@ -543,8 +543,11 @@ _COMMAND_HELP = {
     "cursor to": (["cursor to monitor two"], "Connect a second monitor first. Monitor numbers run from left to right."),
     "delete layout": (["delete layout writing"], "Save a layout named writing first. Confirmation may be required."),
     "find window": (["find window firefox"], "Firefox must be running. Reports matching window positions in the log."),
-    "restore layout": (["restore layout writing"], "Save a layout named writing first and keep its apps open."),
+    "restore layout": (["restore layout writing"], "Save a layout named writing first. Re-save older layouts with apps open to enable launching."),
     "save layout": (["save layout writing"], "Arrange your windows first. Saves their positions as writing."),
+    # 1104: these commands edit the tab set in an existing named layout.
+    "save this tab to layout": (["save this tab to layout writing"], "Save a layout named writing first, then focus a browser tab with an HTTP or HTTPS address."),
+    "clear layout tabs": (["clear layout tabs writing"], "Save a layout named writing first. Clears its saved browser tabs."),
     "send": (["send firefox to monitor two", "send to monitor two"], "Connect a second monitor first. Name a running app, or omit the app to move the focused window."),
     "snap": (["snap firefox top left"], "Firefox must be running. Places its window in the top-left quarter of its screen."),
     "font size": (["font size twelve"], "Focus Microsoft Word and select the text to change. Sizes 6 through 72 are supported."),

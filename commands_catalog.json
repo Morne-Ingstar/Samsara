@@ -22763,10 +22763,38 @@
       "plugin": "windows",
       "precondition": "Firefox must be running. Moves it to the screen containing your pointer.",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:722",
+      "source": "plugins/commands/windows.py:723",
       "undoable": false,
       "undoable_source": "undeclared: no verified recovery",
       "verb": "bring",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "clear layout tabs"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "windows.clear_layout_tabs",
+      "description": "Clears the browser tab set in the saved layout you name.",
+      "examples": [
+        "clear layout tabs writing"
+      ],
+      "kind": "plugin",
+      "object": "layout_tabs",
+      "pack": "window-management",
+      "plugin": "windows",
+      "precondition": "Save a layout named writing first. Clears its saved browser tabs.",
+      "risk": "write",
+      "source": "plugins/commands/windows.py:1211",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "clear",
       "whole_utterance": false
     },
     {
@@ -22799,7 +22827,7 @@
       "plugin": "windows",
       "precondition": "Connect a second monitor first. Monitor numbers run from left to right.",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1254",
+      "source": "plugins/commands/windows.py:1337",
       "undoable": false,
       "undoable_source": "undeclared: no verified recovery",
       "verb": "cursor",
@@ -22829,7 +22857,7 @@
       "plugin": "windows",
       "precondition": "Save a layout named writing first. Confirmation may be required.",
       "risk": "destructive",
-      "source": "plugins/commands/windows.py:1162",
+      "source": "plugins/commands/windows.py:1245",
       "undoable": false,
       "undoable_source": "declared: no undo",
       "verb": "delete",
@@ -22851,7 +22879,7 @@
       "plugin": "windows",
       "precondition": "",
       "risk": "read",
-      "source": "plugins/commands/windows.py:1182",
+      "source": "plugins/commands/windows.py:1265",
       "undoable": false,
       "undoable_source": "not needed: read only",
       "verb": "find",
@@ -22879,7 +22907,7 @@
       "plugin": "windows",
       "precondition": "Firefox must be running. Reports matching window positions in the log.",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1221",
+      "source": "plugins/commands/windows.py:1304",
       "undoable": false,
       "undoable_source": "undeclared: no verified recovery",
       "verb": "find",
@@ -22901,7 +22929,7 @@
       "plugin": "windows",
       "precondition": "",
       "risk": "read",
-      "source": "plugins/commands/windows.py:1147",
+      "source": "plugins/commands/windows.py:1230",
       "undoable": false,
       "undoable_source": "not needed: read only",
       "verb": "list",
@@ -22924,7 +22952,7 @@
       "plugin": "windows",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:852",
+      "source": "plugins/commands/windows.py:853",
       "undoable": false,
       "undoable_source": "undeclared: no verified recovery",
       "verb": "movie",
@@ -22946,7 +22974,7 @@
       "plugin": "windows",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1201",
+      "source": "plugins/commands/windows.py:1284",
       "undoable": false,
       "undoable_source": "undeclared: no verified recovery",
       "verb": "rescue",
@@ -22974,9 +23002,9 @@
       "object": "layout",
       "pack": "window-management",
       "plugin": "windows",
-      "precondition": "Save a layout named writing first and keep its apps open.",
+      "precondition": "Save a layout named writing first. Re-save older layouts with apps open to enable launching.",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1130",
+      "source": "plugins/commands/windows.py:1150",
       "undoable": false,
       "undoable_source": "undeclared: no verified recovery",
       "verb": "restore",
@@ -23006,7 +23034,35 @@
       "plugin": "windows",
       "precondition": "Arrange your windows first. Saves their positions as writing.",
       "risk": "write",
-      "source": "plugins/commands/windows.py:1113",
+      "source": "plugins/commands/windows.py:1133",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "save",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "save this tab to layout"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "windows.save_this_tab_to_layout",
+      "description": "Adds the focused browser tab to the saved layout you name.",
+      "examples": [
+        "save this tab to layout writing"
+      ],
+      "kind": "plugin",
+      "object": "this_tab_to_layout",
+      "pack": "window-management",
+      "plugin": "windows",
+      "precondition": "Save a layout named writing first, then focus a browser tab with an HTTP or HTTPS address.",
+      "risk": "write",
+      "source": "plugins/commands/windows.py:1187",
       "undoable": false,
       "undoable_source": "undeclared: no verified recovery",
       "verb": "save",
@@ -23043,7 +23099,7 @@
       "plugin": "windows",
       "precondition": "Connect a second monitor first. Name a running app, or omit the app to move the focused window.",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:803",
+      "source": "plugins/commands/windows.py:804",
       "undoable": false,
       "undoable_source": "undeclared: no verified recovery",
       "verb": "send",
@@ -23077,7 +23133,7 @@
       "plugin": "windows",
       "precondition": "Firefox must be running. Places its window in the top-left quarter of its screen.",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1402",
+      "source": "plugins/commands/windows.py:1485",
       "undoable": false,
       "undoable_source": "undeclared: no verified recovery",
       "verb": "snap",

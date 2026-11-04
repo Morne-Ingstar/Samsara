@@ -555,6 +555,10 @@ class CommandMatcher:
         self._amount_entries = [e for e in self._sorted
                                 if (getattr(e.handler, 'spoken_amount_prefixes', None)
                                     or getattr(e.handler, 'spoken_argument_prefixes', None))]
+        # Keep grammar independent of effect handlers, which callers may wrap/replace.
+        self._utterance_entries = [(e, e.handler.match_utterance) for e in self._sorted
+                                   if (getattr(e.handler, 'whole_utterance', False) is True
+                                       and callable(getattr(e.handler, 'match_utterance', None)))]
 
         self._frozen = True
 
@@ -622,6 +626,13 @@ class CommandMatcher:
             # out-of-scope command's: a miss, never a different command
             # (queue 58 / 68). disabled_pack_for() / out_of_scope_for() say why.
             return None
+
+        # 1104: whole-utterance grammars may place a saved name before the verb.
+        for entry, parser in self._utterance_entries:
+            if self._pack_enabled(entry.pack):
+                remainder = parser(text)
+                if remainder is not None and self.is_live(entry, context, remainder):
+                    return CommandMatch(entry, text_tokens, 0, remainder, remainder)
 
         # Argument syntax is validated before matching, rather than registering
         # a bare alias (948: "back a minute"; 958: "add <path> to favorites").

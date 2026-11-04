@@ -285,6 +285,15 @@ def find_command(text):
     if exact_entry is not None and getattr(exact_entry.get('func'), 'whole_utterance', False):
         return (exact_entry, '') if _live(exact_entry) else (None, '')
 
+    # 1104: use the same anchored argument grammar with or without an executor.
+    for candidate in {id(e): e for e in _REGISTRY.values()}.values():
+        parser = getattr(candidate['func'], 'match_utterance', None)
+        if (getattr(candidate['func'], 'whole_utterance', False) is True
+                and callable(parser) and _live(candidate)):
+            remainder = parser(text)
+            if remainder is not None:
+                return candidate, remainder
+
     # Longest-phrase-first prevents "open" matching before "open browser"
     for phrase in sorted(_REGISTRY, key=len, reverse=True):
         entry = _REGISTRY[phrase]

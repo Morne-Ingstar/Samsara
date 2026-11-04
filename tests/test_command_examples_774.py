@@ -44,6 +44,10 @@ def _context(monkeypatch, executor, phrase):
     monitors = [dict(index=n, rect=(1920 * (n - 1), 0, 1920 * n, 1080),
                      width=1920, height=1080) for n in (1, 2)]
     monkeypatch.setattr(windows, '_strict_monitors', lambda: monitors)
+    if phrase in {'save this tab to layout', 'clear layout tabs'}:
+        # 1104: these whole-utterance examples name an existing saved profile.
+        monkeypatch.setattr(windows, '_load_all_layouts',
+                            lambda: {'writing': {'windows': [], 'browser_tabs': []}})
     tags = {'window_cube.selection', 'click_by_name.pending', 'show_numbers.active'}
     entry = executor._registry_entry(phrase)
     if entry.scope is not None:
@@ -365,8 +369,14 @@ def _isolated_effects(monkeypatch, executor, app, phrase, tmp_path):
         stub('find_windows_by_app', [42])
         stub('move_window_to_monitor')
         stub('teleport_cursor')
-        for name in ('_delete_layout', '_restore_layout', '_save_current_layout'):
+        for name in ('_delete_layout', '_save_current_layout'):
             stub(name)
+        # 1104: restore now returns counts; tab commands use an isolated saved profile.
+        stub('_restore_layout', {'failed': 0, 'tab_failed': False})
+        stub('_load_all_layouts', {'writing': {'windows': [], 'browser_tabs': []}})
+        stub('_save_all_layouts')
+        from plugins.commands import favorites
+        monkeypatch.setattr(favorites, 'current_target', lambda: 'https://example.com')
         stub('_place_one', {'ok': True, 'app': 'firefox', 'monitor': 2})
         monkeypatch.setattr(module.win32gui, 'GetWindowRect', lambda _h: (0, 0, 640, 480))
         monkeypatch.setattr(module.win32gui, 'GetWindowText', lambda _h: 'Sample Firefox')

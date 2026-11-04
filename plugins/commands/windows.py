@@ -46,6 +46,7 @@ else:
 
 from samsara.command_registry import DispatchResult, DispatchState
 from samsara.plugin_commands import command
+from samsara import window_layouts
 
 logger = logging.getLogger(__name__)
 
@@ -895,17 +896,17 @@ _RESERVED_NAMES = frozenset({'default', 'current', 'none'})
 def _get_layouts_path():
     appdata = os.environ.get('APPDATA', str(Path.home() / 'AppData' / 'Roaming'))
     layouts_dir = Path(appdata) / 'Samsara'
-    layouts_dir.mkdir(parents=True, exist_ok=True)
     return layouts_dir / 'window_layouts.json'
 
 
 def _load_all_layouts():
-    path = _get_layouts_path()
-    if not path.exists():
-        return {}
     try:
+        path = _get_layouts_path()
+        if not path.exists():
+            return {}
         with open(path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
     except Exception as e:
         logger.error("Failed to load layouts: %s", e)
         return {}
@@ -915,6 +916,7 @@ def _save_all_layouts(layouts):
     path = _get_layouts_path()
     tmp = path.with_suffix('.json.tmp')
     try:
+        path.parent.mkdir(parents=True, exist_ok=True)
         with open(tmp, 'w', encoding='utf-8') as f:
             json.dump(layouts, f, indent=2)
         os.replace(str(tmp), str(path))
@@ -953,31 +955,42 @@ def _save_current_layout(name):
             rect = win32gui.GetWindowRect(hwnd)
         except Exception:
             continue
+        maximized = False
+        try:
+            placement = win32gui.GetWindowPlacement(hwnd)
+            maximized = (placement[1] == win32con.SW_SHOWMAXIMIZED)
+            if maximized or win32gui.IsIconic(hwnd):
+                rect = placement[4]
+        except Exception:
+            pass
 
         # Determine which monitor contains the window's center point
         cx = (rect[0] + rect[2]) // 2
         cy = (rect[1] + rect[3]) // 2
         monitor_index = 1
+        monitor_device = None
         for m in monitors:
             ml, mt, mr, mb = m['rect']
             if ml <= cx < mr and mt <= cy < mb:
                 monitor_index = m['index']
+                monitor_device = m.get('device')
                 break
-
-        try:
-            placement = win32gui.GetWindowPlacement(hwnd)
-            maximized = (placement[1] == win32con.SW_SHOWMAXIMIZED)
-        except Exception:
-            maximized = False
 
         try:
             app_name = psutil.Process(pid).name()
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             app_name = 'unknown'
 
+        try:
+            exe_path = psutil.Process(pid).exe()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            exe_path = None
+
         windows_list.append({
             'app': app_name,
-            'title_pattern': '',
+            'exe_path': exe_path if isinstance(exe_path, str) else None,
+            'title_pattern': _title,
+            'monitor_device': monitor_device,
             'monitor_index': monitor_index,
             'rect': list(rect),
             'maximized': maximized,
@@ -985,6 +998,7 @@ def _save_current_layout(name):
 
     layouts = _load_all_layouts()
     layouts[name] = {
+        **layouts.get(name, {}),
         'created': datetime.now().isoformat(timespec='seconds'),
         'windows': windows_list,
     }
@@ -998,63 +1012,69 @@ def _restore_layout(name):
         print(f"[LAYOUTS] No layout named '{name}'")
         return
 
-    monitors = get_monitors()
-    entries = layouts[name]['windows']
-    total = len(entries)
-    restored = 0
+    result = window_layouts.restore_profile(layouts[name], _LayoutAdapter())
+    # PLACEHOLDER COPY (1104): counts disclose partial restores without private titles/URLs.
+    print(f"[LAYOUTS] Restored {result['restored']} of {result['total']} windows; "
+          f"launched {result['launched']} apps; opened {result['tabs']} tabs; "
+          f"{result['failed']} windows unavailable" +
+          ("; browser tabs could not be opened" if result['tab_failed'] else ""))
+    return result
 
-    for entry in entries:
-        app_name = entry['app']
-        monitor_index = entry.get('monitor_index', 1)
-        saved_rect = entry.get('rect', [100, 100, 900, 700])
-        maximized = entry.get('maximized', False)
 
-        target = get_monitor_by_index(monitor_index, monitors)
-        if target is None:
-            target = next((m for m in monitors if m['primary']),
-                          monitors[0] if monitors else None)
+class _LayoutAdapter:
+    def get_monitors(self):
+        return get_monitors()
 
-        # Build the restore rect: use saved coords when the monitor is available;
-        # center on the primary/fallback monitor otherwise.
-        if get_monitor_by_index(monitor_index, monitors) is not None:
-            l, t, r2, b = saved_rect
-            restore_l, restore_t, restore_w, restore_h = l, t, r2 - l, b - t
-        else:
-            if target is None:
-                continue
-            w = min(saved_rect[2] - saved_rect[0], target['width'])
-            h = min(saved_rect[3] - saved_rect[1], target['height'])
-            restore_l = target['rect'][0] + (target['width'] - w) // 2
-            restore_t = target['rect'][1] + (target['height'] - h) // 2
-            restore_w, restore_h = w, h
+    launch = staticmethod(window_layouts.launch_app)
+    open_tabs = staticmethod(window_layouts.open_browser_tabs)
 
-        # Try finding the window — first by exact process name, then by stem
-        hwnds = find_windows_by_app(app_name)
+    def find(self, entry):
+        name = entry['app']
+        hwnds = find_windows_by_app(name)
         if not hwnds:
-            stem = app_name.rsplit('.', 1)[0] if '.' in app_name else app_name
-            hwnds = find_windows_by_app(stem)
-        if not hwnds:
-            print(f"[LAYOUTS] Skipped: {app_name} not running")
-            continue
-
+            hwnds = find_windows_by_app(name.rsplit('.', 1)[0])
+        exe = entry.get('exe_path')
+        if not exe:
+            return hwnds
+        matches = []
         for hwnd in hwnds:
             try:
-                if win32gui.IsIconic(hwnd):
-                    win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-                win32gui.SetWindowPos(
-                    hwnd, HWND_TOP,
-                    restore_l, restore_t, restore_w, restore_h,
-                    SWP_SHOWWINDOW,
-                )
-                if maximized:
-                    win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
-                if not raise_window(hwnd, activate=False):
-                    logger.debug("Restored hwnd %s but Windows refused to raise it", hwnd)
-                restored += 1
-            except Exception as e:
-                logger.warning("Restore failed for %s hwnd=%s: %s", describe_text(app_name), hwnd, describe_text(e))
+                _, pid = win32process.GetWindowThreadProcessId(hwnd)
+                if os.path.normcase(psutil.Process(pid).exe()) == os.path.normcase(exe):
+                    matches.append(hwnd)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return matches
 
-    print(f"[LAYOUTS] Restored {restored} of {total} windows")
+    def running(self, entry):
+        exe = entry.get('exe_path')
+        if not exe:
+            return False
+        for proc in psutil.process_iter(['exe']):
+            try:
+                if os.path.normcase(proc.info.get('exe') or '') == os.path.normcase(exe):
+                    return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return False
+
+    def title(self, hwnd):
+        return win32gui.GetWindowText(hwnd)
+
+    def place(self, hwnd, rect, maximized):
+        # Restore normal placement first, even if the current window is maximized.
+        try:
+            current_maximized = win32gui.GetWindowPlacement(hwnd)[1] == win32con.SW_SHOWMAXIMIZED
+        except Exception:
+            # Placement metadata can be unavailable even for a movable window.
+            current_maximized = False
+        if win32gui.IsIconic(hwnd) or current_maximized:
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+        win32gui.SetWindowPos(hwnd, HWND_TOP, *rect, SWP_SHOWWINDOW)
+        if maximized:
+            win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
+        if not raise_window(hwnd, activate=False):
+            logger.debug("Layout window moved but could not be raised")
 
 
 def _delete_layout(name):
@@ -1112,8 +1132,8 @@ def _detect_lost_windows():
 
 @command("save layout",
          aliases=["save window layout", "save this layout"],
-         pack="window-management",
-         risk_class="write", param_schema={"name": {"type": "text", "required": False}},
+         pack="window-management", whole_utterance=True,
+         risk_class="write", side_effects=["file"], param_schema={"name": {"type": "text", "required": False}},
 )
 def handle_save_layout(app, remainder):
     """Saves where your windows are now, under the name you give it."""
@@ -1129,8 +1149,8 @@ def handle_save_layout(app, remainder):
 
 @command("restore layout",
          aliases=["load layout", "restore window layout"],
-         pack="window-management",
-         risk_class="ui", param_schema={"name": {"type": "text", "required": False}},
+         pack="window-management", whole_utterance=True,
+         risk_class="ui", side_effects=["ui", "launch"], param_schema={"name": {"type": "text", "required": False}},
 )
 def handle_restore_layout(app, remainder):
     """Puts your windows back the way a saved layout had them."""
@@ -1140,8 +1160,71 @@ def handle_restore_layout(app, remainder):
     if not name:
         print("[LAYOUTS] No valid name provided")
         return True
-    _restore_layout(name)
+    result = _restore_layout(name)
+    if result and (result['failed'] or result['tab_failed']):
+        return DispatchResult(DispatchState.FAILED, detail={'reason': 'Layout only partly restored.', **result})
     return True
+
+
+handle_save_layout.match_utterance = window_layouts.save_name
+def _match_restore_layout(text):
+    if 'layout' not in window_layouts.spoken_text(text).split():
+        return None
+    return window_layouts.restore_name(text, _load_all_layouts())
+
+
+handle_restore_layout.match_utterance = _match_restore_layout
+
+
+def _tab_layout_name(text, prefix):
+    normalized = window_layouts.spoken_text(text)
+    if not normalized.startswith(prefix + ' '):
+        return None
+    return next((name for name in _load_all_layouts()
+                 if normalized == prefix + ' ' + window_layouts.spoken_text(name)), None)
+
+
+@command("save this tab to layout", pack="window-management", whole_utterance=True,
+         risk_class="write", side_effects=["file"],
+         param_schema={"remainder": {"type": "str", "required": True}})
+def handle_save_layout_tab(app, remainder):
+    """Adds the focused browser tab to the saved layout you name."""
+    from plugins.commands.favorites import current_target
+    name = _extract_layout_name(remainder)
+    layouts = _load_all_layouts()
+    if name not in layouts:
+        return DispatchResult(DispatchState.FAILED, detail={'reason': 'Save the layout first.'})
+    try:
+        urls = window_layouts.browser_urls([current_target()])
+        layouts[name]['browser_tabs'] = window_layouts.browser_urls(layouts[name].get('browser_tabs', []) + urls)
+        _save_all_layouts(layouts)
+    except (ValueError, OSError):
+        return DispatchResult(DispatchState.FAILED, detail={'reason': 'Could not save this browser tab.'})
+    # PLACEHOLDER COPY (1104)
+    print("[LAYOUTS] Browser tab saved")
+    return True
+
+
+handle_save_layout_tab.match_utterance = lambda text: _tab_layout_name(text, 'save this tab to layout')
+
+
+@command("clear layout tabs", pack="window-management", whole_utterance=True,
+         risk_class="write", side_effects=["file"],
+         param_schema={"remainder": {"type": "str", "required": True}})
+def handle_clear_layout_tabs(app, remainder):
+    """Clears the browser tab set in the saved layout you name."""
+    name = _extract_layout_name(remainder)
+    layouts = _load_all_layouts()
+    if name not in layouts:
+        return DispatchResult(DispatchState.FAILED, detail={'reason': 'Save the layout first.'})
+    layouts[name]['browser_tabs'] = []
+    _save_all_layouts(layouts)
+    # PLACEHOLDER COPY (1104)
+    print("[LAYOUTS] Saved browser tabs cleared")
+    return True
+
+
+handle_clear_layout_tabs.match_utterance = lambda text: _tab_layout_name(text, 'clear layout tabs')
 
 
 @command("list layouts",
