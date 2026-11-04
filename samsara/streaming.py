@@ -2123,7 +2123,7 @@ class StreamingSession:
                                           StreamingOverlayQt.STATE_DONE)
             self._overlay.flash_done_and_fade(self._mark_done)
             return
-
+        from samsara.benchmark_store import capture_held_final; capture_held_final(self, text, raw_text)
         tutorial_waiting = getattr(self, '_tutorial_owner', None)
         if self._parking_enabled and not tutorial_waiting:
             original = self._target_hwnd

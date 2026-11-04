@@ -1,7 +1,7 @@
 """Local benchmark sample collection for the personal WER harness.
 
 Opt-in (config `benchmark.collect_samples`, default off). When enabled, the
-hotkey dictation call site in dictation.py saves the raw captured audio as
+held-final completion and the legacy hotkey path save the decoder audio as
 16kHz mono WAV under ~/.samsara/benchmark/audio/ and appends one row to
 ~/.samsara/benchmark/samples.jsonl -- {id, wav, raw_transcript, final_text,
 model, duration_s, ts, gold}. No audio ever leaves the machine.
@@ -13,6 +13,7 @@ reads only gold-confirmed rows for offline WER evaluation.
 """
 
 import json
+import threading
 import time
 import uuid
 import wave
@@ -30,6 +31,7 @@ _DEFAULT_MAX_SAMPLES = 200
 # Fires at most once per process -- "silently stop, INFO once" per the cap
 # requirement, not once per append_sample call.
 _cap_notice_shown = False
+_append_lock = threading.Lock()
 
 
 def _benchmark_dir() -> Path:
@@ -86,6 +88,46 @@ def _to_int16_pcm(audio: np.ndarray) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 def append_sample(app, audio: np.ndarray, sample_rate: int, raw_transcript: str,
+                   final_text: str, model: str) -> bool:
+    # Overlapping held finals must not overwrite rows or exceed max_samples.
+    with _append_lock:
+        return _append_sample(app, audio, sample_rate, raw_transcript, final_text, model)
+
+
+def capture_held_final(session, text, raw_text):
+    """Queue one accepted final (1106); no file I/O on UI/audio threads.
+
+    _decode_audio is the final decoder's PCM, including an explicit retry's
+    original take. Never fall back to partial snapshots or the retry command.
+    append_sample checks the live opt-in again when the worker gets to disk.
+    """
+    try:
+        app = session.app
+        cfg = (getattr(app, 'config', {}) or {}).get('benchmark', {}) or {}
+        if not cfg.get('collect_samples', False) or getattr(session, '_benchmark_queued', False):
+            return
+        if session.cancel_event.is_set() or not str(text or '').strip():
+            return
+        audio = getattr(session, '_decode_audio', None)
+        if audio is None or not getattr(audio, 'size', 0):
+            return
+        from samsara.runtime import thread_registry
+        # Snapshot values now: later holds/config changes cannot replace them.
+        pcm = np.array(audio, copy=True)
+        rate = app.model_rate
+        model = app.config.get('model_size', '')
+        def save():
+            try:
+                append_sample(app, pcm, rate, raw_text or '', text.strip(), model)
+            except Exception as exc:
+                logger.debug(f'[BENCH] held final write failed: {exc}')
+        thread_registry.spawn('benchmark-held-final', save, daemon=True)
+        session._benchmark_queued = True
+    except Exception as exc:
+        logger.debug(f'[BENCH] held final queue failed: {exc}')
+
+
+def _append_sample(app, audio: np.ndarray, sample_rate: int, raw_transcript: str,
                    final_text: str, model: str) -> bool:
     """Save one hotkey dictation utterance as a benchmark sample.
 
