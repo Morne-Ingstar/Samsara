@@ -37,14 +37,15 @@ def test_first_install_changed_and_unchanged_are_quiet_when_healthy(tmp_path, ca
 def test_failure_notices_once_per_fingerprint_and_records_no_private_output(tmp_path, caplog):
     def fail():
         raise RuntimeError("private response must never be persisted or logged")
+    # 1128: unavailable probes preserve state and stay silent.
     item = health.Integration("fake", "Fake", lambda: "private setting", fail)
     with caplog.at_level("INFO", logger=health.__name__):
         notices = health.run_checks(tmp_path, [item])
         assert health.run_checks(tmp_path, [item]) == []
-    assert notices[0].text == "Fake changed and Samsara can't talk to it: compatibility check unavailable"
+    assert notices == []  # 1128: an unavailable probe does not prove a change.
     saved = (tmp_path / health.STATE_FILE).read_text()
     assert "private" not in saved + caplog.text
-    assert json.loads(saved)["integrations"]["fake"]["ok"] is False
+    assert json.loads(saved)["integrations"] == {}  # 1128: no failure fingerprint.
 
 
 def test_version_failure_is_deduplicated_but_recovery_probes(tmp_path):
@@ -55,7 +56,7 @@ def test_version_failure_is_deduplicated_but_recovery_probes(tmp_path):
             raise OSError("untrusted error")
         return version[0]
     item = health.Integration("fake", "Fake", fingerprint, lambda: calls.append(1))
-    assert len(health.run_checks(tmp_path, [item])) == 1
+    assert health.run_checks(tmp_path, [item]) == []  # 1128: unavailable stays quiet.
     assert health.run_checks(tmp_path, [item]) == []
     assert not calls
     version[0] = "recovered"
@@ -76,6 +77,8 @@ def test_one_failed_integration_does_not_skip_another(tmp_path):
     calls = []
     def fail():
         raise health.CheckFailure("a fixed reason")
+    # 1128: a warning requires an earlier, different fingerprint.
+    health.run_checks(tmp_path, [health.Integration("bad", "Bad", lambda: "0", lambda: None)])
     notices = health.run_checks(tmp_path, [
         health.Integration("bad", "Bad", lambda: "1", fail),
         health.Integration("good", "Good", lambda: "1", lambda: calls.append(1)),
@@ -102,11 +105,13 @@ def fake_hermes(monkeypatch, missing=""):
 
 
 def test_hermes_missing_real_flag_warns_with_flag_name(tmp_path, monkeypatch):
+    # 1128: first install has no proven change; seed an earlier version.
+    health.run_checks(tmp_path, [health.Integration("hermes", "Hermes", lambda: "old", lambda: None)])
     calls = fake_hermes(monkeypatch, "--query-file")
     notices = health.run_checks(tmp_path, [health.hermes_integration({})])
     assert notices == [health.Notice("Hermes", "CLI help is missing --query-file")]
     assert all(argv[-1] in {"--help", "--version"} for argv, _ in calls)
-    assert all(kwargs["shell"] is False and kwargs["timeout"] == health.TIMEOUT for _, kwargs in calls)
+    assert all(kwargs["shell"] is False and kwargs["timeout"] == health.CLI_TIMEOUT for _, kwargs in calls)
     assert all(kwargs["stdin"] == health.subprocess.DEVNULL for _, kwargs in calls)
 
 
@@ -133,6 +138,8 @@ def test_ollama_uses_version_and_tags_only(tmp_path, monkeypatch, available, rea
         calls.append(endpoint)
         return {"version": "1"} if endpoint == "/api/version" else {"models": [{"name": name} for name in available]}
     monkeypatch.setattr(health, "_ollama_json", get)
+    # 1128: only a changed fingerprint with a failed probe raises a notice.
+    health.run_checks(tmp_path, [health.Integration("ollama", "Ollama", lambda: "old", lambda: None)])
     notices = health.run_checks(tmp_path, [health.ollama_integration("http://localhost:11434", ["example"])])
     assert calls == ["/api/version", "/api/tags"]
     assert (reason in notices[0].reason) if reason else notices == []
@@ -281,7 +288,7 @@ def test_startup_delivers_notices_through_normal_display_in_order(tmp_path, monk
     monkeypatch.setattr(paths, "samsara_home_dir", lambda: tmp_path)
     monkeypatch.setattr(health, "enabled_integrations", lambda config: [])
     notices = [health.Notice("One", "reason"), health.Notice("Two", "reason")]
-    monkeypatch.setattr(health, "run_checks", lambda *args: notices)
+    monkeypatch.setattr(health, "run_checks", lambda *args, **kwargs: notices)
     monkeypatch.setattr(thread_registry, "spawn", lambda name, work, **kwargs: work())
     timers, shown = [], []
     monkeypatch.setattr(QTimer, "singleShot", lambda delay, fn: timers.append((delay, fn)))

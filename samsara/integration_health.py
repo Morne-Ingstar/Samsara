@@ -20,12 +20,15 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 from typing import Callable
 
 logger = logging.getLogger(__name__)
 _lock = threading.Lock()
 STATE_FILE = "integration_health.json"
 TIMEOUT = 4
+CLI_TIMEOUT = 15
+RETRY_DELAY_MS = 90_000
 
 
 class CheckFailure(Exception):
@@ -47,19 +50,22 @@ class Notice:
 
     @property
     def text(self) -> str:
-        return f"{self.integration} changed and Samsara can't talk to it: {self.reason}"
+        # PLACEHOLDER COPY (1128): only shown after a confirmed fingerprint change.
+        return (f"{self.integration} changed and Samsara can't use it yet. "
+                "Open Settings to check the connection.")
 
 
 def _hash(value) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode("utf-8")).hexdigest()
 
 
-def run_checks(home: Path, integrations: list[Integration]) -> list[Notice]:
+def run_checks(home: Path, integrations: list[Integration], *, attempt: int = 1,
+               unavailable: list[Integration] | None = None) -> list[Notice]:
     """Probe first install/changed versions, including a changed failure state.
 
     Persist only hashes and success booleans, never tokens, server replies,
-    paths, model names or exception text. A failed fingerprint is re-read on
-    the next boot so recovery triggers a fresh probe, without repeating alerts.
+    paths, model names or exception text. Unavailable checks preserve the last
+    result and are collected for one delayed retry by the startup scheduler.
     """
     notices = []
     with _lock:
@@ -74,31 +80,43 @@ def run_checks(home: Path, integrations: list[Integration]) -> list[Notice]:
         if not isinstance(previous, dict):
             previous = {}
         current = {}
+        seen = set()
         for item in integrations:
-            if item.key in current:
+            if item.key in seen:
                 continue
+            seen.add(item.key)
+            old = previous.get(item.key)
+            started = time.monotonic()
+
+            def defer():
+                if isinstance(old, dict):
+                    current[item.key] = old
+                if unavailable is not None:
+                    unavailable.append(item)
+                logger.info("[INTEGRATION-HEALTH] %s check_unavailable attempt=%d elapsed_ms=%d",
+                            item.key, attempt, int((time.monotonic() - started) * 1000))
+
             reason = None
             try:
                 fingerprint = _hash(item.fingerprint())
-            except Exception as exc:
-                fingerprint = _hash(["unavailable", type(exc).__name__])
-                reason = "version check unavailable"
-            old = previous.get(item.key)
+            except Exception:
+                defer()
+                continue
             if isinstance(old, dict) and old.get("fingerprint") == fingerprint:
                 current[item.key] = old
                 logger.info("[INTEGRATION-HEALTH] %s unchanged", item.key)
                 continue
-            if reason is None:
-                try:
-                    item.probe()
-                except CheckFailure as exc:
-                    reason = str(exc)
-                except Exception:
-                    reason = "compatibility check unavailable"
+            try:
+                item.probe()
+            except CheckFailure as exc:
+                reason = str(exc)
+            except Exception:
+                defer()
+                continue
             current[item.key] = {"fingerprint": fingerprint, "ok": reason is None}
             logger.info("[INTEGRATION-HEALTH] %s %s", item.key,
                         "failed" if reason else "ok")
-            if reason:
+            if reason and isinstance(old, dict) and old.get("fingerprint"):
                 notices.append(Notice(item.name, reason))
         if current != previous or not path.is_file():
             temporary = path.with_suffix(".tmp")
@@ -120,7 +138,7 @@ def run_checks(home: Path, integrations: list[Integration]) -> list[Notice]:
 def _cli(argv: list[str]) -> str:
     result = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True,
                             text=True, encoding="utf-8", errors="replace",
-                            timeout=TIMEOUT, shell=False,
+                            timeout=CLI_TIMEOUT, shell=False,
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     if result.returncode:
         raise CheckFailure("CLI metadata check failed")
@@ -331,10 +349,21 @@ def schedule_on_startup(app):
     app._integration_health_scheduled = True
     config = deepcopy(app.config)
 
-    def work():
+    def work(integrations=None, attempt=1):
         try:
             from samsara.paths import samsara_home_dir
-            notices = run_checks(samsara_home_dir(), enabled_integrations(config))
+            home = samsara_home_dir()
+            if integrations is None:
+                integrations = enabled_integrations(config)
+            unavailable = []
+            # Keep the full enabled set so a retry cannot drop other cached entries.
+            notices = run_checks(home, integrations, attempt=attempt, unavailable=unavailable)
+            if unavailable and attempt == 1:
+                def schedule_retry():
+                    from PySide6.QtCore import QTimer
+                    QTimer.singleShot(RETRY_DELAY_MS, lambda: thread_registry.spawn(
+                        "integration_health.retry", lambda: work(integrations, 2), daemon=True))
+                app._schedule_ui(schedule_retry)
             if not notices:
                 return
 
