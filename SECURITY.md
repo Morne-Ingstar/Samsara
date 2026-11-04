@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes target the current **0.41.1 release line**. Use its latest release;
+Security fixes target the current **0.41.2 release line**. Use its latest release;
 older beta and stable lines are not maintained for security fixes.
 The source version is defined in [samsara/__init__.py](samsara/__init__.py).
 

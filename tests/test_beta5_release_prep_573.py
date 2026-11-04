@@ -14,7 +14,7 @@ SKILLS = ('Docs/agents/samsara/SKILL.md', 'Docs/hermes/samsara-voice/SKILL.md')
 
 def test_release_stamps_and_derived_consumers_agree():
     from tools.check_release_version import check_versions
-    version = check_versions(ROOT, 'v0.41.1')
+    version = check_versions(ROOT, 'v0.41.2')
     batch = (ROOT / 'build_release.bat').read_text(encoding='utf-8')
     # 875b: the selected interpreter reads the canonical version before naming outputs.
     assert "_string_assignment(Path('samsara/__init__.py'), '__version__')" in batch
