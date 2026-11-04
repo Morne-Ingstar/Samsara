@@ -43,6 +43,8 @@ def _widget(qapp, *, delay=5.0, opacity=0.25, hints=(), reduced_motion=False, sp
     w = _StreamingWidget(False, IdleSettings(delay, opacity), lambda: speaking[0], hints)
     w._w._now = lambda: clock.ms
     w._w._reduced_motion = reduced_motion
+    # 1124: 104's pointer activity is independent of these clock/speech tests.
+    w._w._cursor_inside = lambda: False
     w.show_overlay()
     qapp.processEvents()
     return w, clock, speaking

@@ -183,6 +183,19 @@ def test_the_catalog_is_not_empty():
     assert len(RECORDS) > 400, len(RECORDS)
 
 
+def test_1124_cockpit_and_stats_live_descriptions(live_specs):
+    # 1124: validate source copy while the runner owns generated catalog updates.
+    records = [vars(spec) for spec in live_specs
+               if spec.canonical_id.startswith(('cockpit.', 'stats.'))]
+    assert len(records) == 16
+    for record in records:
+        test_every_record_has_a_description(record)
+        test_no_description_merely_restates_its_phrase(record)
+        test_no_description_is_too_long_for_a_tooltip(record)
+        test_no_description_uses_engineering_language(record)
+        test_every_description_is_one_sentence_starting_with_a_verb(record)
+
+
 @pytest.mark.parametrize("record", RECORDS, ids=IDS)
 def test_every_record_has_a_description(record):
     desc = (record.get("description") or "").strip()

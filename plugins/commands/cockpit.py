@@ -104,6 +104,8 @@ def start_preview(app, args, *, home=None, completed=None):
          param_schema={"remainder": {"type": "str", "required": False, "max_len": 80}},
          preview_template="PLACEHOLDER: Preview selected saved memos; final approval is required.")
 def preview_memos(app, remainder=""):
+    """Previews proposed task changes from saved memos without applying them."""
+    # PLACEHOLDER COPY (1124)
     try:
         return start_preview(app, selection_args(remainder))
     except ValueError as exc:
@@ -114,12 +116,16 @@ def preview_memos(app, remainder=""):
 @command("use today's memos for cockpit", aliases=["use todays memos for cockpit"], pack="utilities", risk_class="read", ai_composable=True,
          side_effects=["network", "ui"], param_schema={"remainder": {"type": "str", "max_len": 0}})
 def preview_today(app, remainder=""):
+    """Previews proposed task changes from today's saved memos for approval."""
+    # PLACEHOLDER COPY (1124)
     return preview_memos(app, "today")
 
 
 @command("read next cockpit changes", pack="utilities", risk_class="read", ai_composable=False,
          side_effects=["ui"], param_schema={"remainder": {"type": "str", "max_len": 0}})
 def next_changes(app, remainder=""):
+    """Reads the next three proposed changes in the current memo batch."""
+    # PLACEHOLDER COPY (1124)
     runner = getattr(app, "_cockpit_memo_runner", None)
     if runner is None or runner.proposal is None:
         return False
@@ -134,6 +140,8 @@ def next_changes(app, remainder=""):
 @command("review cockpit batch", pack="utilities", risk_class="write", ai_composable=False,
          side_effects=["ui"], param_schema={"remainder": {"type": "str", "max_len": 0}})
 def review_batch(app, remainder=""):
+    """Opens the approval step for the proposed task changes."""
+    # PLACEHOLDER COPY (1124)
     runner = getattr(app, "_cockpit_memo_runner", None)
     if runner is None or runner.proposal is None:
         return False
@@ -148,6 +156,8 @@ def review_batch(app, remainder=""):
 @command("recover cockpit batch", pack="utilities", risk_class="read", ai_composable=False,
          side_effects=["network", "ui"], param_schema={"remainder": {"type": "str", "max_len": 0}})
 def recover_batch(app, remainder=""):
+    """Checks whether the last requested batch of task changes was applied."""
+    # PLACEHOLDER COPY (1124)
     runner = getattr(app, "_cockpit_memo_runner", None)
     if runner is None or runner.request_id is None:
         announce(app, "PLACEHOLDER: No batch request is available in this session.")
@@ -163,6 +173,8 @@ def recover_batch(app, remainder=""):
 @command("skip cockpit item", pack="utilities", risk_class="write", ai_composable=False,
          side_effects=["network", "ui"], param_schema={"remainder": {"type": "str", "required": True, "max_len": 80}})
 def skip_item(app, remainder=""):
+    """Removes the numbered change from the proposed memo batch."""
+    # PLACEHOLDER COPY (1124)
     runner = getattr(app, "_cockpit_memo_runner", None)
     if runner is None or runner.proposal is None:
         return False
@@ -181,7 +193,8 @@ def skip_item(app, remainder=""):
 @command("choose cockpit target", pack="utilities", risk_class="write", ai_composable=False,
          side_effects=["network", "ui"], param_schema={"remainder": {"type": "str", "required": True, "max_len": 80}})
 def choose_target(app, remainder=""):
-    """PLACEHOLDER: choose cockpit target item two candidate one."""
+    """Selects which suggested task a numbered memo change should update."""
+    # PLACEHOLDER COPY (1124)
     runner = getattr(app, "_cockpit_memo_runner", None)
     match = re.fullmatch(r"item (\d+|\w+) candidate (\d+|\w+)", remainder.strip().lower())
     if runner is None or runner.proposal is None or not match:
@@ -209,7 +222,8 @@ def choose_target(app, remainder=""):
          param_schema={key: {"type": "int" if key == "generation" else "str", "required": True}
                        for key in ("proposal_id", "proposal_hash", "request_id", "source_hash", "context_hash", "generation")})
 def approval_identity(app, remainder=""):
-    """Registry identity for bound policy only. Dispatch never approves a batch."""
+    """Identifies a memo batch approval that must be completed in its review window."""
+    # PLACEHOLDER COPY (1124): this identity cannot approve through voice dispatch.
     return False
 
 
@@ -269,6 +283,8 @@ def _briefing_work(app, work):
          risk_class='read', ai_composable=True, side_effects=['network', 'ui'],
          param_schema={'remainder': {'type': 'str', 'max_len': 0}})
 def today_briefing(app, remainder=''):
+    """Reads today's recommended tasks, appointments and waiting items."""
+    # PLACEHOLDER COPY (1124)
     return _briefing_work(app, lambda: read_briefing(app))
 
 
@@ -276,6 +292,8 @@ def today_briefing(app, remainder=''):
          ai_composable=True, side_effects=['network', 'ui'],
          param_schema={'remainder': {'type': 'str', 'max_len': 300}})
 def why_item(app, remainder=''):
+    """Explains why a task appears in today's recommendations."""
+    # PLACEHOLDER COPY (1124)
     return _briefing_work(app, lambda: why_briefing(app, remainder))
 
 
@@ -328,6 +346,8 @@ def followup(app, action, target, value=None):
 @command('move cockpit item', pack='utilities', risk_class='write', ai_composable=False,
          side_effects=['network', 'ui'], param_schema={'remainder': {'type':'str','required':True,'max_len':350}})
 def move_item(app, remainder=''):
+    """Previews moving a task or appointment to another day for approval."""
+    # PLACEHOLDER COPY (1124)
     match = re.fullmatch(r'(.+) to (tomorrow|\d{4}-\d{2}-\d{2})(?: at ((?:[01]\d|2[0-3]):[0-5]\d))?', remainder.strip(), re.I)
     if not match:
         announce(app, 'PLACEHOLDER: Name the Cockpit item followed by to tomorrow.')
@@ -338,6 +358,8 @@ def move_item(app, remainder=''):
 @command('set cockpit deadline', pack='utilities', risk_class='write', ai_composable=False,
          side_effects=['network', 'ui'], param_schema={'remainder': {'type':'str','required':True,'max_len':350}})
 def set_deadline(app, remainder=''):
+    """Previews changing a task's due date for approval."""
+    # PLACEHOLDER COPY (1124)
     match = re.fullmatch(r'(.+) to (tomorrow|\d{4}-\d{2}-\d{2})', remainder.strip(), re.I)
     if not match:
         return False
@@ -347,12 +369,16 @@ def set_deadline(app, remainder=''):
 @command('complete cockpit item', pack='utilities', risk_class='write', ai_composable=False,
          side_effects=['network', 'ui'], param_schema={'remainder': {'type':'str','required':True,'max_len':300}})
 def complete_item(app, remainder=''):
+    """Previews marking a task as done for approval."""
+    # PLACEHOLDER COPY (1124)
     return _briefing_work(app, lambda: followup(app, 'complete', remainder))
 
 
 @command('set cockpit priority', pack='utilities', risk_class='write', ai_composable=False,
          side_effects=['network', 'ui'], param_schema={'remainder': {'type':'str','required':True,'max_len':350}})
 def set_priority(app, remainder=''):
+    """Previews changing a task's priority for approval."""
+    # PLACEHOLDER COPY (1124)
     match = re.fullmatch(r'(.+) to (high|normal|low)', remainder.strip(), re.I)
     if not match:
         return False
@@ -362,6 +388,8 @@ def set_priority(app, remainder=''):
 @command('undo cockpit update', pack='utilities', risk_class='write', ai_composable=False,
          side_effects=['network', 'ui'], param_schema={'remainder': {'type':'str','max_len':100}})
 def undo_update(app, remainder=''):
+    """Previews reversing a previously applied task change for approval."""
+    # PLACEHOLDER COPY (1124)
     def work():
         from samsara.cockpit_memos import FollowupRunner, MemoDisposition
         old = getattr(app, '_cockpit_memo_runner', None)

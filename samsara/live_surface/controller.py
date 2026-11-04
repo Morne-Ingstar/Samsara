@@ -493,6 +493,11 @@ class LiveSurfaceController:
             def cleared():
                 if generation != self._capture_seq:
                     return
+                # 1124: 1042's saved-preview error is now persistent (1038).
+                # Clear is its next action; retire only this hold's cancellation.
+                self.drain()
+                if self.model.view().notice.owner in ("hold", "capture_long_failure"):
+                    self.model.dismiss_error(next_action=True)
                 self.post(SurfaceEvent(EventKind.NOTICE_CLEARED, owner="hold"))
                 self.post(SurfaceEvent(EventKind.NOTICE, notice=NoticeKind.SUCCESS,
                                       message="cleared; nothing inserted", lane=Lane.HOLD, ttl_s=2.0))

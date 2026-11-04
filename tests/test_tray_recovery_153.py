@@ -36,6 +36,7 @@ def test_tray_label_comes_from_updater_availability(qapp, monkeypatch):
 def test_recovery_affordances_stay_top_level(qapp, monkeypatch):
     app = _make_app()
     app._mouse_hook = None
+    app._using_default_mic = False  # 1124: 550 reads this real boolean, not Mock truthiness.
     tray, _started = _stub_tray(monkeypatch, app)
 
     top = _top_level_texts(tray._menu)

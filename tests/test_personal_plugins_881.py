@@ -166,7 +166,8 @@ def test_schema_keeps_personal_folder_config_file_editable():
 @pytest.mark.parametrize('remainder, route_name, expected', [
     ('', 'EXACT', 'FAILED'),
     ('ordinary prose', 'EXACT', 'MISS'),
-    ('ordinary prose', 'MODEL', 'FAILED'),
+    # 1124: 1036d requires a model argument adapter; retain the existing gate ID.
+    pytest.param('ordinary prose', 'MODEL', 'REJECTED', id='ordinary prose-MODEL-FAILED'),
 ])
 def test_personal_declines_keep_remainder_guard_without_private_names(
         tmp_path, monkeypatch, remainder, route_name, expected):
@@ -187,3 +188,5 @@ def test_personal_declines_keep_remainder_guard_without_private_names(
         route=getattr(Route, route_name), args={'remainder': remainder},
         source_text='synthetic greeting ' + remainder)
     assert result.state is getattr(DispatchState, expected)
+    if route_name == 'MODEL':
+        assert result.detail['reason'] == 'adapter_unavailable'

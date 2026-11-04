@@ -1117,8 +1117,11 @@ SETTINGS_SCHEMA = {
     },
 
     # Dictation Diagnostics: per-utterance pipeline instrumentation viewer.
-    "diagnostics.keep_incident_holds": {"type": "bool", "default": False, "tab": "help"},
-    "diagnostics.incident_holds_max": {"type": "int", "default": 5, "min": 1, "max": 5, "tab": "help"},
+    # 1124: 1052a exposes count/Open/Clear in Diagnostics; opt-in stays file-only.
+    "diagnostics.keep_incident_holds": {"type": "bool", "default": False, "tab": "help", "settings_ui": False,
+        "ui_less_reason": "Configuration-file opt-in; Help Diagnostics provides count, Open folder and Clear only."},
+    "diagnostics.incident_holds_max": {"type": "int", "default": 5, "min": 1, "max": 5, "tab": "help", "settings_ui": False,
+        "ui_less_reason": "Configuration-file limit from one to five recordings; no Settings preference row."},
     "diagnostics.write_jsonl": {"type": "bool", "default": False, "tab": "help", "help": {"why": "This writes local troubleshooting events that can include dictated text. To limit retained private content, leave it off unless you are debugging. Switch it off when your investigation is finished.", "docs": "https://morneis.com/samsara/docs/settings/#diagnostics.write_jsonl"}},
     "diagnostics.stage_timing": {"type": "bool", "default": False, "tab": "help", "help": {"why": "This measures delays in the dictation pipeline and saves timings locally without dictated text. It is off by default; leave it off unless you are debugging. Enable it while tuning dictation performance, then switch it off when finished.", "docs": "https://morneis.com/samsara/docs/settings/#diagnostics.stage_timing"}},
 

@@ -136,7 +136,12 @@ def test_unknown_language_asks_once_in_bounded_reply_window(rig, app, monkeypatc
     assert ava_pending.consume(app, "Spanish")
     assert not ava_pending.consume(app, "Spanish")
     assert session.pending().proposal.rewritten == TRANSLATED
-    assert released == acquired
+    # 1124: 1036d opens a new bounded Apply/Discard question after translation.
+    assert acquired == ["ava_question", "ava_question"] and released == ["ava_question"]
+    assert app._ava_question.kind == 'edit' and app._ava_question.opened
+    assert (app.app_state, app.wake_word_triggered) == ("command_window", True)
+    assert ava_pending.consume(app, "discard")
+    assert released == acquired and session.pending() is None
     assert (app.app_state, app.wake_word_triggered) == ("asleep", False)
     assert app.spoken.count("Into which language?") == 1
     assert rig.text == "original clipboard"
@@ -338,6 +343,11 @@ def test_real_ava_routes_consume_language_before_global_commands(rig, app, execu
     assert len(calls) == 1 and calls[0][0] == SOURCE
     assert session.pending().selection_target == TARGET
     assert session.pending().proposal.rewritten == TRANSLATED
+    # 1124: 1036d keeps the reply microphone until Apply/Discard resolves the edit.
+    assert app._ava_question.kind == 'edit'
+    assert (app.app_state, app.wake_word_triggered) == ("command_window", True)
+    assert ava_pending.consume(app, "discard")
+    assert released == acquired and app._ava_question is None
     assert (app.app_state, app.wake_word_triggered) == ("asleep", False)
     assert not rig.pasted and rig.text == "original clipboard"
 
@@ -388,7 +398,11 @@ def test_answer_before_question_finishes_does_not_run_callback(rig, app, monkeyp
     assert app._ava_question is question and not calls
     callbacks.pop()()
     assert question.opened and ava_pending.consume(app, "Spanish")
-    assert len(calls) == 1 and app._ava_question is None
+    # 1124: 1036d replaces the language question with Apply/Discard ownership.
+    assert len(calls) == 1 and app._ava_question.kind == 'edit'
+    assert app._ava_question is not question and session.pending() is not None
+    assert ava_pending.consume(app, "discard")
+    assert app._ava_question is None and session.pending() is None
 
 
 def test_stop_during_model_reply_does_not_stage_stale_translation(rig, app, monkeypatch):

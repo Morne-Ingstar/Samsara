@@ -257,7 +257,11 @@ def test_command_results_and_ava_pending_are_not_silently_ignored(surface):
     indicator.clear_outcome()
     c.drain()
     assert c.view().notice.kind is NoticeKind.ERROR
-    clock[0] = c.view().notice.expires_at + .1; c.refresh_expired()
+    # 1124: 1038 keeps an error until dismissal or the next action.
+    assert c.view().notice.expires_at is None
+    clock[0] += 60; c.refresh_expired()
+    assert c.view().notice.kind is NoticeKind.ERROR
+    indicator.dismiss_error(); c.drain()
     assert c.view().notice.kind is NoticeKind.NONE
 
 
@@ -270,6 +274,10 @@ def test_optional_ai_off_expires_without_further_input(surface):
     assert c.widget._chip.toolTip() == "Optional AI is off"
     clock[0] += 4.1
     QTest.qWait(150)
+    # 1124: 1038 replaced the short error timeout with explicit dismissal.
+    assert c.widget.view.notice.kind is NoticeKind.ERROR
+    assert c.widget.view.notice.expires_at is None
+    indicator.dismiss_error(); c.drain()
     assert c.widget.view.notice.kind is NoticeKind.NONE
     assert c.widget.view.form is VisibleForm.MARK
 
@@ -281,9 +289,14 @@ def test_optional_ai_off_cannot_replace_live_words_or_leak_into_next_capture(sur
     partials.partial("Synthetic words remain visible.")
     indicator.show_outcome("Optional AI is off", "error", 1800)
     c.drain()
+    # 1124: 1038 prioritises persistent errors, retaining the capture's words.
+    assert c.widget.view.form is VisibleForm.STATUS
+    assert c.view().provisional_text == "Synthetic words remain visible."
+    indicator.dismiss_error(); c.drain()
     assert c.widget.view.form is VisibleForm.LIVE
     assert c.widget._lane.text() == "Hold" and c.widget._state.text() == "recording"
     assert "Synthetic words remain visible." in c.widget._transcript.toPlainText()
+    indicator.show_outcome("Optional AI is off", "error", 1800)
     partials.stop()
     c.begin_capture(Lane.HOLD)
     c.drain()

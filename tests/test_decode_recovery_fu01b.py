@@ -171,10 +171,13 @@ def test_cpu_cancel_after_segment_one_never_pulls_segment_two(monkeypatch):
         yield segment()
         pulled.append(2)
         yield segment(' Must not decode.')
+        pulled.append(3)
+        yield segment(' Must not decode further.')
     app.model._cpu_factory = lambda: NS(transcribe=lambda *a, **k: (segments(), NS(language='en')))
     assert not recovery.stream_final(worker, audio, {})[2]
     assert app._hold_decode_job.done.wait(1)
-    assert pulled == [1] and not posted
+    # 1124: 1021 screens the final segment with one bounded lookahead; no third pull.
+    assert pulled == [1, 2] and not posted
     assert app.model_lock.acquire(blocking=False)
     app.model_lock.release()
 

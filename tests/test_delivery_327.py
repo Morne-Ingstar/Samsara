@@ -45,7 +45,7 @@ def production():
 
 
 @pytest.fixture
-def app():
+def app(monkeypatch):
     namespace = production()
     instance = SimpleNamespace(
         config={"wake_word_config": {}, "auto_paste": True, "add_trailing_space": False},
@@ -63,6 +63,16 @@ def app():
     )
     instance._output_dictation = MethodType(namespace["_output_dictation"], instance)
     instance.route = MethodType(namespace["route"], instance)
+    # 1124: 1031a moved Enter to the shared effect policy; fake its OS probes only.
+    from samsara import effect_policy, execution_policy
+    target = lambda: effect_policy.SubmitTarget(
+        'ai' if instance._wake_session_target_process == 'claude.exe' else 'editor',
+        42, instance._wake_session_target_process, 'fixture-composer', 'fixture-revision')
+    monkeypatch.setattr(effect_policy, 'resolve_submit_target', lambda app=None: target())
+    monkeypatch.setattr(execution_policy, 'foreground_window_identity', lambda: {
+        'hwnd': 42, 'process': instance._wake_session_target_process,
+        'pid': 7, 'title_hash': 'fixture-revision'})
+    monkeypatch.setattr('pyautogui.press', namespace['pyautogui'].press)
     return instance, namespace
 
 

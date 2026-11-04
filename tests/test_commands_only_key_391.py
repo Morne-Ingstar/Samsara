@@ -32,6 +32,7 @@ from samsara.notifications import get_default_notification_config
 from samsara.plugin_commands import command
 from samsara.session_modes import normalize_utterance, is_self_hear_capture, outcome_chip
 from samsara.transcript_gates import _apply_segment_quality_gates
+from samsara.vocabulary_decode import transcribe_with_vocabulary  # 1124: 1009's decode seam.
 
 ROOT = Path(__file__).resolve().parents[1]
 

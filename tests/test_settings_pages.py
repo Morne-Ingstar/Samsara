@@ -333,12 +333,15 @@ def test_source_factory_mixins_remain_registered():
 def _keys_by_builder(window):
     produced: dict = {}
     updates: dict = {}
-    for fn in (save for saves in window._source_saves.values() for save in saves):
-        builder = next(part for part in fn.__qualname__.split(".") if part.startswith("_build_"))
-        part = fn(dict(updates))
-        produced.setdefault(builder, set()).update(_flatten(part))
-        updates.update(part)
-        assert fn.__module__.startswith("samsara.ui.settings."), (builder, fn.__module__)
+    # 1124: 1058 adds a helper-module saver; the source registry owns its builder.
+    window._ensure_all_source_saves()
+    for source, saves in list(window._source_saves.items()):
+        builder = window._SOURCE_BUILDERS[source]
+        for fn in saves:
+            part = fn(dict(updates))
+            produced.setdefault(builder, set()).update(_flatten(part))
+            updates.update(part)
+            assert fn.__module__.startswith("samsara.ui.settings."), (builder, fn.__module__)
     return produced, updates
 
 

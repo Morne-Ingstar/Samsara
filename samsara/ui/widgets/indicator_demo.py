@@ -46,12 +46,16 @@ def compact_stand_in(*, thinking=False, command_mode=False, listening=False, mod
     demonstration's. _glyph_mark, _font and _chip_font are bound by the caller.
     """
     from types import SimpleNamespace
-    return SimpleNamespace(
+    from samsara.ui.listening_indicator import ListeningIndicator
+    proxy = SimpleNamespace(
         _pulse_step=0, _unlocked=False, _flash_bg=None, _flash_fg=None,
         _chip_feedback=None, _chip_kind=None, _report_width=lambda: 0,
         _snoozed=False, _agent_waiting=None, _session_mode_name=None,
         _session_mode_color=theme.ACCENT, _thinking=thinking,
         _command_mode=command_mode, _listening=listening, _mode_text=mode_text)
+    # 1124: 1058 split the real painter's colour resolver into two methods.
+    proxy._resolve_base_colors = lambda: ListeningIndicator._resolve_base_colors(proxy)
+    return proxy
 
 
 POSITIONS = ("top-left", "top-center", "top-right", "bottom-left", "bottom-center", "bottom-right")
@@ -154,6 +158,8 @@ class DesktopSketch(QWidget):
         from samsara.ui.live_surface_qt import LiveSurfaceWidget
         view = self.demo_view()
         proxy = SimpleNamespace(_parked_idle=getattr(LiveSurfaceWidget, '_parked_idle', lambda view: False))
+        # 1124: 1058's lane decorator also calls the base label helper.
+        proxy._base_lane_text = lambda view: LiveSurfaceWidget._base_lane_text(proxy, view)
         return (LiveSurfaceWidget._lane_text(proxy, view),
                 LiveSurfaceWidget._state_text(proxy, view))
 

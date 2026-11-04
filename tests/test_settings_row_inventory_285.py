@@ -222,8 +222,8 @@ def test_six_pages_keep_approved_base_budgets(window):
     # 1073: Indicator position leaves Advanced; Idle preview stays for 1076.
     assert sum(row.page_name == 'General' and row.disclosure is window._pages['General'].advanced
                for row in window._destination_rows) == 4
-    # 595 adds Ava's setup guide ahead of the eight preference rows.
-    assert [len(window._pages[name].base_rows) for name in ('Ava', 'Help')] == [9, 6]
+    # 1124: 1015 moved Ava's guide from a ninth row into the page header.
+    assert [len(window._pages[name].base_rows) for name in ('Ava', 'Help')] == [8, 6]
     for tool in settings_qt.tools_page.TOOLS:
         window._ensure_tool(tool)
     assert set(window._tool_pages) == {'Command library', 'Alarms', 'Health', 'Music', 'Components', 'Integrations'}

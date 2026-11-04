@@ -77,6 +77,11 @@ def test_legacy_callback_decline_returns_original_words(executor, monkeypatch, r
     heard = 'Inspect remainder: Original Words.'
     result = ex.execute_canonical('inspect remainder', SimpleNamespace(config={}),
         route=route, args={'remainder': 'Original Words'}, source_text=heard)
+    # 1124: 1036d refuses model arguments before this undeclared legacy handler.
+    if route is Route.MODEL:
+        assert result.state is DispatchState.REJECTED and result.claimed
+        assert result.detail == {'reason': 'adapter_unavailable'}
+        return
     assert result.state is DispatchState.MISS and not result.claimed
     assert result.result == heard
     assert result.detail == {'declined_by': 'inspect remainder'}

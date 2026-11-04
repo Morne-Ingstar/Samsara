@@ -194,6 +194,8 @@ def test_theme_font_and_real_state_words(ui):
     from PySide6.QtGui import QFontInfo
     from samsara.ui.live_surface_qt import LiveSurfaceWidget
     receiver = SimpleNamespace(_parked_idle=LiveSurfaceWidget._parked_idle)
+    # 1124: 1058's lane decorator delegates to the base label helper.
+    receiver._base_lane_text = lambda view: LiveSurfaceWidget._base_lane_text(receiver, view)
     def check():
         widget = IndicatorDemo(reduced_motion=True)
         assert QFontInfo(widget.font()).family() == "Segoe UI"

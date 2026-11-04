@@ -85,7 +85,7 @@ class TestScheduleLifecycle:
         inside_effect = threading.Event()
         release = threading.Event()
 
-        def fake_execute(app, action):
+        def fake_execute(app, action, *, stop=None):  # 1124: 1031e passes schedule cancellation.
             fired.append(action["confirm_text"])
             if action["confirm_text"] == "old":
                 inside_effect.set()
@@ -128,7 +128,7 @@ class TestScheduleLifecycle:
         fired = []
         app = _app()
         monkeypatch.setattr(ask_ollama, "_execute_safe",
-                            lambda app_, action: fired.append(action["confirm_text"]))
+                            lambda app_, action, *, stop=None: fired.append(action["confirm_text"]))
         first = ask_ollama._start_schedule(app, _task("first", 0.02))
         real_stop = ask_ollama._stop_schedule
         monkeypatch.setattr(ask_ollama, "_stop_schedule", lambda: 0)
