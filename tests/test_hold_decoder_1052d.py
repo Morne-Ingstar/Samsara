@@ -121,7 +121,7 @@ def test_persistent_loop_loses_only_its_chunk_warns_and_retains_complete_pcm(mak
     assert 'beep' not in caplog.text
     session._decode_failure = None
     assert not decoder.deliver_failure(session, 45)
-    session.app._show_outcome_chip.assert_called_once_with(LOOP_WARNING, 'warning')
+    session.app._show_outcome_chip.assert_called_once_with(LOOP_WARNING, 'info', 8000)  # 1125: temporary information
 
 
 def test_native_ladder_failure_has_no_five_second_recovery_or_preview_replacement(make_worker, monkeypatch):
@@ -130,7 +130,7 @@ def test_native_ladder_failure_has_no_five_second_recovery_or_preview_replacemen
     session._last_partial = 'Previously shown but unconfirmed words.'
     assert decoder.stream_final(worker, audio, {})[2] == ''
     assert session.app.model.transcribe.call_count == 1
-    assert session._decode_failure == LOOP_WARNING
+    assert session._decode_failure == decoder.UNCLEAR  # 1125: nothing typed
     np.testing.assert_array_equal(session.app._hold_retry_audio.audio, audio)
 
 

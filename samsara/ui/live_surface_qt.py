@@ -214,6 +214,8 @@ class _FeedbackBand(QWidget):
         self.report.hide()
 
     def _report_width(self):
+        if self.notice and self.notice.owner == 'dictation_retry':
+            return 100
         if self.notice and self.notice.feedback in (FeedbackKind.ERROR, FeedbackKind.WARNING):
             return 150 if self.notice.owner == 'capture_long_failure' else 76
         return 0
@@ -229,7 +231,10 @@ class _FeedbackBand(QWidget):
 
     def set_notice(self, notice):
         self.notice = notice
-        self.report.setText('Report a problem' if notice and notice.owner == 'capture_long_failure' else 'Report')
+        retry = notice is not None and notice.owner == 'dictation_retry'
+        self.report.setText('Try again' if retry else 'Report a problem' if notice and notice.owner == 'capture_long_failure' else 'Report')
+        self.report.setAccessibleName('Try again' if retry else 'Report this problem')
+        self.report.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.dismiss.setVisible(bool(self._dismiss_width()))
         self.report.setVisible(bool(self._report_width()))
         from samsara.ui.result_message_rendering import set_result_label

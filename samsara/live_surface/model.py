@@ -356,6 +356,9 @@ class LiveSurfaceModel:
         ttl = None if event.persistent or purpose is not FeedbackPurpose.RESULT else (
             event.ttl_s if event.ttl_s is not None else self._notice_ttl(event.notice))
         duration = message_duration_ms(event.message, feedback, None if ttl is None else ttl * 1000, purpose=purpose)
+        if event.owner == 'dictation_retry':
+            from samsara.dictation_retry import NOTE_MS
+            duration = NOTE_MS
         ttl = None if duration is None else duration / 1000
         candidate = Notice(event.notice, event.message, None if ttl is None else now + ttl,
                            event.lane or self.lane, feedback, purpose, event.owner)
@@ -368,7 +371,7 @@ class LiveSurfaceModel:
         # editing or dictating). Keep the old receipt until its replacement
         # arrives; repeated projections of the same revision are not actions.
         document_action = self._notice_document != (self.document_id, self.revision)
-        if message_should_wait(self._notice.feedback, feedback,
+        if event.owner != 'dictation_retry' and message_should_wait(self._notice.feedback, feedback,
                                protected=self._message_protected(now) and not document_action,
                                current_purpose=self._notice.purpose, current_owner=self._notice.owner,
                                incoming_purpose=purpose, incoming_owner=event.owner):
@@ -387,10 +390,16 @@ class LiveSurfaceModel:
         else:
             self._notice = candidate
 
+    def clear_retry_notice(self):
+        self._waiting_notices.remove(lambda event: event.owner == 'dictation_retry')
+        if self._notice.owner == 'dictation_retry':
+            self._notice = Notice(NoticeKind.NONE, '', None)
+
     def dismiss_error(self, *, next_action=False) -> None:
         """Dismiss result problems, never ongoing device state or questions."""
         problem = self._notice.feedback in (FeedbackKind.ERROR, FeedbackKind.WARNING) and self._notice.purpose is FeedbackPurpose.RESULT
         if next_action:
+            self.clear_retry_notice()
             if problem:
                 from samsara.message_lifetime import arm_acknowledgement
                 arm_acknowledgement(self)

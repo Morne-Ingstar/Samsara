@@ -68,8 +68,8 @@ class RepetitionResult:
 
 
 _LOOP_WORD = re.compile(r"[^\W_]+(?:['’][^\W_]+)*", re.UNICODE)
-# PLACEHOLDER COPY (1118)
-LOOP_WARNING = 'Some audio was left out. Say try again.'
+# PLACEHOLDER COPY (1125)
+LOOP_WARNING = 'Missed a few words - Try again'
 
 
 def gate_repetition_text(text):
@@ -164,9 +164,10 @@ def gate_repetition_segments(segments):
 
 
 def emit_loop_warning(app, result):
-    """Emit the existing warning kind; 1038 owns scheduling and lifetime."""
+    """1125: omissions use one temporary information note."""
     if result.changed:
-        app._show_outcome_chip(LOOP_WARNING, 'warning')
+        from samsara.dictation_retry import show_note
+        show_note(app)
 
 
 class SegmentQualityResult(tuple):

@@ -290,12 +290,19 @@ def transcribe_without_outro(model, audio, params, *, rate=16000, enabled=True):
         from samsara.hold_final_policy import current_audit
         audit = current_audit.get()
         pending = None
-        for segment in segments:
-            if audit is not None:
-                audit.decoded += 1
-            if pending is not None:
+        try:
+            for segment in segments:
+                if audit is not None:
+                    audit.decoded += 1
+                if pending is not None:
+                    yield pending
+                pending = segment
+        except Exception:
+            # 1125: lookahead must not lose a decoded segment when the next
+            # native pull fails. The same final-outro screen still applies.
+            if pending is not None and not _outro_is_unsupported(pending, pcm, rate):
                 yield pending
-            pending = segment
+            raise
         if pending is not None:
             if _outro_is_unsupported(pending, pcm, rate):
                 if audit is not None:

@@ -170,6 +170,18 @@ def finish_streaming_if_empty(worker, audio):
     # The detector can synchronously deliver on_final; mark ownership first.
     session._quiet_empty_capture_899 = not _explain_empty_capture(
         session.app, duration, getattr(session, '_tutorial_owner', None))
+    # 1125: even one measured speech frame gets the bounded relaxed decode.
+    if audio is not None and len(audio):
+        from samsara.speech_presence import measure
+        from samsara.decode_recovery import Chunk, _can_retry_no_speech
+        evidence = measure(audio, session.app.model_rate)
+        capture = getattr(worker, '_speech_presence_capture', None)
+        if _can_retry_no_speech(evidence, session.app.model_rate, len(audio),
+                               Chunk(0, len(audio), 0, len(audio)),
+                               {'no_speech_threshold': .6}, capture):
+            session._empty_capture_kind_891 = None
+            session._quiet_empty_capture_899 = False
+            return False
     if duration < .51:
         from samsara.speech_presence import skip_decode
         skip_decode([] if audio is None else audio, session.app,
@@ -197,8 +209,8 @@ def stream_decode_failed(session):
 
 
 def report_retained_failure(app):
-    from samsara.decode_recovery import UNCLEAR
-    post_reason(app, 'long_failure', headline=UNCLEAR)
+    from samsara.dictation_retry import show_note
+    show_note(app, empty=True)
 
 
 def deliver_stream_final(session, text, raw_text, duration_s, elapsed_ms):
@@ -208,6 +220,8 @@ def deliver_stream_final(session, text, raw_text, duration_s, elapsed_ms):
     from samsara.mic_score import deliver_with_history
     deliver_with_history(session, session._deliver_final, text, raw_text, duration_s, elapsed_ms)
     if not live:
+        return
+    if getattr(session, '_retry_note_shown_1125', False):
         return
     if not text or not text.strip():
         if getattr(session, '_quiet_empty_capture_899', False):

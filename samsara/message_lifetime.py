@@ -142,6 +142,9 @@ def consume_acknowledgement(app, text, *, receipt=None):
     Pending questions keep their existing answer routing. No global command is
     added, so an ordinary dictated 'okay' remains ordinary text.
     """
+    from samsara.dictation_retry import request
+    if request(app, text):
+        return True
     state = acknowledgement_state(app)
     if receipt is None:
         return False

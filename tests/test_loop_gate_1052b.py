@@ -113,4 +113,4 @@ def test_warning_emits_existing_kind_without_implementing_lifetime():
     emit_loop_warning(app, gate_repetition_segments([segment('A clean ordinary sentence.')]))
     app._show_outcome_chip.assert_not_called()
     emit_loop_warning(app, gate_repetition_segments([segment('beep beep beep beep')]))
-    app._show_outcome_chip.assert_called_once_with(LOOP_WARNING, 'warning')
+    app._show_outcome_chip.assert_called_once_with(LOOP_WARNING, 'info', 8000)  # 1125: temporary information

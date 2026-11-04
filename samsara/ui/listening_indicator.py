@@ -71,6 +71,7 @@ from PySide6.QtWidgets import QApplication, QMenu, QWidget
 from samsara.ui import theme
 from samsara.ui.indicator_docking import IndicatorDocking
 from samsara.ui.indicator_drag import IndicatorDrag
+from samsara.dictation_retry import CompactRetryNotice
 from samsara.ui.splash_qt import _system_reduced_motion as _reduced_motion
 from samsara.ui.tray_qt import SPIN_SECONDS_PER_TURN, paint_mark
 from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer
@@ -250,7 +251,7 @@ STATE_ARMED = "armed"
 CAPTURE_STATES = frozenset({"capture", "command-capture"})
 
 
-class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
+class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QWidget):
     """Always-on-top, draggable pill with transparent surroundings."""
 
     # Emitted once a placement change is committed (drag release, or a
@@ -467,6 +468,9 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         from samsara.message_lifetime import begin_acknowledgement_capture, end_acknowledgement_capture
         if active:
             begin_acknowledgement_capture(self)
+            from samsara.dictation_retry import begin_capture
+            begin_capture(getattr(self, '_dictation_retry_app', self))
+            self.clear_retry_notice()
             self.dismiss_error(next_action=True)
         else:
             end_acknowledgement_capture(self)
@@ -971,7 +975,7 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         kind = kind if kind in _chip_fill() else "warning"
         if self._waiting_outcomes and self._chip_deadline is not None and not self._protected_outcome():
             self._clear_outcome()
-        if message_should_wait(self._chip_kind, kind, protected=self._protected_outcome(),
+        if getattr(_feedback, 'owner', '') != 'dictation_retry' and message_should_wait(self._chip_kind, kind, protected=self._protected_outcome(),
                                current_purpose=getattr(self._chip_feedback, 'purpose', 'result'),
                                current_owner=getattr(self._chip_feedback, 'owner', ''),
                                incoming_purpose=getattr(_feedback, 'purpose', 'result'),
@@ -979,6 +983,9 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
             self._waiting_outcomes.push((label, kind, ttl_ms, _feedback), kind, getattr(_feedback, 'purpose', 'result'))
             return False
         ttl_ms = message_duration_ms(label, kind, ttl_ms, purpose=getattr(_feedback, 'purpose', 'result'))
+        if getattr(_feedback, 'owner', '') == 'dictation_retry':
+            from samsara.dictation_retry import NOTE_MS
+            ttl_ms = NOTE_MS
         self._chip_label = str(label)
         self._chip_kind = kind
         self._chip_feedback = _feedback
@@ -1267,10 +1274,6 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         screen = self._resolve_custom_screen()
         limit = max(1, screen.availableGeometry().width()-16) if screen else 820
         return min(820, limit, result_width(label, self._chip_font()) + 2 * _CHIP_PAD_X + self._report_width())
-
-    def _report_width(self):
-        chip = self._active_chip()
-        return 76 if chip and chip[1] in ('error', 'warning') else 0
 
     def _layout(self):
         """(total_w, total_h, pill_rect|None, chip_rect|None) in widget coords.

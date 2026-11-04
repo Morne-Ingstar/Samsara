@@ -57,12 +57,12 @@ def test_final_omission_warns_and_keeps_original_audio(make_worker, monkeypatch,
         segments = [segment('Keep these four useful words. beep beep beep beep')]
     session.app.model.transcribe.side_effect = lambda *a, **k: (iter(segments), NS(language='en'))
     assert decode(path, worker, session, audio) == 'Keep these four useful words.'
-    session.app._show_outcome_chip.assert_called_once_with(LOOP_WARNING, 'warning')
-    assert 'left out' in LOOP_WARNING and 'try again' in LOOP_WARNING
+    session.app._show_outcome_chip.assert_called_once_with(LOOP_WARNING, 'info', 8000)  # 1125: temporary information
+    assert LOOP_WARNING == 'Missed a few words - Try again'  # 1125: plain wording
     np.testing.assert_array_equal(session.app._hold_retry_audio.audio, audio)
     assert not np.shares_memory(session.app._hold_retry_audio.audio, audio)
     assert session.app.model.transcribe.call_count == (2 if loop == 'drop' else 1)
-    # "try again" decodes the retained recording, not merely the missing bit.
+    # 1125: retry decodes only the omitted segment; stripped words are deduplicated.
     session.app.model.transcribe.side_effect = lambda pcm, **k: (
         iter([segment('Try again.' if np.all(pcm == .01) else 'The complete recovered sentence.')]), NS(language='en'))
     request_audio = np.full_like(audio, .01)
@@ -118,7 +118,7 @@ def test_weak_or_unknown_evidence_cannot_relax_native_gate(make_worker, monkeypa
     monkeypatch.setattr(speech_presence, 'measure', lambda *a: measured)
     session.app.model.transcribe.side_effect = lambda *a, **k: (iter([]), NS(language='en'))
     assert decoder.stream_final(worker, audio, PARAMS)[2] == ''
-    assert session.app.model.transcribe.call_count == 1
+    assert session.app.model.transcribe.call_count == (2 if known else 1)  # 1125: any measured speech
     np.testing.assert_array_equal(session.app._hold_retry_audio.audio, audio)
 
 
@@ -139,10 +139,10 @@ def test_relaxed_failure_still_retains_audio_and_never_runs_a_third_decode(make_
     np.testing.assert_array_equal(session.app._hold_retry_audio.audio, audio)
     if returned != 'loop':
         if path == 'batch':
-            session.app._show_outcome_chip.assert_called_once_with(decoder.UNCLEAR, 'warning')
+            session.app._show_outcome_chip.assert_called_once_with(decoder.UNCLEAR, 'info', 8000)  # 1125
         else:
-            session.app._show_outcome_chip.assert_not_called()
-            session._overlay.show_empty_result.assert_called_once_with(LOOP_WARNING)
+            session.app._show_outcome_chip.assert_called_once_with(decoder.UNCLEAR, 'info', 8000)  # 1125
+            session._overlay.show_empty_result.assert_called_once_with('')  # 1125: one note
 
 
 def test_press_grace_alone_cannot_authorize_relaxed_decode(make_worker, monkeypatch):

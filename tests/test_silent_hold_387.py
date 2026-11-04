@@ -194,7 +194,7 @@ def test_suppressed_direct_partial_is_undone_and_notice_posted_once(make_worker,
     streaming.pyautogui.hotkey.assert_called_once_with('ctrl', 'z')
     overlay._partials.controller.post.assert_called_once()
     from samsara.transcript_gates import LOOP_WARNING
-    assert overlay._partials.controller.post.call_args.args[0].message == LOOP_WARNING  # 1052d honest failure
+    assert overlay._partials.controller.post.call_args.args[0].message == ''  # 1125: one information note
     overlay.flash_done_and_fade.assert_called_once_with(session._mark_done)
     if streaming.pyperclip is not None:
         streaming.pyperclip.copy.assert_not_called()

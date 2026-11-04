@@ -16,15 +16,24 @@ class ReportMessageWindow(MessageHoverWindow):
         self.report.clicked.connect(self._report)
 
     def _report(self):
+        if getattr(self.owner._chip_feedback, 'owner', '') == 'dictation_retry':
+            callback = getattr(self.owner, '_dictation_retry_callback', None)
+            if callback:
+                callback()
+            return
         callback = getattr(self.owner, "_report_problem", None)
         if callback:
             callback(self.owner._active_chip()[0], self.owner._active_chip()[1])
 
     def resizeEvent(self, event):
-        self.report.setGeometry(self.width()-76, (self.height()-28)//2, 68, 28)
+        width = self.owner._report_width()
+        self.report.setGeometry(self.width()-width, (self.height()-28)//2, max(68, width-8), 28)
         super().resizeEvent(event)
 
     def paintEvent(self, event):
         chip = self.owner._active_chip()
-        self.report.setVisible(bool(chip and chip[1] in ("error", "warning")))
+        retry = getattr(self.owner._chip_feedback, 'owner', '') == 'dictation_retry'
+        self.report.setText('Try again' if retry else 'Report')
+        self.report.setAccessibleName('Try again' if retry else 'Report this problem')
+        self.report.setVisible(bool(chip and (retry or chip[1] in ("error", "warning"))))
         super().paintEvent(event)

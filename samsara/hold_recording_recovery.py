@@ -8,10 +8,10 @@ import logging
 from samsara import decode_recovery
 
 logger = logging.getLogger(__name__)
-# PLACEHOLDER COPY (1042)
-RETRY = 'Audio kept; say try again.'
-EMPTY = 'Nothing heard. ' + RETRY
-CANCELLED = 'Recording stopped. ' + RETRY
+# PLACEHOLDER COPY (1125)
+RETRY = 'Try again'
+EMPTY = "Didn't catch that - " + RETRY
+CANCELLED = EMPTY
 
 
 def _audio(session):
@@ -61,14 +61,11 @@ def _prepare_final(session, text, raw_text, duration_s):
         session._quiet_empty_capture_899 = False
         return preview, preview, duration_s
     if retained:
-        existing = getattr(session, '_decode_failure', None)
-        session._decode_failure = ('Audio capture stopped. ' + RETRY
-                                   if existing == decode_recovery.LOST else
-                                   'Words unclear. ' + RETRY if isinstance(existing, str) and existing else EMPTY)
+        session._decode_failure = EMPTY
         session._quiet_empty_capture_899 = False
     else:
         # No PCM can be recovered; never claim it was kept.
-        session._decode_failure = 'No audio was captured. Check the microphone.'
+        session._decode_failure = 'Check the microphone.'
         session._quiet_empty_capture_899 = False
     return text, raw_text, duration_s
 
@@ -96,8 +93,8 @@ def cancelled(session):
             session._recovery_history_1042 = False
     if not getattr(session, '_recovery_notice_1042', False):
         session._recovery_notice_1042 = True
-        from samsara.failure_reasons import post_reason
-        post_reason(session.app, 'long_failure', headline=message)
+        from samsara.dictation_retry import show_note
+        show_note(session.app, empty=True)
     logger.info('[STREAM] stopped capture retained audio=%s preview_chars=%d', retained, len(preview))
 
 
@@ -426,7 +423,8 @@ def complete_incident(session, text):
 
 def prepare_final(session, text, raw_text, duration_s):
     # Preserve master's final-audit/lost-range policy while always archiving.
-    result = ((text, raw_text, duration_s) if getattr(session, '_hold_final_audit', None)
+    quiet = getattr(session, '_quiet_empty_capture_899', False)
+    result = ((text, raw_text, duration_s) if quiet or getattr(session, '_hold_final_audit', None)
               or getattr(session, '_hold_failed_ranges', ())
               else _prepare_final(session, text, raw_text, duration_s))
     complete_incident(session, result[0])

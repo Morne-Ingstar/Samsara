@@ -184,7 +184,7 @@ def test_stream_exception_keeps_its_failure_kind_without_a_duration():
 def test_existing_recovery_words_stay_readable_and_failed_delivery_has_no_success_notice():
     app = host()
     reasons.report_retained_failure(app)
-    assert app.listening_indicator.show_outcome.call_args.args[0] == 'Words unclear. Say try again.'
+    assert app.listening_indicator.show_outcome.call_args.args[0] == "Didn't catch that - Try again"  # 1125: plain retry wording
     app.listening_indicator.show_outcome.reset_mock()
     reasons.post_delivery_clipping(app, np.ones(10), False)
     assert not app.listening_indicator.show_outcome.called

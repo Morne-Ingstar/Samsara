@@ -79,14 +79,14 @@ def test_early_release_speech_gate_rejection_keeps_audio_and_explains_history(ca
     monkeypatch.setattr('samsara.speech_presence.skip_decode', lambda *a, **kw: True)
     worker = StreamingWorker(session)
     worker._final_pass()
-    np.testing.assert_array_equal(app._hold_retry_audio.audio, pcm)
-    assert app._hold_retry_audio.audio is not pcm
+    assert not hasattr(app, '_hold_retry_audio')  # 1125: silence needs no retry
+    assert not getattr(session, '_decode_failure', None)  # 1125
     row, = rows(app)
-    assert row['display_text'] == EMPTY
-    assert row['duration_ms'] == 1200 and row['status'] == 'failed'
-    assert RETRY in list_text(row)
-    assert session._overlay.show_empty_result.call_args.args == (EMPTY,)
-    assert app._show_outcome_chip.call_args.args[0] == EMPTY
+    assert row['display_text'] == '(no speech detected)'  # 1125: silence
+    assert row['duration_ms'] == 1200 and row['status'] == 'empty'  # 1125
+    assert RETRY not in list_text(row)  # 1125
+    assert session._overlay.update_text.call_args.args[0] == ''  # 1125: silence has no note
+    app._show_outcome_chip.assert_not_called()  # 1125: true silence stays quiet
 
 
 def test_retry_command_decodes_the_retained_capture(capture, monkeypatch):
@@ -180,7 +180,7 @@ def test_missing_pcm_never_claims_audio_was_kept(capture):
     session._stop_capture()
     session.on_final(None)
     assert not hasattr(app, '_hold_retry_audio')
-    assert rows(app)[0]['display_text'] == 'No audio was captured. Check the microphone.'
+    assert rows(app)[0]['display_text'] == 'Check the microphone.'  # 1125: no audio terminology
 
 
 def test_capture_loss_keeps_only_the_audio_that_arrived(capture):
@@ -188,7 +188,7 @@ def test_capture_loss_keeps_only_the_audio_that_arrived(capture):
     app._dictation_consumer.capture_loss = True
     StreamingWorker(session)._final_pass()
     np.testing.assert_array_equal(app._hold_retry_audio.audio, pcm)
-    assert rows(app)[0]['display_text'] == 'Audio capture stopped. ' + RETRY
+    assert rows(app)[0]['display_text'] == EMPTY  # 1125: one plain retry note
 
 
 def test_late_cancel_callback_cannot_replace_a_newer_retry(capture):

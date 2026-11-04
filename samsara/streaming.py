@@ -1684,11 +1684,11 @@ class StreamingWorker(threading.Thread):
                 audio = self._session._stop_capture()
             else:
                 audio = self._snapshot_audio()   # non-ACE fallback
-            from samsara.decode_recovery import LOST
-            if getattr(consumer, 'capture_loss', False) is True:
-                self._session._decode_failure = LOST
-                self._session.on_final(None, duration_s=len(audio) / app.model_rate if audio is not None else 0)
-                return
+            # 1125: an overflow describes a gap, never a failed whole hold.
+            # The shared decoder keeps the captured words and guards silence.
+            # Completion still archives incident PCM through prepare_final.
+            from samsara.decode_recovery import capture_problem
+            capture_problem(app, audio, self._session)
             from samsara.failure_reasons import finish_streaming_if_empty
             if finish_streaming_if_empty(self, audio):
                 return

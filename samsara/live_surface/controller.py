@@ -129,6 +129,8 @@ class LiveSurfaceController:
 
     def begin_capture(self, lane: Lane, *, capture: CaptureState | None = None,
                       capture_id: str | None = None) -> str:
+        from samsara.dictation_retry import begin_capture
+        begin_capture(self.app)
         self._capture_seq += 1
         capture_id = capture_id or f"surface-{self._capture_seq}"
         self._active_capture = capture_id
@@ -218,6 +220,11 @@ class LiveSurfaceController:
                 signal.connect(callback)
 
     def _report_problem(self, notice) -> None:
+        if notice is not None and notice.owner == 'dictation_retry':
+            callback = getattr(self, '_dictation_retry_callback', None)
+            if callback:
+                callback()
+            return
         from samsara.bug_report.coordinator import report_problem
         if notice is not None:
             report_problem(self.app, notice.message, notice.feedback.value)
@@ -687,6 +694,14 @@ class LiveSurfaceIndicatorAdapter:
 
     def show_outcome(self, label: str, kind: str, ttl_ms=DEFAULT_TTL_MS) -> None:
         self.show_feedback(label, kind, ttl_ms, feedback_for(kind))
+
+    def show_retry_notice(self, label, callback):
+        self.controller._dictation_retry_callback = callback
+        self.show_feedback(label, 'accent', 8000, Feedback(FeedbackKind.INFORMATION, owner='dictation_retry'))
+
+    def clear_retry_notice(self):
+        self.controller.model.clear_retry_notice()
+        self.clear_feedback('dictation_retry')
 
     def show_feedback(self, label: str, kind: str, ttl_ms, feedback: Feedback) -> None:
         from samsara.bug_report.coordinator import remember
