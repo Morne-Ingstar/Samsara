@@ -10,6 +10,7 @@ from samsara.ui import theme
 RELEASE_SUMMARIES = {
     "0.40.3": "0.40.3 - a more forgiving microphone setup, and a safer uninstall.",
     "0.40.4": "0.40.4 - faster start, simpler setup, a better microphone picker, and a cleaner install and uninstall.",
+    "0.41.0": "0.41.0 - steadier dictation, a Stats page on Home, saved window layouts, clearer messages, and a tidier Settings.",
 }
 
 

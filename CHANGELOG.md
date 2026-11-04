@@ -6,6 +6,21 @@ All notable changes to Samsara are documented here.
 
 - **Hands-free by voice** - Say the wake word and "hands free" (or "start hands free", "dictate mode") to start hands-free dictation without touching a key; "hands free" also works as a command. Needs the hands-free key set to Toggle.
 
+## [0.41.0] - 2026-11-03
+
+0.41.0 - steadier dictation, a Stats page on Home, saved window layouts, clearer messages, and a tidier Settings.
+
+- **Steadier dictation.** Longer holds, quick short phrases and soft endings are kept more reliably, and a recording that was stopped can be tried again instead of being lost.
+- **Game mode.** While a full-screen game is running, dictation switches to a lighter mode on its own (or by voice, "game mode on/off/auto").
+- **Stats on Home.** Hover the words-today card for a quick look; click for words, dictations, commands, streak and your most-used commands, stored only on your PC.
+- **Saved window layouts.** "Save layout as <name>" and "<name> layout" bring back your windows, apps and browser tabs.
+- **Calmer commands.** Everyday commands run straight away; only things that really matter (sending, paying, deleting, system changes) ask first.
+- **Clearer messages.** Warnings and errors stay until you dismiss them; informational messages come and go on their own.
+- **Ava edits.** Ava rewrites the text you point at and waits for you to Apply or Discard.
+- **Tidier Settings.** Microphone and Language come first on General, with a single microphone picker.
+- **Wake words.** New "hey Samsara" and "hey Ava" wake-word models.
+- **More reliable mouse button.** Mouse 5 recovers faster, with fewer needless notifications; Settings > General has a Windows notifications choice.
+
 ## [0.40.4] - 2026-11-01
 
 0.40.4 - faster start, simpler setup, a better microphone picker, and a cleaner install and uninstall.
