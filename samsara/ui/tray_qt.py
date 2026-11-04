@@ -1384,6 +1384,8 @@ class SamsaraTrayQt(QObject, TrayNotifications):
 
         with self._optional_menu_section(menu, "Tools"):
             tools_sub = QMenu("Tools")
+            from samsara.ui.mic_check_qt import open_mic_check
+            add(tools_sub, "Check my mic", lambda: open_mic_check(app))
             for tool_name in (
                 "Command library", "Alarms", "Health", "Music", "Components", "Integrations"
             ):

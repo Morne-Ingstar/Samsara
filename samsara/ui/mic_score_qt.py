@@ -165,6 +165,9 @@ class MicScoreWindow(QDialog):
         from samsara.mic_score import ComparisonRun
         from samsara.runtime import thread_registry
         if self.run is None:
+            if getattr(self.app, "_mic_score_active", False):
+                self.status.setText("Finish the current microphone check before starting another test.")
+                return
             devices = [self.devices.itemData(i) for i in range(self.devices.count())] if self.all_mics.isChecked() else [self.devices.currentData()]
             devices = [d for d in devices if d]
             if not devices:

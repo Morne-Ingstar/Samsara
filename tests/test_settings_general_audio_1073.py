@@ -46,7 +46,8 @@ def test_main_and_advanced_order_and_single_picker(window):
     row = window._pages['Audio'].findChild(SettingRow, 'microphoneSetupGuide')
     assert row.description == 'Test the microphone Samsara listens to.'
     assert not row.findChildren(QComboBox)
-    assert [b.text() for b in row.findChildren(QPushButton)] == ['Mic score...']
+    # 1120 adds the quick level check beside the existing comparison.
+    assert [b.text() for b in row.findChildren(QPushButton)] == ['Check mic', 'Mic score...']
     assert 'audio_mic_combo' not in window._widgets
     assert not hasattr(window._widgets['mic_combo'], '_audio_mic_combo')
     assert window._widgets['audio_mic_setup_guide_button'].text() == 'Microphone setup'

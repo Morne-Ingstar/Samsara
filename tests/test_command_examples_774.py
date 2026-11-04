@@ -182,6 +182,10 @@ def _isolated_effects(monkeypatch, executor, app, phrase, tmp_path):
     elif stem == 'audio_switch':
         stub('switch_audio_output')
         stub('switch_audio_input')
+    elif stem == 'mic_score_voice':
+        # 1120: exercise the new example without opening a window or device.
+        from samsara.ui import mic_check_qt
+        monkeypatch.setattr(mic_check_qt, 'open_mic_check', effect('open_mic_check'))
     elif stem == 'click_by_name':
         if phrase == 'choose control':
             selection = NS(nodes=['first', 'second'], service=NS(), verb='focus', hwnd=42)

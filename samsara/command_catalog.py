@@ -447,6 +447,9 @@ _SCHEMA_TYPE = {"int": "int", "integer": "int", "float": "int", "str": "text", "
 # Keep these explicit: synthesizing a suffix from an argument type produces
 # plausible sentences that a handler may not actually understand.
 _COMMAND_HELP = {
+    # PLACEHOLDER COPY (1120): reviewed microphone check examples.
+    "check my mic": (["check my mic", "test my microphone"],
+                     "Opens Check my mic. Choose Start check, stay quiet, then read the sentence when asked."),
     # 948: amounts are parsed by the player transport handlers.
     "skip forward": (["forward 30 seconds"], "Enable the Stremio pack and focus Stremio with a video playing."),
     "skip back": (["back a minute"], "Enable the Stremio pack and focus Stremio with a video playing."),

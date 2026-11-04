@@ -168,7 +168,10 @@ def build(owner):
     from samsara.ui.mic_score_qt import open_mic_score
     score_button = QPushButton("Mic score...")
     score_button.clicked.connect(lambda: open_mic_score(owner.app))
-    controls = [score_button] if add_guide is not None else [guide_button, score_button]
+    from samsara.ui.mic_check_qt import open_mic_check
+    check_button = QPushButton("Check mic")
+    check_button.clicked.connect(lambda: open_mic_check(owner.app))
+    controls = [check_button, score_button] if add_guide is not None else [guide_button, check_button, score_button]
     # PLACEHOLDER COPY (1073)
     guide_row = SettingRow("Microphone", "Test the microphone Samsara listens to.", controls, parent=page.container)
     guide_row.setObjectName("microphoneSetupGuide")

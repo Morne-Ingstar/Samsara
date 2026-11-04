@@ -11264,6 +11264,36 @@
     },
     {
       "aliases": [
+        "check my mic",
+        "test my microphone"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "mic_score_voice.check_my_mic",
+      "description": "Checks your microphone live and tells you in plain words if it sounds right.",
+      "examples": [
+        "check my mic",
+        "test my microphone"
+      ],
+      "kind": "plugin",
+      "object": "my_mic",
+      "pack": "core",
+      "plugin": "mic_score_voice",
+      "precondition": "Opens Check my mic. Choose Start check, stay quiet, then read the sentence when asked.",
+      "risk": "ui",
+      "source": "plugins/commands/mic_score_voice.py:5",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "check",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "how is my mic doing",
         "hows my mic doing"
       ],
@@ -11277,7 +11307,7 @@
       "plugin": "mic_score_voice",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/mic_score_voice.py:14",
+      "source": "plugins/commands/mic_score_voice.py:23",
       "undoable": false,
       "undoable_source": "undeclared: no verified recovery",
       "verb": "hows",
@@ -11299,7 +11329,7 @@
       "plugin": "mic_score_voice",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/mic_score_voice.py:5",
+      "source": "plugins/commands/mic_score_voice.py:14",
       "undoable": false,
       "undoable_source": "undeclared: no verified recovery",
       "verb": "test",

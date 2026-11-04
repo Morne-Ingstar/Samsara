@@ -2,6 +2,15 @@
 from samsara.plugin_commands import command
 
 
+@command("check my mic", aliases=["test my microphone"], pack="core",
+         risk_class="safe", ai_composable=True, side_effects=["ui"])
+def check_my_mic(app, remainder=""):
+    """Checks your microphone live and tells you in plain words if it sounds right."""
+    from samsara.ui.mic_check_qt import open_mic_check
+    open_mic_check(app)
+    return True
+
+
 @command("test my mic", aliases=["mic score", "which mic is best"], pack="core",
          risk_class="safe", ai_composable=True, side_effects=["ui"])
 def test_my_mic(app, remainder=""):
