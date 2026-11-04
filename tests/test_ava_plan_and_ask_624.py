@@ -70,6 +70,10 @@ def rig(monkeypatch, tmp_path):
     from samsara.ava_edit import selection, targets
     monkeypatch.setattr(selection, 'capture_result', lambda *_: targets.SelectionCapture('verified_empty'))
     monkeypatch.setattr(policy, "foreground_window_identity", lambda: {"hwnd": 42, "pid": 100})
+    # 1036e: plan preflight binds input effects; never inspect the live composer.
+    from samsara import effect_policy
+    monkeypatch.setattr(effect_policy, 'resolve_submit_target', lambda app=None:
+        effect_policy.SubmitTarget('unknown', 42, 'fixture.exe', 'control', 'revision'))
     monkeypatch.setattr(policy, "resolve_target", lambda _name: {"hwnd": 43, "pid": 101})
 
     def timer(_name, delay, fn, **_kw):

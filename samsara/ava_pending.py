@@ -280,6 +280,9 @@ def consume(app, text, *, capture_path=None, acknowledgement=None, source=policy
         if q.kind == "policy":
             # The existing voice filters, target bindings and single-use guard
             # resolve this operation. We never manufacture a confirmed flag here.
+            if answer == 'read full message' and callable(getattr(q.operation, 'message_readback', None)):
+                policy.answer_pending(app, text, source=source, capture_path=capture_path)
+                return True
             reply = policy.classify_reply(text)
             if reply is None:
                 return True

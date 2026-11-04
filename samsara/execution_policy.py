@@ -1007,12 +1007,12 @@ def authorize(inv: Invocation, *, app=None, executor=None, confirmed: bool = Fal
         return a
 
     # 6. Resolve the effect locally, after every source/schema/availability gate.
-    from samsara.click_effect_policy import handling_for, deferred_activation
-    handling = handling_for(inv, app=app, executor=executor)
+    from samsara import click_effect_policy as clicks, effect_policy as effects
+    handling = clicks.handling_for(inv, app=app, executor=executor)
     handler = (_plugin_entry(cid) or {}).get('func')
     # Local activation resolvers retain all preceding source/schema/scope gates.
     from samsara.message_delivery import deferred as deferred_message
-    if deferred_activation(inv) or deferred_message(inv) or (inv.route == Route.EXACT and getattr(handler, 'handles_own_confirmation', False) is True):
+    if clicks.deferred_activation(inv) or deferred_message(inv) or (inv.route == Route.EXACT and getattr(handler, 'handles_own_confirmation', False) is True):
         a = Allowed('handler_confirmation', risk=risk)
     elif handling.mode == "explicit_confirm":
         a = NeedsConfirmation(confirmation_prompt(cid, inv.args), risk=risk)
@@ -1020,8 +1020,8 @@ def authorize(inv: Invocation, *, app=None, executor=None, confirmed: bool = Fal
         a = Allowed("known_safe_verb", risk=_SAFE_UNKNOWN_VERBS[cid], hint="unknown metadata; known ui verb")
     elif inv.route in USER_ROUTES:
         a = Allowed(handling.mode, risk=risk, hint="undoable" if _reversible else "")
-    elif risk in (RISK_READ, RISK_UI):
-        a = Allowed("low_risk", risk=risk)
+    elif risk in (RISK_READ, RISK_UI) or effects.model_immediate(inv, app=app, executor=executor):
+        a = Allowed("low_risk" if risk in (RISK_READ, RISK_UI) else "reviewed_immediate", risk=risk)
     else:
         a = NeedsConfirmation(confirmation_prompt(cid, inv.args), risk=risk)
     emit(app, inv, a)

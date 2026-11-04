@@ -51,9 +51,11 @@ def _describe_capability(command_id, *, executor, app=None, context=None):
                                               declared_only=True)
     if not reason and not policy.model_may_call(command_id, executor=executor, app=app, risk=risk):
         reason = 'not_allowed_for_model'
-    return dict(reason=reason, detail=detail, schema=schema, risk=risk,
+    from .effect_policy import capability_effect
+    hook, binding, problem = capability_effect(command_id, executor=executor)
+    return dict(reason=reason or problem, detail=detail, schema=schema, risk=risk,
                 reversible=reversible, approval_possible=risk not in (policy.RISK_READ, policy.RISK_UI),
-                effect_hook='samsara.click_effect_policy.handling_for')
+                effect_hook=hook, effect_binding=binding)
 
 
 def _json(value):
@@ -253,6 +255,7 @@ class CapabilityIndex:
                                     adapter=adapter or None, target_requirements=requirements,
                                     available=not bool(reason), reason=reason, detail=desc.get('detail', ''),
                                     effect_hook=desc.get('effect_hook'), recovery=recovery,
+                                    effect_binding=desc.get('effect_binding'),
                                     declared_risk=desc['risk'],
                                     approval_possible=desc.get('approval_possible', False),
                                     schema_version=SCHEMA_VERSION, provenance='live_registry',

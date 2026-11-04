@@ -231,12 +231,14 @@ class Plan:
         return ava.TurnOutcome("plan", "failed", reason=reason, name=str(index + 1))
 
     def invocation(self, step):
+        from samsara.effect_policy import bind_plan_input
         if step.binding is not None:
-            return step.binding.invocation()
+            return bind_plan_input(step.binding.invocation(), self.app, self.app.command_executor)
         # Named apps use the same APP choke point for preflight and execution.
-        return Invocation(f"action2:{step.command_id}" if step.app_name else step.command_id,
+        inv = Invocation(f"action2:{step.command_id}" if step.app_name else step.command_id,
             {"target": step.app_name} if step.app_name else {},
             route=Route.MODEL, generation=self.generation, source_text=self.utterance)
+        return bind_plan_input(inv, self.app, self.app.command_executor)
 
     def run(self, *, approved=False):
         from plugins.commands import ask_ollama as ava
@@ -269,15 +271,20 @@ class Plan:
                 if isinstance(decision, policy.Denied):
                     return self.failure(decision.reason)
                 if isinstance(decision, policy.NeedsConfirmation):
+                    from samsara.effect_policy import plan_input_current, input_confirmation_prompt
                     if policy.pending_operation() is not None:
                         return self.failure("another_confirmation")
                     targets, probe, foreground = policy.bind_staged_target(inv, executor)
                     binding = ({"foreground_target": targets, "foreground_probe": probe} if foreground
                                else {"targets": targets, "target_probe": probe})
-                    op = policy.stage_pending(self.app, inv, decision.prompt,
+                    prompt = input_confirmation_prompt(inv, decision.prompt)
+                    op = policy.stage_pending(self.app, inv, prompt,
                         on_approve=lambda _op: self.run(approved=True),
-                        refusal_guard=lambda: None if self.eligible() else "stale", **binding)
-                    return ava_pending.ask(self.app, self, "policy", decision.prompt, (), operation=op)
+                        refusal_guard=lambda: None if (self.eligible() and plan_input_current(inv, self.app))
+                        else "stale", **binding)
+                    from samsara.message_delivery import bind_email_question
+                    bind_email_question(self.app, op, getattr(inv.effect_target, 'message', None))
+                    return ava_pending.ask(self.app, self, "policy", prompt, (), operation=op)
                 try:
                     if step.app_name:
                         from plugins.commands.app_verbs import ActionResult

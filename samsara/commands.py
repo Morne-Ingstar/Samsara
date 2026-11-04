@@ -727,7 +727,7 @@ class CommandExecutor:
         scope left while the question was open refuses the effect."""
         from samsara.effect_policy import stage_input_confirmation
         if inv.effect_target is not None:
-            stage_input_confirmation(app, inv, self, decision.prompt)
+            stage_input_confirmation(app, inv, self, decision.prompt, binding=binding)
             return
         targets, target_probe, foreground_bound = execution_policy.bind_staged_target(inv, self)
 

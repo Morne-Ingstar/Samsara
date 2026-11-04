@@ -257,7 +257,7 @@ def handling_for(inv, *, app=None, executor=None):
     return LOCAL_EDIT if risk == ep.RISK_WRITE else IMMEDIATE
 
 
-def stage_input_confirmation(app, inv, executor, prompt):
+def stage_input_confirmation(app, inv, executor, prompt, *, binding=None):
     from samsara import execution_policy as ep
     import copy
     inv = replace(inv, args=copy.deepcopy(inv.args))
@@ -269,22 +269,84 @@ def stage_input_confirmation(app, inv, executor, prompt):
                 or ep.argument_hash(inv.command_id, inv.args) != expected_hash):
             return
         executor.execute_canonical(inv.command_id, app, args=inv.args, route=inv.route,
-                                   generation=inv.generation, source_text=inv.source_text, confirmed=True)
+                                   generation=inv.generation, source_text=inv.source_text,
+                                   confirmed=True, binding=binding)
 
     target = inv.effect_target
     from samsara.message_delivery import bind_email_question
-    if target.message is not None:
-        prompt = target.message.preview() + ". Send? Say read full message for the full body."  # PLACEHOLDER COPY (1031c)
+    prompt = input_confirmation_prompt(inv, prompt)
     targets, target_probe, foreground_bound = ep.bind_staged_target(inv, executor)
-    binding = ({"foreground_target": targets, "foreground_probe": target_probe}
+    target_binding = ({"foreground_target": targets, "foreground_probe": target_probe}
                if foreground_bound else {"targets": targets, "target_probe": target_probe})
     op = ep.stage_pending(app, inv, prompt, on_approve=approve,
-                     record_type="action", **binding,
+                     record_type="action", **target_binding,
                      refusal_guard=lambda: None if (target == resolve_submit_target(app)
                          and ep.argument_hash(inv.command_id, inv.args) == expected_hash)
                      else "composer, arguments or destination changed")
     bind_email_question(app, op, target.message)
     ep.listen_for_confirmation(app, prompt)
+
+
+def capability_effect(command_id, *, executor):
+    """Declare the runtime binding seam without probing the desktop at discovery.
+
+    Complex wrappers stay discoverable but unavailable until their complete
+    child effects can be pinned to the request. This is no authorization grant.
+    """
+    from samsara.click_effect_policy import deferred_activation
+    from samsara.execution_policy import Invocation
+    command = (raw_key_command(command_id[4:]) if command_id.startswith('key:') else
+               (getattr(executor, 'commands', None) or {}).get(command_id, {}))
+    hook = 'samsara.click_effect_policy.handling_for'
+    if command.get('type') in {'macro', 'mouse'} or command.get('method') == 'repeat_last_command':
+        return hook, None, 'effect_binding_unavailable'
+    if input_kind(command) or command.get('app_overrides'):
+        return hook, 'input_target/v1', ''
+    if deferred_activation(Invocation(command_id)):
+        return hook, 'native_activation/v1', ''
+    return hook, 'canonical/v1', ''
+
+
+def model_immediate(inv, *, app=None, executor=None):
+    """Only reviewed T0 effects waive the generic model-write question.
+
+    The default T0 handling for unrated user commands is not a model grant.
+    All schema, source, scope and allowlist checks still precede this decision.
+    """
+    from samsara import execution_policy as ep
+    from samsara.click_effect_policy import ClickTarget
+    if isinstance(inv.effect_target, ClickTarget):
+        # A navigation classification does not grant a model write permission.
+        # Native/OCR activations retain the declared source gate in authorize.
+        return False
+    module = str((ep._plugin_entry(inv.command_id) or {}).get('source', '')).rsplit('.', 1)[-1]
+    command = command_input(inv.command_id, app, executor)
+    return (handling_for(inv, app=app, executor=executor) == IMMEDIATE and
+            (module in _AI_MODULES | _IMMEDIATE_MODULES or
+             (input_kind(command) == 'submit' and isinstance(inv.effect_target, SubmitTarget)
+              and inv.effect_target.kind == 'ai')))
+
+
+def bind_plan_input(inv, app, executor):
+    """Preflight the same input destination the canonical executor will use."""
+    bound = bind_input_invocation(inv, app, executor)
+    refusal = input_refusal(bound, app, executor)
+    if refusal:
+        raise ValueError(refusal)
+    return bound
+
+
+def plan_input_current(inv, app):
+    """Recheck composer/account/body alongside the existing foreground guard."""
+    return (inv.effect_target is None or inv.effect_target == resolve_submit_target(app))
+
+
+def input_confirmation_prompt(inv, fallback):
+    """Reuse the native email preview when a plan owns the pending question."""
+    message = getattr(inv.effect_target, 'message', None)
+    if message is not None:
+        return message.preview() + ". Send? Say read full message for the full body."  # PLACEHOLDER COPY (1031c)
+    return fallback
 
 
 def dispatch_input(inv, app, executor, run, *, confirmed=False, timer_factory=None):
