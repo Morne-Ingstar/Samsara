@@ -76,6 +76,9 @@ ADVANCED = [
         "adv_device",
         "device"
     ],
+    ["Game mode", "Use a resident CPU model with live words off while gaming; switch only when idle.", "game_enabled", "game_mode.enabled"],
+    ["Game detection", "Automatic fullscreen and GPU detection, or manual tray/voice control.", "game_detect", "game_mode.detect"],
+    ["Game CPU model", "A second model, loaded on first use and kept in memory.", "game_model", "game_mode.cpu_model"],
     [
         "Precision metadata",
         "Stored diagnostic precision; the loader chooses actual precision.",

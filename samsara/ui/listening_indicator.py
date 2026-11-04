@@ -443,6 +443,13 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
             self._reposition()
             self.update()
 
+    def set_game_mode(self, active):
+        self._game_mode = bool(active)
+        self._state_changed()
+        if self.isVisible():
+            self._reposition()
+            self.update()
+
     def set_agent_waiting(self, label: str, active: bool):
         self._agent_waiting = label if active else None
         self._state_changed()
@@ -1148,6 +1155,13 @@ class ListeningIndicator(IndicatorDrag, IndicatorDocking, QWidget):
         return f
 
     def _resolve_colors(self):
+        bg, fg, label, mark = self._resolve_base_colors()
+        ava = 'ava' in str(self._session_mode_name or self._mode_text).casefold()
+        if getattr(self, '_game_mode', False) and not self._thinking and not ava:
+            label += ' · Game mode'
+        return bg, fg, label, mark
+
+    def _resolve_base_colors(self):
         """Return (bg_hex, fg_hex, label, show_glyph) from current state.
 
         Every pill state shows the state glyph (the Samsara mark, see

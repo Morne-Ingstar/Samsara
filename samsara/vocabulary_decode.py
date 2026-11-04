@@ -102,6 +102,12 @@ def log_vocabulary(app, reason='session_start'):
 
 def transcribe_with_vocabulary(app, audio, *, path, **params):
     """All active application call sites pass through here, including retries."""
+    from samsara.game_mode import decode_model
+    from copy import copy
+    selected = decode_model(app, path)
+    if selected is not app.model:
+        app = copy(app)
+        app.model = selected
     effective, count = vocabulary_params(app, params)
     signature = (tuple(_terms(app)), (getattr(app, 'config', {}) or {}).get('initial_prompt'))
     with _LOG_LOCK:

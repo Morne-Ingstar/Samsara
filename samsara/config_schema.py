@@ -823,6 +823,9 @@ SETTINGS_SCHEMA = {
     # UNCHANGED -- this is documentation, not behaviour. compute_type is also
     # derived there ("float16" if cuda else "int8", :5601) and is NOT read
     # from this schema for the main model load; see the queue 124 report.
+    "game_mode.enabled": {"type": "bool", "default": True, "tab": "advanced"},
+    "game_mode.cpu_model": {"type": "enum", "options": ["tiny.en", "base.en", "small.en", "tiny", "base", "small"], "default": "base.en", "tab": "advanced"},
+    "game_mode.detect": {"type": "enum", "options": ["auto", "manual"], "default": "auto", "tab": "advanced"},
     "device": {
         "type": "enum",
         "options": ["auto", "cpu", "cuda"],

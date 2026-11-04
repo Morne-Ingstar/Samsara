@@ -1408,6 +1408,8 @@ class SamsaraTrayQt(QObject, TrayNotifications):
             add(tools_sub, "Show Listening Indicator",
                 lambda _checked: app.toggle_listening_indicator(),
                 checked=listening_display.display_visible(app))
+            from samsara.game_mode import add_tray
+            add_tray(self, tools_sub)
             tools_sub.addSeparator()
             add(tools_sub, "Interactive Tutorial", lambda: app.show_tutorial())
             add(tools_sub, "Mic Setup Guide",

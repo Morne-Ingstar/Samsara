@@ -3688,11 +3688,11 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             self.model, load_time, device, compute_type = load_resilient_model(
                 self, self.update_splash, _create_whisper_model, self.config['model_size'], device, compute_type
             )
-            # Store device info for logging
             self.device_type = device
             self.compute_type = compute_type
             self.model_loaded = True
             self.loading_model = False
+            from samsara.game_mode import install; install(self, _create_whisper_model)
             logger.info(f"[OK] Model loaded in {load_time:.1f}s ({device}, {compute_type})")
             _boot_log("async: Whisper model load (hotkey dictation ready)")
             logger.info("[INIT] Loading Silero VAD...")
@@ -10074,7 +10074,6 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         return True
 
     def start_recording(self, streaming=None, play_earcon=True, *, capture_path='dictation_hold'):
-        """Serialize capture startup with release, cancellation and shutdown."""
         from samsara.vocabulary_decode import log_vocabulary
         log_vocabulary(self)  # 1009: once at session entry, never per utterance.
         with self._hold_capture_lifecycle_lock:
@@ -10091,6 +10090,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 self.command_mode_recording = self.ava_mode_recording = False
                 self._park_hold_feedback('Still finishing the last hold')
                 return
+            from samsara.game_mode import before_capture; before_capture(self, capture_path)
             started = False
             self.command_mode_recording = capture_path == 'command_key'
             self.ava_mode_recording = capture_path == 'ava_hold'

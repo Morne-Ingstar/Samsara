@@ -137,6 +137,9 @@ class AdvancedPage:
         ))
         layout.addSpacing(20)
 
+        from .game_mode import build as build_game_mode
+        build_game_mode(self, layout)
+
         # ---- Section: Performance ------------------------------------------
         layout.addWidget(self._section_title("Performance"))
         layout.addSpacing(4)

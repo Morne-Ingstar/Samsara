@@ -9759,6 +9759,66 @@
     },
     {
       "aliases": [
+        "game mode auto"
+      ],
+      "args": [],
+      "canonical_id": "game_mode.game_mode_auto",
+      "description": "Returns game-mode detection to the automatic setting.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "mode_auto",
+      "pack": "core",
+      "plugin": "game_mode",
+      "precondition": "",
+      "risk": "ui",
+      "source": "plugins/commands/game_mode.py:18",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "game",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "game mode off"
+      ],
+      "args": [],
+      "canonical_id": "game_mode.game_mode_off",
+      "description": "Restores the previous dictation hardware and disables automatic switching.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "mode_off",
+      "pack": "core",
+      "plugin": "game_mode",
+      "precondition": "",
+      "risk": "ui",
+      "source": "plugins/commands/game_mode.py:12",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "game",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "game mode on"
+      ],
+      "args": [],
+      "canonical_id": "game_mode.game_mode_on",
+      "description": "Uses CPU dictation without live partials until game mode is turned off.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "mode_on",
+      "pack": "core",
+      "plugin": "game_mode",
+      "precondition": "",
+      "risk": "ui",
+      "source": "plugins/commands/game_mode.py:6",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "game",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "find a gif of",
         "find me a gif of",
         "get me a gif of",

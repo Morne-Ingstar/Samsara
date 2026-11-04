@@ -1234,6 +1234,14 @@ class LiveSurfaceWidget(QWidget):
                 and view.capture is CaptureState.OFF)
 
     def _lane_text(self, view: SurfaceView) -> str:
+        text = self._base_lane_text(view)
+        return text + ' · Game mode' if getattr(self, '_game_mode', False) and view.lane is not Lane.AVA else text
+
+    def set_game_mode(self, active):
+        self._game_mode = bool(active)
+        self._apply_view(self._view, animate=False)
+
+    def _base_lane_text(self, view: SurfaceView) -> str:
         if self._parked_idle(view):
             return "Kept draft"  # PLACEHOLDER COPY (492)
         labels = {"hold": "Hold", "toggle": "Toggle", "hands_free_dictate": "Hands-free",

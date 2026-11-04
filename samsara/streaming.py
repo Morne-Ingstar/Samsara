@@ -69,6 +69,7 @@ from samsara.session_modes import (
 )
 from samsara.smart_corrections import smart_correct
 from samsara import config_defaults
+from samsara.game_mode import partials_enabled
 
 
 class _ThemeProxy:
@@ -1613,8 +1614,7 @@ class StreamingWorker(threading.Thread):
 
     def run(self):
         try:
-            if getattr(self._session, '_cpu_final_only', False) or getattr(self._session.app, 'device_type', None) == 'cpu':
-                # CPU policy: do not spend a second decode pass on partials.
+            if not partials_enabled(self._session.app, self._session):
                 self._stop_event.wait()
             else:
                 self._loop_partials()
@@ -3140,7 +3140,7 @@ class DictatePreviewSession:
         lock = app.model_lock
         # Never queue behind a final decode or a hotkey decode -- skip this
         # tick entirely rather than block the model lock.
-        if not lock.acquire(blocking=False):
+        if not partials_enabled(app) or not lock.acquire(blocking=False):
             return None
         try:
             from samsara.speech_presence import skip_decode

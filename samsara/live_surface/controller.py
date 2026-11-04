@@ -610,6 +610,11 @@ class LiveSurfaceIndicatorAdapter:
         if self._session_lane is None:
             self.controller.post(SurfaceEvent(EventKind.LANE_CHANGED, lane=self._lane))
 
+    def set_game_mode(self, active):
+        widget = self.controller.widget
+        if widget is not None:
+            widget.set_game_mode(active)
+
     def set_session_mode(self, name, _color=None) -> None:
         lower = str(name or "").lower()
         self._session_lane = (Lane.AVA if "ava" in lower else
