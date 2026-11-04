@@ -289,6 +289,8 @@ def _do_agent_route(app, text, verb):
     decorator) so routing verbs can't steal matches from specific plugins.
     """
     smart_cfg = get_config(app)
+    from samsara import execution_policy
+    generation = execution_policy.capture_generation(app)
 
     # 1. Immediate "I heard you" earcon
     _play_earcon(app, EARCON_CAPTURE_STARTED, smart_cfg)
@@ -329,6 +331,8 @@ def _do_agent_route(app, text, verb):
     # 7. Stop pulse regardless of outcome
     if tools:
         tools._stop_thinking_pulse()
+    if not execution_policy.is_fresh(app, generation):
+        return True  # A late model response cannot acquire a new generation.
 
     # 8. Handle failure
     if response is None:
@@ -355,9 +359,9 @@ def _do_agent_route(app, text, verb):
     # SECURITY: tier is determined locally in dispatch() -- the response
     # 'tier' field (if any) is silently ignored.
     for tc in response.get('tool_calls', []):
-        if tools is None:
+        if tools is None or not execution_policy.is_fresh(app, generation):
             break
-        result = tools.dispatch(tc)
+        result = tools.dispatch(tc, generation=generation)
         session.add_observation(
             tc.get('tool', ''),
             'success' if result.get('success') else 'error',

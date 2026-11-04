@@ -2160,26 +2160,26 @@ def handle_response(app, response, original_text=None, *, generation=None):
             "original_text": original_text or "",
             "generation": generation,
         }
-        inv = Invocation("schedule", {
-            "interval_seconds": task["interval_seconds"],
-            "command": task["command"],
-            "key": task["key"],
-        }, Route.MODEL, generation, source_text=task["original_text"])
         if not execution_policy.is_fresh(app, generation):
             logger.warning("[AVA SCHEDULER] dropped stale schedule (generation %r)", generation)
             return TurnOutcome("schedule", "stale", reason="stale", name=str(what))
 
-        def _approve(_op):
-            _start_schedule(app, task)
-            speak_as(app, f"Scheduled. {confirm_text}", source="SAMSARA")
-
-        execution_policy.stage_pending(
-            app, inv, confirm_text, on_approve=_approve,
-            extra={"interval_seconds": task["interval_seconds"],
-                   "scheduled_command": task["command"], "key": task["key"]},
-            record_type="schedule")
-        speak_as(app, confirm_text + " -- say yes to confirm, or say ava cancel.", source="SAMSARA")
-        return TurnOutcome("schedule", "queued", name=str(what))
+        # 1031e: setup consent cannot authorize a repeated external effect.
+        # Only ordinary, policy-admitted effects may repeat unattended.
+        from samsara.composition_policy import scheduled_invocation
+        child = scheduled_invocation(app, task)
+        decision = execution_policy.authorize(child, app=app)
+        from samsara.effect_policy import handling_for, CONFIRM, PRIVATE_SEND
+        if (not isinstance(decision, execution_policy.Allowed)
+                or handling_for(child, app=app) in {CONFIRM, PRIVATE_SEND}):
+            reason = getattr(decision, 'reason', 'individual_approval_required')
+            # PLACEHOLDER COPY (1031e)
+            speak_as(app, "That action cannot repeat automatically. Request it individually.", source="SAMSARA")
+            return TurnOutcome("schedule", "refused", reason=reason, name=str(what))
+        _start_schedule(app, task)
+        # PLACEHOLDER COPY (1031e)
+        speak_as(app, f"Repeating {what} every {int(task['interval_seconds'])} seconds. Say stop schedule to stop.", source="SAMSARA")
+        return TurnOutcome("schedule", "completed", name=str(what))
 
     speak_as(app, response, source="AVA")
     return TurnOutcome("conversation", "spoken")
@@ -2269,28 +2269,36 @@ def schedule_interval_error(interval) -> "str | None":
                 f"The shortest I'll repeat is every {MIN_SCHEDULE_INTERVAL_S} seconds.")
     return None
 
-def _execute_safe(app, action):
+def _execute_safe(app, action, *, stop=None):
     """Execute a command or keypress from any thread, marshalling to main thread."""
+    import copy
+    action = copy.deepcopy(action)
     generation = action.get("generation")
-    if generation is not None and not execution_policy.is_current(app, generation):
+    if (stop is not None and stop.is_set()) or not execution_policy.is_fresh(app, generation):
         _stop_schedule()
         return
-    if action.get("command"):
+    if action.get("command") or action.get("key"):
         def _run():
+            if (stop is not None and stop.is_set()) or not execution_policy.is_fresh(app, generation):
+                _stop_schedule()
+                return
             try:
+                from samsara.composition_policy import scheduled_invocation
+                inv = scheduled_invocation(app, action)
                 result = app.command_executor.execute_canonical(
-                    action["command"], app, route=Route.SCHEDULE, generation=generation)
+                    inv.command_id, app, route=inv.route, generation=generation)
             except Exception as e:
                 print(f"[AVA SCHEDULER] Command error: {e}")
+                _stop_schedule()
                 return
             # Model command menu: a repeat that is now refused (its pack was
             # switched off, it is not live here, the policy says no) is
             # reported, not silently retried on a timer. A scope that may come
             # back only skips this tick; everything else stops the schedule.
-            if getattr(getattr(result, "state", None), "value", "") == "rejected":
-                reason = str(result.detail.get('reason') or '')
+            if getattr(getattr(result, "state", None), "value", "") != "completed":
+                reason = str((getattr(result, 'detail', None) or {}).get('reason') or '')
                 logger.warning("[AVA SCHEDULER] %r refused (%s) -- %s",
-                               action["command"], reason,
+                               inv.command_id, reason,
                                "skipping this repeat" if reason == "out_of_scope" else "stopping the repeat")
                 if reason != "out_of_scope":
                     _stop_schedule()
@@ -2299,16 +2307,6 @@ def _execute_safe(app, action):
             app._schedule_ui(_run)
         else:
             _run()
-    elif action.get("key"):
-        # The KEY form has no registry entry; classify the keys themselves.
-        # A repeat that turns out to be destructive/unknown is stopped, not
-        # pressed on a timer with nobody watching.
-        inv = Invocation(f"key:{action['key']}", route=Route.SCHEDULE, generation=generation,
-                         prompt=action.get("confirm_text", ""))
-        if isinstance(execution_policy.authorize(inv, app=app), execution_policy.Allowed):
-            _press_key(action["key"])
-        else:
-            _stop_schedule()
 
 
 def _press_key(key_string):
@@ -2379,6 +2377,8 @@ def _start_schedule(app, task):
     it started rather than on shared module state.
     """
     global _scheduled_task, _scheduler_thread
+    import copy
+    task = copy.deepcopy(task)
     interval_error = schedule_interval_error(task.get("interval_seconds"))
     if interval_error is not None:
         logger.warning("[AVA SCHEDULER] refusing to start: %s", interval_error)
@@ -2392,7 +2392,7 @@ def _start_schedule(app, task):
         print(f"[AVA SCHEDULER] Started: {task['confirm_text']} every {interval}s")
         while not stop.wait(timeout=interval):
             try:
-                _execute_safe(app, task)
+                _execute_safe(app, task, stop=stop)
                 print(f"[AVA SCHEDULER] Fired: {task['confirm_text']}")
             except Exception as e:
                 print(f"[AVA SCHEDULER] Error during fire: {e}")

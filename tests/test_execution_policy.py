@@ -92,6 +92,9 @@ def app(executor, monkeypatch):
     # 1031a: Enter/delete semantics must resolve from a local editor, never live focus.
     monkeypatch.setattr(effect_policy, "resolve_submit_target", lambda app=None:
                         effect_policy.SubmitTarget("editor", 1, "notepad.exe", "edit", "revision"))
+    # 1031e: repeat now binds the real effect's foreground too, using inert evidence.
+    monkeypatch.setattr(ep, "foreground_window_identity", lambda: {
+        "hwnd": 1, "pid": 9, "process": "notepad.exe", "title_hash": "test"})
     a = types.SimpleNamespace()
     a.config = {"ollama": {"enabled": True}}
     a.audio_coordinator = Mock()
@@ -177,8 +180,8 @@ class TestClassify:
 # 2. The policy table
 # ---------------------------------------------------------------------------
 
-USER = [Route.EXACT, Route.GRAMMAR, Route.MACRO, Route.SCHEDULE]
-MODEL = [Route.MODEL, Route.SMART_ACTION]
+USER = [Route.EXACT, Route.GRAMMAR]  # 1031e: composition is not direct voice authority.
+MODEL = [Route.MODEL, Route.SMART_ACTION, Route.MACRO, Route.SCHEDULE]
 
 
 class TestPolicyTable:
@@ -390,7 +393,9 @@ class TestExactRoute:
 
     def test_macro_is_classified_by_its_worst_step(self, app, executor, effects):
         assert executor.execute_command("tidy up", app) is False
-        assert effects == [] and ask_ollama.get_pending_action()["command"] == "tidy up"
+        # 1031e: ordinary navigation runs; the consequential step asks at its actual target.
+        assert effects == [{"type": "macro", "steps": [COMMANDS["tidy up"]["steps"][0]]}]
+        assert ask_ollama.get_pending_action()["command"] == "tidy up"
 
     def test_stale_exact_runs_nothing(self, app, executor, effects):
         assert executor.execute_command("switch window", app, generation=3) is False
@@ -712,8 +717,11 @@ def dispatcher(app, monkeypatch):
         "paste_text": {"text": {"type": "str", "required": True}},
         "send_email": {"to": {"type": "str"}},
         "delete_file": {"path": {"type": "str", "required": True}},
+        "webhook_trigger": {"url": {"type": "str", "required": True}},  # 1031e: real tool exercises pending consent.
     })
-    d = ToolDispatcher(app, {"allowed_directories": [], "allowed_domains": [], "tier2_approvals": {}})
+    from samsara import composition_policy
+    monkeypatch.setattr(composition_policy, "paste_target", lambda app: ("safe", "editor"))  # 1031e: inert target.
+    d = ToolDispatcher(app, {"allowed_directories": [], "allowed_domains": ["api.example.com"], "tier2_approvals": {}})
     return d
 
 
@@ -743,13 +751,13 @@ class TestSmartActionsSharedPending:
     def test_voice_yes_resolves_the_dialogs_pending_op(self, app, dispatcher):
         with patch.object(dispatcher, "_confirm_dialog"), \
              patch.object(dispatcher, "_execute", return_value={"success": True, "result": "sent"}) as ex:
-            t, box = _run_dispatch_in_thread(dispatcher, {"tool": "send_email", "args": {}})
+            t, box = _run_dispatch_in_thread(dispatcher, {"tool": "webhook_trigger", "args": {"url": "https://api.example.com/hook"}})  # 1031e: placeholders never stage.
             pending = ask_ollama.get_pending_action()
-            assert pending is not None and pending["command"] == "smart_action:send_email"
+            assert pending is not None and pending["command"] == "smart_action:webhook_trigger"
             ask_ollama.handle_ava_confirm(app)            # voice "yes"
             t.join(3)
         assert box["result"] == {"success": True, "result": "sent"}
-        ex.assert_called_once_with("send_email", {})
+        ex.assert_called_once_with("webhook_trigger", {"url": "https://api.example.com/hook"})
         assert ask_ollama.get_pending_action() is None
 
     def test_dialog_button_resolves_the_same_op(self, app, dispatcher):
@@ -757,7 +765,7 @@ class TestSmartActionsSharedPending:
             op.approve()                                   # the Approve button
         with patch.object(dispatcher, "_confirm_dialog", side_effect=fake_dialog), \
              patch.object(dispatcher, "_execute", return_value={"success": True, "result": None}) as ex:
-            result = dispatcher.dispatch({"tool": "send_email", "args": {}})
+            result = dispatcher.dispatch({"tool": "webhook_trigger", "args": {"url": "https://api.example.com/hook"}})  # 1031e: implemented tool.
         assert result["success"] and ex.call_count == 1
 
     def test_stop_unblocks_a_stalled_delivery_adapter(self, app, dispatcher):
@@ -765,7 +773,7 @@ class TestSmartActionsSharedPending:
         the pending op, the waiter returns at once, nothing executes."""
         with patch.object(dispatcher, "_confirm_dialog"), \
              patch.object(dispatcher, "_execute") as ex:
-            t, box = _run_dispatch_in_thread(dispatcher, {"tool": "delete_file", "args": {"path": "x"}})
+            t, box = _run_dispatch_in_thread(dispatcher, {"tool": "webhook_trigger", "args": {"url": "https://api.example.com/hook"}})  # 1031e: implemented tool.
             assert ask_ollama.get_pending_action() is not None
             t0 = time.monotonic()
             ep.stop_all(app, "test stop")
@@ -777,7 +785,7 @@ class TestSmartActionsSharedPending:
     def test_approval_after_exit_is_stale(self, app, dispatcher):
         with patch.object(dispatcher, "_confirm_dialog"), \
              patch.object(dispatcher, "_execute") as ex:
-            t, box = _run_dispatch_in_thread(dispatcher, {"tool": "send_email", "args": {}})
+            t, box = _run_dispatch_in_thread(dispatcher, {"tool": "webhook_trigger", "args": {"url": "https://api.example.com/hook"}})  # 1031e: implemented tool.
             op = ask_ollama.get_pending_action()["op"]
             app._ava_cmd_generation += 1                   # exit / sleep
             assert op.approve() is False                   # the button lands late
@@ -862,7 +870,8 @@ def test_repeat_confirmation_runs_bound_target_once(app, executor, effects, chan
         app._last_command_name = "close window"
         app._last_command = executor.commands["close window"]
     ask_ollama.handle_ava_confirm(app)
-    assert effects == ([] if change_history else [executor.commands["permanent delete"]])
+    # 1031e: resolve repeat before staging; history cannot retarget the approved effect.
+    assert effects == [executor.commands["permanent delete"]]
     assert ask_ollama.get_pending_action() is None
 
 

@@ -556,12 +556,21 @@ class CommandExecutor:
                        spoken path may then treat the words as dictation)
         """
         effective_app = app_instance if app_instance is not None else self._app
+        from samsara import composition_policy as composition
+        route, generation = composition.inherited_request(route, generation)
         cid = (command_id or "").strip().lower()
         entry = self._registry_entry(cid)
         canonical = entry.phrase if entry is not None else cid
         from samsara.window_overview_flow import before_command
         before_command(effective_app, source_text or canonical)
         builtin = self.commands.get(canonical)
+        if builtin and builtin.get('method') == 'repeat_last_command':
+            try:
+                previous = composition.repeat_target(effective_app, self, canonical)
+            except ValueError as exc:
+                return DispatchResult(DispatchState.REJECTED, canonical, canonical, {'reason': str(exc)})
+            return self.execute_canonical(previous, effective_app, route=route,
+                generation=generation, source_text=source_text, confirmed=confirmed)
         if generation is None and route is Route.EXACT and not confirmed:
             # A direct exact invocation (cheat sheet, settings Test, a spoken
             # phrase) is created by this call: capture its generation now.
@@ -586,6 +595,12 @@ class CommandExecutor:
             return DispatchResult(DispatchState.REJECTED, canonical, canonical,
                                   {'reason': decision.reason,
                                    'detail': getattr(decision, 'detail', '') or ''})
+        if builtin and builtin.get('type') == 'macro':
+            handler = get_handler('macro')
+            if handler is None:
+                return DispatchResult(DispatchState.FAILED, canonical, canonical, {'reason': 'no_handler'})
+            return composition.run_macro(inv, effective_app, self,
+                lambda selected: handler.execute(selected, self._build_context(app_instance)))
         from samsara.effect_policy import input_refusal
         refusal = input_refusal(inv, effective_app, self)
         if refusal:
@@ -604,7 +619,7 @@ class CommandExecutor:
                     handler_result = entry.handler(
                         effective_app, remainder, _source_text=source_text)
                 else:
-                    handler_result = entry.handler(effective_app, remainder)
+                    handler_result = composition.run_bound(inv, lambda: entry.handler(effective_app, remainder))
                 # 869s: registered operations report False as failure; legacy
                 # callbacks outside registration retain False as a decline (107).
                 # Minimal/legacy executors may omit the optional resource port.
@@ -663,7 +678,8 @@ class CommandExecutor:
                                   {'reason': 'unknown_type'})
         try:
             result = dispatch_input(inv, effective_app, self,
-                                    lambda selected=builtin: handler.execute(selected, self._build_context(app_instance)),
+                                    lambda selected=builtin: composition.run_bound(inv,
+                                        lambda: handler.execute(selected, self._build_context(app_instance))),
                                     confirmed=confirmed)
             if isinstance(result, DispatchResult):
                 return result

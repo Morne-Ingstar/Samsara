@@ -1,23 +1,23 @@
 """Tool call dispatcher for Smart Actions Phase 2.
 
-Tiered consent model:
-  Tier 1 (TIER_AUTO):           execute silently, no prompt
-  Tier 2 (TIER_SETUP):          confirm once per exact scope, then remember
-  Tier 3 (TIER_ALWAYS_CONFIRM): always show a confirmation dialog
+Legacy tool tier constants describe risk, not reusable consent. Execution
+policy resolves the current effect; arbitrary webhooks always ask once per
+operation. Ordinary admitted note/paste effects have no additional timer.
 
 SECURITY CRITICAL:
   - Tier is determined SOLELY by local TOOL_TIERS. Any 'tier' field in the
     agent response is SILENTLY IGNORED (_get_tier() never reads tool_call).
   - File paths are canonicalized via Path.resolve() and checked against
     allowed_directories BEFORE any write, blocking path traversal attacks.
-  - Tier 2 approvals are scoped to the exact path/URL, not a broad category.
-    Approving URL A does NOT approve URL B.
+  - Remembered setup approvals never authorize a later payload/effect.
 
 Five-layer fallback hierarchy ensures the user's thought is never lost even
 when the agent endpoint or the brain dump file are unavailable.
 """
 
 import logging
+import copy
+from dataclasses import replace
 import os
 import sqlite3
 import threading
@@ -62,6 +62,8 @@ class ToolDispatcher:
             for d in config.get('allowed_directories', ['~/Documents'])
         ]
         self.allowed_domains: List[str] = list(config.get('allowed_domains', []))
+        from samsara.config_defaults import cfg_get
+        self.personal_append_files = cfg_get({'smart_actions': config}, 'smart_actions.personal_append_files')
         # key = "tool|scope", value = True
         self._approvals: Dict[str, bool] = dict(config.get('tier2_approvals', {}))
 
@@ -212,25 +214,27 @@ class ToolDispatcher:
 
     # ---- Dispatch ------------------------------------------------------------
 
-    def dispatch(self, tool_call: dict) -> Dict[str, Any]:
+    def dispatch(self, tool_call: dict, *, generation=None) -> Dict[str, Any]:
         """Execute a tool call dict from an agent response.
 
         SECURITY: tier is read from local TOOL_TIERS only. Any 'tier' key in
         tool_call is ignored here and in _get_tier(). The execute/confirm/
         deny decision is samsara.execution_policy's (route=smart_action):
-        AUTO tools are ui -> run; SETUP tools are write -> confirm (once per
-        exact scope, remembered); ALWAYS_CONFIRM tools are destructive ->
+        AUTO tools need a bound safe target; arbitrary webhook payloads
         confirm every time. The confirmation is ONE PendingOperation that the
         dialog buttons AND voice "yes"/"ava cancel" resolve.
         """
-        tool_name = tool_call.get('tool', '')
-        args = tool_call.get('args', {})
+        from samsara import composition_policy as composition
+        try:
+            tool_name, args = composition.snapshot_call(tool_call)
+        except (TypeError, ValueError) as exc:
+            return {'success': False, 'result': str(exc)}
+        tool_call = {'tool': tool_name, 'args': copy.deepcopy(args)}
 
         if not tool_name:
             return {'success': False, 'result': 'Missing tool name'}
 
         # SECURITY: local tier only -- never read from tool_call
-        tier = self._get_tier(tool_name)
 
         # Scope check before consent (fail fast, no UI shown)
         allowed, scope_reason = self._check_scope(tool_name, args)
@@ -238,26 +242,46 @@ class ToolDispatcher:
             logger.warning("[TOOLS] Scope rejected %s: %s", tool_name, scope_reason)
             return {'success': False, 'result': f'Scope check failed: {scope_reason}'}
 
-        generation = execution_policy.current_generation(self.app)
+        _route, generation = composition.inherited_request(Route.SMART_ACTION, generation)
+        if generation is None:
+            generation = execution_policy.current_generation(self.app)
         inv = Invocation(f"smart_action:{tool_name}", dict(args or {}), Route.SMART_ACTION,
                          generation, self._describe_tool_call(tool_name, args))
 
-        remembered = tier == TIER_SETUP and bool(self._approvals.get(self._build_approval_key(tool_name, args)))
-        decision = execution_policy.authorize(inv, app=self.app, confirmed=remembered)
+        # Setup/URL permission never consents to a payload or a later operation.
+        decision = execution_policy.authorize(inv, app=self.app)
         if isinstance(decision, execution_policy.Denied):
             return {'success': False, 'result': f'Policy denied: {decision.reason}'}
+        if tool_name in composition.PLACEHOLDER_TOOLS:
+            return self._tool_placeholder(args)
+        try:
+            binding = composition.tool_binding(self, tool_name, args)
+        except (OSError, ValueError) as exc:
+            return {'success': False, 'result': str(exc)}
+        expected_hash = execution_policy.argument_hash(inv.command_id, args)
+        inv = replace(inv, args=copy.deepcopy(args), effect_target=(id(self), binding))
+
+        def unchanged():
+            try:
+                allowed, _ = self._check_scope(tool_name, args)
+                return (allowed and execution_policy.is_fresh(self.app, generation)
+                        and expected_hash == execution_policy.argument_hash(inv.command_id, args)
+                        and binding == composition.tool_binding(self, tool_name, args))
+            except (OSError, ValueError):
+                return False
+
+        approved = False
         if isinstance(decision, execution_policy.NeedsConfirmation):
-            approved, always = self._request_confirmation(tool_call, allow_always=(tier == TIER_SETUP),
-                                                          invocation=inv, prompt=decision.prompt)
+            approved, _always = self._request_confirmation(
+                tool_call, allow_always=False, invocation=inv, prompt=decision.prompt,
+                refusal_guard=lambda: None if unchanged() else 'Tool target or arguments changed')
             if not approved:
                 return {'success': False, 'result': 'User rejected'}
-            if always and tier == TIER_SETUP:
-                self._store_approval(self._build_approval_key(tool_name, args))
-            # The answer may have arrived after a cancel/exit: re-check.
-            final = execution_policy.authorize(inv, app=self.app, confirmed=True)
-            if not isinstance(final, execution_policy.Allowed):
-                return {'success': False, 'result': f'Policy denied: {getattr(final, "reason", "stale")}'}
-        return self._execute(tool_name, args)
+        # Revalidate on every path, including automatic and already-approved work.
+        final = execution_policy.authorize(inv, app=self.app, confirmed=approved)
+        if not unchanged() or not isinstance(final, execution_policy.Allowed):
+            return {'success': False, 'result': 'Policy denied: stale tool target or arguments'}
+        return composition.run_bound(inv, lambda: self._execute(tool_name, args))
 
     def _get_tier(self, tool_name: str) -> int:
         """ALWAYS use local TOOL_TIERS. Never read tier from the tool_call."""
@@ -267,48 +291,28 @@ class ToolDispatcher:
 
     def _check_scope(self, tool_name: str, args: dict) -> Tuple[bool, str]:
         if tool_name == 'append_to_file':
-            path_str = args.get('path', '')
-            if not path_str:
-                return False, "No path provided"
-            target = Path(path_str).expanduser().resolve()
-            for allowed_dir in self.allowed_directories:
-                allowed_resolved = Path(allowed_dir).expanduser().resolve()
-                try:
-                    target.relative_to(allowed_resolved)
-                    return True, "OK"
-                except ValueError:
-                    continue
-            return False, f"Path {target} is outside allowed directories"
+            from samsara.composition_policy import append_target
+            try:
+                target = append_target(args.get('path'), self.allowed_directories)
+                if not any(target == Path(path).expanduser().resolve()
+                           for path in self.personal_append_files if isinstance(path, str)):
+                    return False, 'No exact personal append target configured'
+                return True, "OK"
+            except (OSError, ValueError) as exc:
+                return False, str(exc)
 
         if tool_name == 'webhook_trigger':
-            url = args.get('url', '')
-            if not url:
-                return False, "No URL provided"
-            if not self.allowed_domains:
-                return False, "No allowed_domains configured"
-            from urllib.parse import urlparse
-            netloc = urlparse(url).netloc.split(':')[0].lower()
-            for domain in self.allowed_domains:
-                allowed = urlparse(domain).netloc.split(':')[0].lower() or domain.lower()
-                if netloc == allowed or netloc.endswith('.' + allowed):
-                    return True, "OK"
-            return False, f"URL not in allowed_domains"
+            from samsara.composition_policy import webhook_scope
+            return webhook_scope(args.get('url'), self.allowed_domains)
 
         return True, "OK"
 
     def _build_approval_key(self, tool_name: str, args: dict) -> str:
         """Exact-scope approval key. Approving key A never approves key B."""
-        if tool_name == 'append_to_file':
-            path_str = args.get('path', '')
-            resolved_dir = str(Path(path_str).expanduser().resolve().parent)
-            return f"append_to_file|{resolved_dir}"
-        if tool_name == 'webhook_trigger':
-            url = args.get('url', '')
-            return f"webhook_trigger|{url}"
-        if tool_name == 'calendar_create':
-            cal_id = args.get('calendar_id', 'default')
-            return f"calendar_create|{cal_id}"
-        return f"{tool_name}|*"
+        snapshot = copy.deepcopy(args)
+        if tool_name == 'append_to_file' and snapshot.get('path'):
+            snapshot['path'] = str(Path(snapshot['path']).expanduser().resolve())
+        return f"{tool_name}|{execution_policy.argument_hash(tool_name, snapshot)}"
 
     def _store_approval(self, key: str):
         self._approvals[key] = True
@@ -326,7 +330,7 @@ class ToolDispatcher:
     def _request_confirmation(self, tool_call: dict,
                               allow_always: bool = False,
                               invocation: "Invocation | None" = None,
-                              prompt: str = "") -> Tuple[bool, bool]:
+                              prompt: str = "", refusal_guard=None) -> Tuple[bool, bool]:
         """Stage ONE pending operation and wait for it to be resolved -- by
         the dialog's buttons, by voice ("yes" / "ava cancel"), by the stop
         path, or by timeout. Returns (approved, always_allow)."""
@@ -341,12 +345,13 @@ class ToolDispatcher:
             invocation = Invocation(f"smart_action:{tool_name}", dict(args or {}), Route.SMART_ACTION,
                                     execution_policy.current_generation(self.app), desc)
         op = execution_policy.stage_pending(self.app, invocation, desc,
-                                            extra={"tool": tool_name, "args": dict(args or {})})
+                                            extra={"tool": tool_name, "args": copy.deepcopy(args or {})},
+                                            refusal_guard=refusal_guard)
         try:
             self._confirm_dialog(desc, allow_always, op)
         except Exception as e:
             logger.error("[TOOLS] Confirmation dialog failed: %s -- waiting on voice only", e)
-        op.wait(timeout=120)
+        op.wait(timeout=execution_policy.CONFIRM_TTL_S)
         if op.approved is None:
             op.reject()
         # Release the pending slot if it still points at us.
@@ -497,9 +502,14 @@ class ToolDispatcher:
     def _tool_paste_text(self, args: dict) -> Dict[str, Any]:
         text = args.get('text', '')
         try:
+            from samsara.composition_policy import tool_effect_allowed
+            if not tool_effect_allowed(self, 'paste_text', args):
+                return {'success': False, 'result': 'Paste target changed or unapproved'}
             import pyperclip
             import pyautogui
             pyperclip.copy(text)
+            if not tool_effect_allowed(self, 'paste_text', args):
+                return {'success': False, 'result': 'Paste target changed'}
             pyautogui.hotkey('ctrl', 'v')
             return {'success': True, 'result': None}
         except Exception as e:
@@ -511,6 +521,9 @@ class ToolDispatcher:
         content = args.get('content', args.get('text', ''))
         smart_cfg = get_config(self.app)
         path = resolve_brain_dump_path(smart_cfg.get('brain_dump_path'))
+        from samsara.composition_policy import tool_effect_allowed
+        if not tool_effect_allowed(self, 'append_to_brain_dump', args):
+            return {'success': False, 'result': 'Append target changed or unapproved'}
         ok = append_entry(path, content)
         return {'success': ok, 'result': None}
 
@@ -527,8 +540,11 @@ class ToolDispatcher:
     def _tool_append_to_file(self, args: dict) -> Dict[str, Any]:
         path_str = args.get('path', '')
         content = args.get('content', args.get('text', ''))
-        target = Path(path_str).expanduser().resolve()
         try:
+            from samsara.composition_policy import append_target, tool_effect_allowed
+            target = append_target(path_str, self.allowed_directories)
+            if not tool_effect_allowed(self, 'append_to_file', args):
+                return {'success': False, 'result': 'Append target changed or unapproved'}
             target.parent.mkdir(parents=True, exist_ok=True)
             with open(target, 'a', encoding='utf-8') as f:
                 f.write(content)
@@ -544,11 +560,18 @@ class ToolDispatcher:
         url = args.get('url', '')
         payload = args.get('payload', {})
         try:
+            from samsara.composition_policy import tool_effect_allowed
+            if not tool_effect_allowed(self, 'webhook_trigger', args):
+                return {'success': False, 'result': 'Webhook operation changed or unapproved'}
             body = _json.dumps(payload).encode('utf-8')
             r = _req.Request(url, data=body,
                              headers={'Content-Type': 'application/json'},
                              method='POST')
-            with _req.urlopen(r, timeout=10) as resp:
+            class NoRedirect(_req.HTTPRedirectHandler):
+                def redirect_request(self, req, fp, code, msg, headers, newurl):
+                    raise ValueError('Webhook redirects require a new operation')
+            # A confirmed endpoint cannot redirect this payload to another target.
+            with _req.build_opener(NoRedirect).open(r, timeout=10) as resp:
                 return {'success': True, 'result': resp.read().decode('utf-8')[:500]}
         except Exception as e:
             return {'success': False, 'result': str(e)}

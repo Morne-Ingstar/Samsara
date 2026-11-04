@@ -64,6 +64,11 @@ def spoken_notices_for_level(level) -> str:
 
 
 SETTINGS_SCHEMA = {
+    "smart_actions.personal_append_files": {
+        "type": "list", "item_type": "str", "default": [], "tab": "ava",
+        "settings_ui": False,
+        "ui_less_reason": "Exact personal note targets for reviewed Smart Actions tools; directory grants alone confer no append authority.",
+    },
     "messaging.slack": {
         "type": "list", "item_type": "dict", "default": [], "tab": "general", "settings_ui": False,
         "ui_less_reason": "Explicit Slack account/contact IDs and token environment-variable name; config only.",

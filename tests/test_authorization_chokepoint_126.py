@@ -519,9 +519,9 @@ def test_a_valid_interval_still_stages(ava, monkeypatch):
         None, "CONFIRM Refresh every five minutes.\nSCHEDULE 300 refresh page",
         original_text="refresh every five minutes", generation=None)
 
-    assert outcome.state == "queued"
-    assert ava._pending_action is not None
-    assert ava._pending_action["interval_seconds"] == 300
+    # 1031e: a valid interval cannot authorize an unresolved effect; no fake setup consent.
+    assert outcome.state == "refused"
+    assert ava._pending_action is None
     ava._pending_action = None
 
 

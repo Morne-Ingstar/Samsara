@@ -201,6 +201,8 @@ class TestToolDispatch:
             "paste_text": {"text": {"type": "str", "required": True}},
             "send_email": {"to": {"type": "str"}},
         })
+        from samsara import composition_policy
+        monkeypatch.setattr(composition_policy, "paste_target", lambda app: ("safe", "editor"))  # 1031e: inert target.
 
     def test_tool_without_a_reviewed_schema_is_unavailable(self, monkeypatch):
         from samsara import execution_policy
@@ -227,9 +229,10 @@ class TestToolDispatch:
         with patch.object(d, '_request_confirmation', return_value=(False, False)) as mock_c, \
              patch.object(d, '_execute') as mock_exec:
             result = d.dispatch({'tool': 'send_email', 'args': {}})
-        mock_c.assert_called_once()
+        mock_c.assert_not_called()  # 1031e: unavailable placeholders never ask for approval.
         mock_exec.assert_not_called()
         assert not result['success']
+        assert 'not yet implemented' in result['result']
 
     def test_tool_dispatch_ignores_remote_tier(self):
         """A tool_call containing tier='auto' for send_email must still use
@@ -270,6 +273,7 @@ class TestScopeChecks:
     def test_scope_allows_configured_dir(self, tmp_path):
         d = _make_dispatcher(config={
             'allowed_directories': [str(tmp_path)],
+            'personal_append_files': [str(tmp_path / 'notes.md')],  # 1031e: an exact personal target is required.
             'allowed_domains': [],
             'tier2_approvals': {},
         })
@@ -335,7 +339,7 @@ class TestTier2ApprovalScope:
 
         # URL A: pre-approved
         key_a = d._build_approval_key('webhook_trigger', {'url': url_a})
-        assert d._approvals.get(key_a) is True
+        assert not d._approvals.get(key_a)  # 1031e: legacy URL approval grants no payload authority.
 
         # URL B: NOT pre-approved (different exact URL)
         key_b = d._build_approval_key('webhook_trigger', {'url': url_b})

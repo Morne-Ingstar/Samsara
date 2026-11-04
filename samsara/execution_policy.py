@@ -82,11 +82,11 @@ class Route(str, Enum):
     SCHEDULE = "schedule"        # a repeating task the user confirmed once
 
 
-# Routes where the tool id was chosen by a model, not spoken by the user.
-MODEL_ROUTES = frozenset({Route.MODEL, Route.SMART_ACTION})
+# Model-selected and deferred/composed ids have no direct-user slot authority.
+MODEL_ROUTES = frozenset({Route.MODEL, Route.SMART_ACTION, Route.MACRO, Route.SCHEDULE})
 # User-authored routes alone may validate semantic slots; expanding this
 # authority to model routes requires the owner's decision.
-USER_ROUTES = frozenset({Route.EXACT, Route.GRAMMAR, Route.MACRO, Route.SCHEDULE})
+USER_ROUTES = frozenset({Route.EXACT, Route.GRAMMAR})
 
 RISK_READ, RISK_UI, RISK_WRITE, RISK_DESTRUCTIVE, RISK_UNKNOWN = (
     "read", "ui", "write", "destructive", "unknown")
@@ -911,15 +911,15 @@ def authorize(inv: Invocation, *, app=None, executor=None, confirmed: bool = Fal
               quiet: bool = False):
     """Decide whether `inv` may cause its effect right now.
 
-    ``confirmed=True`` means the user already answered a NeedsConfirmation
-    for this exact invocation; the generation, allow-list and args checks
-    still apply (a confirmation can be stale too).
-
-    ``quiet=True`` asks the same question WITHOUT recording a decision: it is
-    how CommandExecutor.ava_menu builds Ava's menu (queue 107), so what she is
-    offered is decided by this function and cannot drift from what she may
-    run. Nothing is staged or emitted; only a real invocation is logged.
+    ``confirmed=True`` records approval for this exact invocation; generation,
+    allow-list and argument checks still apply, including stale confirmations.
+    ``quiet=True`` applies the same policy to CommandExecutor.ava_menu without
+    staging, emitting or logging a decision; only real invocations are logged.
     """
+    from samsara.composition_policy import inherited_request
+    from dataclasses import replace
+    route, generation = inherited_request(inv.route, inv.generation)
+    inv = replace(inv, route=route, generation=generation)
     cid = (inv.command_id or "").strip().lower()
     # One decision function; `quiet` only silences the record of it.
     emit = (lambda *_args: None) if quiet else _emit
