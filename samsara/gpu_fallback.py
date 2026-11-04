@@ -110,7 +110,8 @@ class ResilientSpeechModel:
                 if not retry_cpu and 'temperature' in kwargs:
                     # Later recovery passes choose their own temperature (926).
                     effective['temperature'] = kwargs['temperature']
-            segments, info = model.transcribe(*args, **effective)
+            from samsara.hold_recording_recovery import observe_incident_decode
+            segments, info = observe_incident_decode(model, args, effective)
             if self._device == 'cuda' and not self._fallback_attempted:
                 segments = iter(list(segments))
             return segments, info

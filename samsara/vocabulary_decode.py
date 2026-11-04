@@ -115,6 +115,8 @@ def transcribe_with_vocabulary(app, audio, *, path, **params):
                          path, count, _token_count(app.model, effective.get('initial_prompt')))
     from samsara.hallucination_filter import transcribe_without_outro
     from samsara.config_defaults import cfg_get
-    return transcribe_without_outro(app.model, audio, effective,
+    from samsara.hold_recording_recovery import incident_model
+    model = app.model if path in ('hold_partial', 'handsfree_preview') else incident_model(app)
+    return transcribe_without_outro(model, audio, effective,
         rate=getattr(app, 'model_rate', 16000), enabled=path not in ('hold_partial', 'handsfree_preview')
         and cfg_get(getattr(app, 'config', {}) or {}, 'dictation.signoff_filter'))

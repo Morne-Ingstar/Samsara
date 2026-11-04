@@ -26,6 +26,25 @@ History, application logs, saved recordings, and exports can contain
 sensitive information. Review what you share in a bug report. Local storage
 is not a promise that every file is encrypted or automatically deleted.
 
+Optional incident-hold diagnostics are **off by default**
+(`diagnostics.keep_incident_holds: false`). When enabled, the first hold after
+startup and holds with decode retries, dropped segments, guard discards,
+recovery, lost ranges or quality warnings are saved locally; starting another
+hold within 30 seconds also keeps the preceding hold. The newest five (or the
+smaller `diagnostics.incident_holds_max` limit) WAV/JSON pairs live in
+`%USERPROFILE%\.samsara\debug_holds`, or `debug_holds` under the
+`SAMSARA_HOME_DIR` profile override. WAVs contain 16 kHz mono int16 audio from
+the primary final decoder input (including pre-roll and any silence trimming);
+JSON contains delivered text, gate/final metrics, actual decode parameters and
+per-attempt segment confidence/compression/no-speech metrics. A hold that never
+reached decoding saves its available captured audio instead. Int16 storage
+quantizes floating-point samples. A preceding hold may stay in memory for 30
+seconds to detect a repeat. These files can contain sensitive speech and text;
+they are not uploaded. **Settings → Help → Advanced → Diagnostics → Open folder** opens them
+and **Clear** deletes the archive and pending writes. Turning the flag off
+prevents new archive writes; use Clear to remove existing files. The separate
+in-memory “try again” recovery remains available.
+
 ## What can use the network
 
 | Feature | Information involved |

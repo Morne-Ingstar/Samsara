@@ -70,4 +70,6 @@ def build(owner):
     heading = QLabel('Diagnostics')
     heading.setProperty('role', 'label')
     page.advanced.rows.insertWidget(0, heading)
+    from samsara.hold_recording_recovery import build_incident_controls
+    page.advanced.rows.insertWidget(1, build_incident_controls(owner.app))
     return page

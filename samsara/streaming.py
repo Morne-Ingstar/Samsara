@@ -1624,7 +1624,7 @@ class StreamingWorker(threading.Thread):
             self._session.on_cancelled()
             return
         try:
-            self._final_pass()
+            from samsara.hold_recording_recovery import run_incident_final; run_incident_final(self)
         except Exception as e:
             logger.exception(f"[STREAM] Final pass crashed: {e}")
             self._session.on_final(None)
@@ -2017,8 +2017,8 @@ class StreamingSession:
 
     def start(self):
         """Begin partial loop. Audio stream must already be running."""
-        self._overlay.show()
-        self._worker.start()
+        from samsara.hold_recording_recovery import begin_incident; begin_incident(self)
+        self._overlay.show(); self._worker.start()
         thread_registry.register(self._worker, "streaming-worker")
         with self._state_lock:
             self._state = self.STATE_STREAMING
@@ -2030,7 +2030,7 @@ class StreamingSession:
                                self.STATE_DONE):
                 return
             self._state = self.STATE_FINALIZING
-        self.stop_event.set()
+        from samsara.hold_recording_recovery import incident_released; incident_released(self); self.stop_event.set()
 
     def cancel(self):
         """Dismiss overlay, no paste, no history. In direct-paste mode,
@@ -2096,7 +2096,7 @@ class StreamingSession:
             tutorial_capture.retire_final(self, text, raw_text, duration_s)
             return
         from samsara.hold_recording_recovery import prepare_final
-        text, raw_text, duration_s = (text, raw_text, duration_s) if getattr(self, '_hold_final_audit', None) or getattr(self, '_hold_failed_ranges', ()) else prepare_final(self, text, raw_text, duration_s)
+        text, raw_text, duration_s = prepare_final(self, text, raw_text, duration_s)
         from samsara.decode_recovery import deliver_failure
         if deliver_failure(self, duration_s):
             return
