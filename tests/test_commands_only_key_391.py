@@ -37,10 +37,9 @@ from samsara.vocabulary_decode import transcribe_with_vocabulary  # 1124: 1009's
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.fixture(autouse=True)
 def _isolate_ast_plugin_module_entries(monkeypatch):
-    # The shared conftest isolates _REGISTRY, but decorator registration also
-    # updates this persistent discovery cache. Keep our AST handler test-local.
+    # 1121: imported _app callers need isolation too; a module-local autouse
+    # fixture does not run for those callers. Keep the AST handler test-local.
     from samsara import plugin_commands
     monkeypatch.setattr(plugin_commands, '_MODULE_ENTRIES',
         {name: dict(entries) for name, entries in plugin_commands._MODULE_ENTRIES.items()})
@@ -82,6 +81,7 @@ def _production():
 
 def _app(tmp_path, monkeypatch, text, *, matching=False, command_key=True,
          interpret=False, ava_enabled=False, timeout=False):
+    _isolate_ast_plugin_module_entries(monkeypatch)
     namespace, config = _production()
     namespace['winsound'] = SimpleNamespace(PlaySound=MagicMock())
     assert config['command_mode']['command_matching_enabled'] is False

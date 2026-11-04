@@ -352,6 +352,8 @@ def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None):
         try:
             check()
             evidence = measure(audio, app.model_rate)
+            from samsara.hold_diagnostics import presence
+            presence(audit, evidence, capture)
             bounds = _speech_bounds(evidence, app.model_rate, len(audio), capture=capture)
             if app.config.get('dictation', {}).get('speech_presence_gate', True) is False:
                 bounds = None
@@ -391,14 +393,20 @@ def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None):
                             # deadline. Compression/logprob and all output gates stay.
                             effective = dict(effective, no_speech_threshold=None)
                             relaxed = True
-                            logger.info('[HOLD_FINAL] no_speech_retry start_s=%.3f end_s=%.3f attempt=1',
-                                        chunk.start / app.model_rate, chunk.end / app.model_rate)
+                            joined = getattr(audit, '_hold_evidence_1121', None)
+                            if joined is not None:
+                                joined.values['no_speech_retries'] += 1
+                            logger.info('[HOLD_FINAL] no_speech_retry start_s=%.3f end_s=%.3f attempt=1 hold_seq_id=%s',
+                                        chunk.start / app.model_rate, chunk.end / app.model_rate,
+                                        getattr(audit, 'hold_seq_id', 'unknown'))
                             continue
                         missing_timing = len(chunks) > 1 and any(
                             getattr(s, 'start', None) is None or getattr(s, 'end', None) is None for s in raw)
                         raw = _clip_timing(raw, len(pcm) / app.model_rate)
                         screened = gate_repetition_segments(raw)
                         combined = gate_repetition_text(screened.text)
+                        if audit is not None and (screened.changed or combined.changed):
+                            audit.drop('repetition_strip', max(1, len(raw) - len(screened.segments)))
                         chunk_warning = screened.changed or combined.changed
                         needs_retry = screened.needs_retry or combined.needs_retry
                         accepted = list(screened.segments)
@@ -434,7 +442,10 @@ def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None):
                     start, end = chunk.core_start / app.model_rate, chunk.core_end / app.model_rate
                     result.failures.append((start, end, reason))
                     result.last_failed = index == len(chunks) - 1
-                    logger.warning('[HOLD_FINAL] failed start_s=%.3f end_s=%.3f reason=%s audio_retained=1', start, end, reason)
+                    if reason == 'empty_spoken_chunk' and audit is not None:
+                        audit.empty_spoken_chunk = True
+                    logger.warning('[HOLD_FINAL] failed start_s=%.3f end_s=%.3f reason=%s audio_retained=1 hold_seq_id=%s',
+                                   start, end, reason, getattr(audit, 'hold_seq_id', 'unknown'))
                     # Good segments survive a failed loop retry; the failed loop never does.
                     if reason not in ('repetition_loop', 'missing_chunk_timestamps'):
                         continue
@@ -547,7 +558,9 @@ def stream_final(worker, audio, params):
         retain(app, audio, params, reason)
         session._hold_failed_ranges = ((0., len(audio) / app.model_rate, reason),)
         session._decode_failure = UNCLEAR
-        logger.warning('[HOLD_FINAL] failed start_s=0 end_s=%.3f reason=%s audio_retained=1', len(audio) / app.model_rate, reason)
+        joined = getattr(session, '_hold_evidence_1121', None)
+        logger.warning('[HOLD_FINAL] failed start_s=0 end_s=%.3f reason=%s audio_retained=1 hold_seq_id=%s',
+                       len(audio) / app.model_rate, reason, getattr(joined, 'hold_seq_id', 'unknown'))
         return [], None, ''
 
 

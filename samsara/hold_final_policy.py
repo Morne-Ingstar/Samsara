@@ -21,11 +21,16 @@ current_audit = ContextVar('hold_final_audit', default=None)
 
 def final_decode(worker, audio, params):
     from samsara import mic_score
+    from samsara import hold_diagnostics as evidence
     audit = FinalAudit()
     worker._session._hold_final_audit = audit
+    audit._hold_evidence_1121 = evidence.get(worker._session) or evidence.bind(worker._session)
+    audit.hold_seq_id = audit._hold_evidence_1121.hold_seq_id
     token = current_audit.set(audit)
     try:
-        return mic_score.stream_final(worker, audio, params)
+        result = mic_score.stream_final(worker, audio, params)
+        evidence.decoded(worker._session, result[2])
+        return result
     finally:
         current_audit.reset(token)
 
@@ -37,27 +42,42 @@ def record_guard(reason, segments):
 
 
 def log_delivery(session, text):
+    from samsara.hold_diagnostics import prepare
+    prepare(session, text)
     audit = getattr(session, '_hold_final_audit', None)
     log_audit(audit, text)
 
 
 def log_audit(audit, text):
     if isinstance(audit, FinalAudit):
+        joined = getattr(audit, '_hold_evidence_1121', None)
+        values = joined.snapshot() if joined is not None else {}
         logging.getLogger('Samsara').info(
             '[HOLD_FINAL] segments_decoded=%d segments_dropped=%d reasons=%s '
-            'preview_tail_words=%d chars_delivered=%d', audit.decoded,
-            sum(audit.dropped.values()), audit.dropped, audit.preview_tail_words, len(text or ''))
+            'preview_tail_words=%d chars_delivered=%d hold_seq_id=%s '
+            'decoded_chars=%d decoded_words=%d request_words=%d', audit.decoded,
+            sum(audit.dropped.values()), audit.dropped, audit.preview_tail_words, len(text or ''),
+            getattr(audit, 'hold_seq_id', 'unknown'), values.get('decoded_chars', -1),
+            values.get('decoded_words', -1), values.get('request_words', -1))
 
 
 def audited_batch(decode):
     @wraps(decode)
     def run(*args, **kwargs):
         audit = FinalAudit()
+        from samsara.hold_diagnostics import get, decoded
+        app = args[0] if args else kwargs.get('app')
+        joined = get(app)
+        if joined is not None:
+            audit._hold_evidence_1121 = joined
+            audit.hold_seq_id = joined.hold_seq_id
         token = current_audit.set(audit)
         text = ''
         try:
             result = decode(*args, **kwargs)
             text = result.text
+            if joined is not None:
+                decoded(app, text)
             return result
         finally:
             current_audit.reset(token)

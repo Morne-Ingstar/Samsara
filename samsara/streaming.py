@@ -1694,7 +1694,7 @@ class StreamingWorker(threading.Thread):
                 return
             params = self._final_params()
             t0 = time.time()
-            from samsara.hold_final_policy import final_decode, log_delivery
+            from samsara.hold_diagnostics import stage; from samsara.hold_final_policy import final_decode, log_delivery
             seg_list, info, text = final_decode(self, audio, params)
             detected_lang = getattr(info, 'language', None)
             duration_s = len(audio) / app.model_rate
@@ -1713,18 +1713,18 @@ class StreamingWorker(threading.Thread):
             diag_corr_start = time.perf_counter()
 
             try:
-                text = get_dictionary_store(app).apply_corrections(text)
+                text = stage(self._session, 'corrections', text, get_dictionary_store(app).apply_corrections(text))
             except Exception as e:
                 logger.debug(f"[STREAM] apply_corrections failed: {e}")
 
             try:
-                text = app.process_transcription(text)
+                text = stage(self._session, 'corrections', text, app.process_transcription(text))
             except Exception as e:
                 logger.debug(f"[STREAM] process_transcription failed: {e}")
 
             raw = text
             _cmode = 'verbatim' if getattr(app, '_skip_cleanup', False) else app.config.get('cleanup_mode', 'clean')
-            cleaned = clean_text(text, mode=_cmode)
+            cleaned = stage(self._session, 'cleanup', text, clean_text(text, mode=_cmode))
             t_corrections_ms = int((time.perf_counter() - diag_corr_start) * 1000)
 
             # Smart Corrections (optional LLM cleanup pass) -- streaming
@@ -1736,7 +1736,7 @@ class StreamingWorker(threading.Thread):
                 diag_smart_start = time.perf_counter()
                 text_before_smart = cleaned
                 try:
-                    cleaned = smart_correct(cleaned, app)
+                    cleaned = stage(self._session, 'corrections', cleaned, smart_correct(cleaned, app))
                 except Exception as e:
                     logger.debug(f"[STREAM] smart_correct failed: {e}")
                 t_smart_ms = int((time.perf_counter() - diag_smart_start) * 1000)
@@ -1751,7 +1751,7 @@ class StreamingWorker(threading.Thread):
             # -- partials (on_partial/_direct_paste_partial, above) never
             # pass through this method and are deliberately left as raw
             # transcription text.
-            cleaned = app._apply_formatting_tokens(cleaned)
+            cleaned = stage(self._session, 'formatting', cleaned, app._apply_formatting_tokens(cleaned))
             log_delivery(self._session, cleaned)
             try:
                 diagnostics.record(diagnostics.DiagRecord(
@@ -2263,7 +2263,7 @@ class StreamingSession:
             if self._finished_notified:
                 return
             self._finished_notified = True
-        callback = getattr(self.app, '_on_streaming_session_finished', None)
+        from samsara.hold_diagnostics import finished; finished(self); callback = getattr(self.app, '_on_streaming_session_finished', None)
         if callback is not None:
             kept_session_draft.capture_finished(self, callback)
 

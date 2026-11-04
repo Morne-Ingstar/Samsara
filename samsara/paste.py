@@ -236,7 +236,10 @@ def paste_preserving_clipboard(
     # refuses a window Windows will not let us type into. Callers with
     # their own announcement (session outcome, hold path) check earlier;
     # this guard makes every other lane fail honestly instead of "pasting".
-    def _result(sent, confirmed, outcome=DeliveryOutcome.UNVERIFIED):
+    def _result(sent, confirmed, outcome=DeliveryOutcome.UNVERIFIED, reason=None):
+        from samsara.hold_diagnostics import paste_result
+        paste_result(text, sent, confirmed and (outcome == DeliveryOutcome.CONFIRMED
+                     or app._last_delivery is not None), reason)
         if not return_delivery_confirmation:
             delivery_verify.remember_standalone(app, text, sent, confirmed)
             show_delivery_result(app, sent, outcome, feedback=feedback)
@@ -245,7 +248,7 @@ def paste_preserving_clipboard(
     _verdict = injection_safety.window_integrity()
     if _verdict is not None and _verdict.blocked:
         logger.warning("[INJECT] delivery refused: foreground window is elevated (%s)", _verdict.describe())
-        return _result(False, False)
+        return _result(False, False, reason='elevated_target')
     delay = app.config.get('clipboard_delay', CLIPBOARD_RESTORE_DELAY)
     paste_target = {'hwnd': None, 'proof': None}
 
@@ -272,14 +275,14 @@ def paste_preserving_clipboard(
                 target_process=app._flight_foreground_process_name(),
                 chars=len(text), result='cancelled_target_changed',
             )
-            return _result(False, False)
+            return _result(False, False, reason='target_changed')
         typed_proof = delivery_verify.snapshot()
         typed_hwnd = get_foreground_hwnd_fn()
         if before_paste is not None and not before_paste():
-            return _result(False, False)
+            return _result(False, False, reason='target_changed')
         from samsara.recent_privacy import before_delivery
         if not before_delivery(app, text):
-            return _result(False, False)
+            return _result(False, False, reason='privacy_refused')
         app._unit_before = _editor_snapshot()
         if type_text_unicode_fn(text):
             verified = delivery_verify.verified_snapshot(typed_proof, text, typed_hwnd)
@@ -297,7 +300,7 @@ def paste_preserving_clipboard(
             return _result(True, True, DeliveryOutcome.SENT)
         if explicit_type:
             recovery.fail("Typing failed. Draft kept; clipboard unchanged.")
-            return _result(False, False)
+            return _result(False, False, reason='typing_failed')
         logger.warning(
             "[TYPE] Typed injection failed; falling back to clipboard paste"
         )
@@ -324,9 +327,11 @@ def paste_preserving_clipboard(
         if not clipboard_only:
             paste_target['proof'] = delivery_verify.snapshot()
         if before_paste is not None and not before_paste():
+            paste_target['abort'] = 'target_changed'
             return False
         from samsara.recent_privacy import before_delivery
         if not before_delivery(app, text):
+            paste_target['abort'] = 'privacy_refused'
             return False
         paste_target['hwnd'] = get_foreground_hwnd_fn()
         app._unit_before = _editor_snapshot()
@@ -399,7 +404,8 @@ def paste_preserving_clipboard(
         target_process=app._flight_foreground_process_name(),
         chars=len(text), result=('sent_unverified' if outcome == DeliveryOutcome.UNVERIFIED else 'ok') if paste_ok else 'failed',
     )
-    return _result(paste_ok, delivery_confirmed, outcome)
+    return _result(paste_ok, delivery_confirmed, outcome,
+                   paste_target.get('abort') if not paste_ok else None)
 
 
 _UNDO_TERMINAL_PROCESSES = frozenset({

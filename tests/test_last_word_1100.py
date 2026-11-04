@@ -134,7 +134,7 @@ def test_empty_aborted_capture_has_numeric_receipt(consumer, caplog):
     assert fields['last_frame_peak'] == '0.000000'
     # Every field except the enumerated stop reason is numeric; no PCM/text.
     for key, value in fields.items():
-        if key != 'reason':
+        if key not in ('reason', 'hold_seq_id'):  # 1121: shared identity is the additional nonnumeric field.
             assert np.isfinite(float(value))
 
 

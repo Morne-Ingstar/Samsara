@@ -303,6 +303,8 @@ def skip_decode(pcm, sample_rate, config=None, *, final=True, path='capture', st
         return False
     finally:
         if final:
+            from samsara.hold_diagnostics import presence
+            presence(state or app, result, grace_ms)
             _log_final(path, duration_s, result, grace_ms, verdict, observed_early,
                        skip_reason, press_ms, earcon_end_ms)
 

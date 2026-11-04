@@ -9981,7 +9981,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 self._cue_wait_since = None  # Fresh cue gets its first-callback grace.
                 if refresh_lock is not None:
                     self._audio_output_idle_after = time.monotonic() + len(scaled) / self._sound_stream_sr + 0.25
-            speech_presence.note_hold_earcon(self, sound_type, cached)
+            from samsara.hold_diagnostics import cue; cue(self, len(cached) / self._sound_stream_sr); speech_presence.note_hold_earcon(self, sound_type, cached)
             if replaced_timing is not None:
                 replaced_timing.feedback_finished()
         finally:
@@ -10172,7 +10172,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             logger.debug("[HOTKEY] start_recording ignored — stop still in flight")
             return
 
-        speech_presence.begin_hold(self)
+        from samsara.hold_diagnostics import begin; begin(self); speech_presence.begin_hold(self)
         self._tutorial_capture_token = tutorial_capture.begin(self)
         if self._live_surface_hold_parking_enabled():
             # Freeze tutorial ownership and the ordinary destination before feedback.

@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any, Iterable, Protocol
 
 from samsara.runtime import thread_registry
-from samsara import flight_recorder
+from samsara import flight_recorder; from samsara.hold_diagnostics import observe_duck
 
 logger = logging.getLogger("Samsara")
 
@@ -971,7 +971,7 @@ class SessionDucker:
         self._increment_counter(ducked=True)
 
         return session_id, previous_volume
-
+    @observe_duck
     def start(self) -> None:
         """Enumerate sessions and duck every non-excluded PID by `duck_level`
         (a multiplicative factor against each session's OWN current volume
@@ -1041,7 +1041,7 @@ class SessionDucker:
                 if self._sweep_generation == generation:
                     self._active = False
                     self._clear_tracking_locked()
-
+    @observe_duck
     def stop(self) -> None:
         """Restore stored volumes in reverse acquisition order -- CONDITIONALLY:
         a session is only restored if its CURRENT volume still equals the

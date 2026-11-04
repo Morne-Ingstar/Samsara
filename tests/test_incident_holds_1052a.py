@@ -109,7 +109,7 @@ def test_ring_keeps_newest_five_and_clear(app):
         flush(app)
     kept = pairs(app)
     assert len(kept) == 5
-    assert {json.loads(p.read_text())['delivered_text'] for p in kept} == set(map(str, range(4, 9)))
+    assert all('delivered_text' not in json.loads(p.read_text()) and json.loads(p.read_text())['hold_final']['chars_delivered'] == 1 for p in kept)  # 1121: numbers-only sidecars; newest-slot identity covered by join tests.
     app._incident_store_1052a.clear().result(timeout=5)
     assert list(recovery.incident_folder().iterdir()) == []
 

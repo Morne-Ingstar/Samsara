@@ -131,7 +131,8 @@ def report_delivered(app, delivered=True):
 def paste_final(session, text, **kwargs):
     """Wait for synchronous or worker-thread final insertion before notifying."""
     from samsara import tutorial_capture
-    delivered = session.app._paste_preserving_clipboard(text, **kwargs)
+    from samsara.hold_diagnostics import paste_call
+    delivered = paste_call(session, text, session.app._paste_preserving_clipboard, **kwargs)
     if (text and not getattr(session, '_fallback_notice_rejected', False)
             and tutorial_capture.final_current(session, allow_done=True)):
         report_delivered(session.app, delivered)

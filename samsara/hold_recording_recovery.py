@@ -140,15 +140,28 @@ class IncidentStore:
 
     def submit(self, record):
         with self.lock:
-            if record['generation'] != self.generation or record.get('submitted'):
+            if record['generation'] != self.generation:
                 return
+            if record.get('submitted'):
+                metadata = json.loads(json.dumps(record['metadata']))
+                return self.worker.submit(self._refresh, record, metadata)
             record['submitted'] = True
             generation = record['generation']
             # Freeze metadata before a following hold can change its reasons.
             audio, metadata = record['audio'], json.loads(json.dumps(record['metadata']))
-        return self.worker.submit(self._write, audio, metadata, generation)
+        return self.worker.submit(self._write, audio, metadata, generation, record)
 
-    def _write(self, audio, metadata, generation):
+    def _refresh(self, record, metadata):
+        try:
+            with self.lock:
+                path = record.get('path')
+                if (record['generation'] == self.generation and path is not None and path.exists()
+                        and getattr(self, 'enabled', lambda: True)()):
+                    path.write_text(json.dumps(metadata, indent=2, allow_nan=False), encoding='utf-8')
+        except Exception:
+            logger.warning('[INCIDENT] local archive update failed')
+
+    def _write(self, audio, metadata, generation, record=None):
         try:
             with self.lock:
                 if generation != self.generation or not getattr(self, 'enabled', lambda: True)():
@@ -165,6 +178,8 @@ class IncidentStore:
                     output.setframerate(16000)
                     output.writeframes(pcm.tobytes())
                 sidecar.write_text(json.dumps(metadata, indent=2, allow_nan=False), encoding='utf-8')
+                if record is not None:
+                    record['path'] = sidecar
             except Exception:
                 wav.unlink(missing_ok=True)
                 sidecar.unlink(missing_ok=True)
@@ -200,6 +215,8 @@ def _store(app):
 
 def begin_incident(session):
     """Called on hold start, before any final can finish out of order."""
+    from samsara.hold_diagnostics import bind
+    bind(session)
     if not _enabled(session.app):
         return
     store = _store(session.app)
@@ -207,8 +224,13 @@ def begin_incident(session):
     with store.lock:
         previous = store.previous
         if previous is not None and 0 <= now - previous['released'] <= 30:
-            previous['metadata']['reasons'].append('followed_by_hold')
-            store.submit(previous)
+            if previous.get('empty_or_failed'):
+                if now - previous['released'] <= 5:
+                    previous['metadata']['reasons'].append('immediate_rehold')
+                    store.submit(previous)
+            else:
+                previous['metadata']['reasons'].append('followed_by_hold')
+                store.submit(previous)
         store.previous = None
         first = not getattr(session.app, '_incident_first_1052a', False)
         session.app._incident_first_1052a = True
@@ -220,6 +242,7 @@ def begin_incident(session):
         if prior is not None and getattr(prior, '_incident_release_1052a', None) is not None:
             if 0 <= now - prior._incident_release_1052a <= 30:
                 prior._incident_1052a['signals'].add('followed_by_hold')
+                prior._incident_1052a['rehold_delay'] = now - prior._incident_release_1052a
         session.app._incident_session_1052a = session
 
 
@@ -344,8 +367,29 @@ def complete_incident(session, text):
                 'unknown_timestamps', 'window_decode_failed', 'untranscribed_window'):
             if np.array_equal(audio, retained.audio):
                 reasons.add('lost_range')
+        from samsara.hold_diagnostics import get, prepare
+        prepare(session, text)
+        joined = get(session).snapshot()
+        empty = not str(text or '').strip()
+        failed = bool(getattr(session, '_decode_failure', None))
+        empty_chunk = getattr(audit, 'empty_spoken_chunk', False) or any(
+            len(item) > 2 and item[2] == 'empty_spoken_chunk'
+            for item in getattr(session, '_hold_failed_ranges', ()))
+        if empty_chunk and joined['speech_present'] == 1:
+            reasons.add('empty_spoken_chunk')
+        if joined['no_speech_retries']:
+            reasons.add('no_speech_retry')
+        if empty or failed:
+            reasons.discard('followed_by_hold')
+            if data.get('rehold_delay', 31) <= 5:
+                reasons.add('immediate_rehold')
+        # A confirmed silent empty is not an incident solely because a retry
+        # slot/failure warning was produced. Independent drops/retries still are.
+        if empty and joined['speech_present'] == 0 and not dropped and not joined['no_speech_retries']:
+            reasons.difference_update(('stopped_recovery', 'decode_recovery'))
         metadata = {'timestamp': data['timestamp'], 'sample_rate': 16000,
-                    'sample_count': len(audio), 'reasons': sorted(reasons), 'delivered_text': text or '',
+                    'sample_count': len(audio), 'reasons': sorted(reasons), **joined,
+                    'wav_source': 'native_first_attempt' if getattr(audit, 'incident_audio', None) is not None else 'stopped_capture',
                     'gate_metrics': list(data['gate']), 'decode_attempts': attempts,
                     'hold_final': {'segments_decoded': getattr(audit, 'decoded', 0),
                                    'segments_dropped': sum(dropped.values()), 'reasons': dropped,
@@ -353,7 +397,9 @@ def complete_incident(session, text):
                                    'chars_delivered': len(text or '')}}
         record = {'generation': data['generation'],
                   'audio': np.array(audio, dtype=np.float32, copy=True), 'metadata': metadata,
+                  'empty_or_failed': empty or failed,
                   'released': getattr(session, '_incident_release_1052a', time.monotonic())}
+        session._incident_record_1121 = record
         store = _store(session.app)
         with store.lock:
             # Clear invalidates the originating hold even during PCM preparation.
@@ -385,6 +431,25 @@ def prepare_final(session, text, raw_text, duration_s):
               else _prepare_final(session, text, raw_text, duration_s))
     complete_incident(session, result[0])
     return result
+
+
+def update_incident(session):
+    """Refresh the same slot after paste; never recreate a cleared/rotated slot."""
+    record = getattr(session, '_incident_record_1121', None)
+    if record is None or not _enabled(session.app):
+        return
+    from samsara.hold_diagnostics import get
+    store = _store(session.app)
+    with store.lock:
+        record['metadata'].update(get(session).snapshot())
+        reason = record['metadata']['delivery_abort_reason']
+        if reason in ('paste_failed', 'paste_exception', 'decode_failed', 'cancelled',
+                      'elevated_target', 'target_changed', 'privacy_refused', 'typing_failed'):
+            record['empty_or_failed'] = True
+            if 'delivery_failed' not in record['metadata']['reasons']:
+                record['metadata']['reasons'].append('delivery_failed')
+        if record['metadata']['reasons']:
+            store.submit(record)
 
 
 def build_incident_controls(app):

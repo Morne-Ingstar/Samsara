@@ -184,6 +184,8 @@ class DictationSessionConsumer:
     def _select_capture_boundary(self):
         """Use only this ordinary hold's policy; preserve absent/legacy bounds."""
         from samsara.speech_presence import capture_context
+        from samsara.hold_diagnostics import get
+        self._hold_evidence_1121 = get(self._app)
         self._speech_presence_capture = capture_context(self._app)
         confirmed = getattr(self._app, '_hold_capture_duck_confirmed_at', None)
         onset = getattr(self._app, '_hold_capture_onset', None)
@@ -355,6 +357,7 @@ class DictationSessionConsumer:
         speech_threshold=HOLD_RELEASE_TAIL_SPEECH_THRESHOLD, should_abort=None,
     ) -> dict:
         """Wait for post-release quiet without stopping or copying out streaming audio."""
+        released_at = time.monotonic()
         silence_ms = max(0, int(silence_ms))
         max_tail_ms = max(silence_ms, int(max_tail_ms))
         with self._streaming_lock:
@@ -378,7 +381,8 @@ class DictationSessionConsumer:
         result['speech_level'] = speech_level
         # 1100: numeric evidence only; the waiter and admission policy above
         # remain authoritative. Keep the release boundary until final drain.
-        self._streaming_tail_audit = dict(result, release_frame=len(held))
+        self._streaming_tail_audit = dict(result, release_frame=len(held),
+                                         released_at=released_at)
         return result
 
     def _log_streaming_tail_capture(self, frames):
@@ -390,7 +394,11 @@ class DictationSessionConsumer:
         """
         audit = self._streaming_tail_audit
         self._streaming_tail_audit = None
-        if audit is None or not logger.isEnabledFor(DEBUG):
+        if audit is None:
+            return
+        from samsara.hold_diagnostics import captured
+        joined = captured(self, frames, audit)
+        if not logger.isEnabledFor(DEBUG):
             return
         threshold = audit['threshold']
         weak_floor = threshold * .1
@@ -403,7 +411,8 @@ class DictationSessionConsumer:
             'admitted_tail_ms=%d observed_tail_frames=%d threshold=%.6f '
             'last_active_end_ms=%d active_end_gap_ms=%d weak_floor=%.6f '
             'last_weak_end_ms=%d weak_end_gap_ms=%d last_frame_rms=%.6f '
-            'last_frame_peak=%.6f cutoff_set=%d',
+            'last_frame_peak=%.6f cutoff_set=%d hold_seq_id=%s '
+            'release_to_stop_ms=%d last_speech_end_ms=%d cue_or_duck_overlap_ms=%d',
             audit['reason'], audit['release_frame'] * FRAME_MS, count * FRAME_MS,
             (count - audit['release_frame']) * FRAME_MS, audit['frames'], threshold,
             last_active * FRAME_MS, (count - last_active) * FRAME_MS, weak_floor,
@@ -411,6 +420,8 @@ class DictationSessionConsumer:
             levels[-1] if levels else 0.,
             float(np.max(np.abs(frames[-1]))) if frames else 0.,
             self._capture_not_after is not None,
+            joined['hold_seq_id'], joined['release_to_stop_ms'], joined['last_speech_end_ms'],
+            joined['cue_or_duck_overlap_ms'],
         )
 
     def cancel(self) -> bool:
