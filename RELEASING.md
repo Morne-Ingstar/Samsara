@@ -30,7 +30,7 @@ before being used for 0.40.4+; this task does not change workflows.
    unless a local matching CUDA ZIP exists or the approved manifest supplies it.
 
    ```powershell
-   python tools/gen_release_manifest.py --artifacts-dir release/final --tag v0.41.0 --app-version 0.41.0 --git-sha <full-commit> --reuse-manifest release/previous-manifest.json --output release/final/manifest.json --publish-plan release/final/upload-plan.json
+   python tools/gen_release_manifest.py --artifacts-dir release/final --tag v0.41.1 --app-version 0.41.1 --git-sha <full-commit> --reuse-manifest release/previous-manifest.json --output release/final/manifest.json --publish-plan release/final/upload-plan.json
    ```
 
 4. Read `upload-plan.json`. Upload only missing pack/checksum names from
@@ -38,7 +38,7 @@ before being used for 0.40.4+; this task does not change workflows.
    never overwrite an immutable pack with different bytes. Changed packs get
    a new versioned filename. The generator writes sidecars for local packs;
    reused remote packs retain their already-uploaded sidecars. Stage and verify
-   all referenced packs before uploading `manifest-0.41.0.json`. Refresh
+   all referenced packs before uploading `manifest-0.41.1.json`. Refresh
    `manifest-latest.json` only after that catalog is complete. Only the latest
    alias is routinely replaced; keep versioned catalogs stable.
 5. Upload exactly the four `version_release.files` to the version draft:
@@ -81,7 +81,7 @@ Pushing a version tag (`v*`) triggers `.github/workflows/release-build.yml` on a
    EXE and requires the explicit startup-complete marker with no unexplained crash. See
    "Why the smoke check is trimmed" below.
 4. `dist\Samsara\*` is zipped as `Samsara-Windows-<tag>.zip`, for example
-   `Samsara-Windows-v0.41.0.zip`.
+   `Samsara-Windows-v0.41.1.zip`.
 5. A matching `Samsara-Windows-<version>.zip.sha256` sidecar is generated from
    the final archive. Build outputs are uploaded as workflow artifacts only.
 
@@ -98,11 +98,11 @@ repo's source at this commit, not from a laptop.
 
 ### Triggering a release
 
-Tagging v0.41.0 verifies a CI build; it does not alter a GitHub Release.
+Tagging v0.41.1 verifies a CI build; it does not alter a GitHub Release.
 
 ```
-git tag v0.41.0
-git push origin v0.41.0
+git tag v0.41.1
+git push origin v0.41.1
 ```
 
 After a deliberate asset upload and the release gates below pass, the runner
@@ -119,7 +119,7 @@ release and select Latest:
 gh release edit <tag> --prerelease=false --latest
 ```
 
-Replace `<tag>` with the release tag (for example, `v0.41.0`). These commands are
+Replace `<tag>` with the release tag (for example, `v0.41.1`). These commands are
 separate manual decisions and must not be added to either automated workflow.
 See the [GitHub CLI release edit reference](https://cli.github.com/manual/gh_release_edit).
 

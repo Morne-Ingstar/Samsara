@@ -6,6 +6,16 @@ All notable changes to Samsara are documented here.
 
 - **Hands-free by voice** - Say the wake word and "hands free" (or "start hands free", "dictate mode") to start hands-free dictation without touching a key; "hands free" also works as a command. Needs the hands-free key set to Toggle.
 
+## [0.41.1] - 2026-11-04
+
+0.41.1 - dictation that is never thrown away, cleaner punctuation, a live microphone check, and fewer false warnings.
+
+- **Dictation is never thrown away.** If part of a dictation cannot be finished, the words that were heard are still typed, with a short note and a Try again button that works.
+- **Cleaner text.** No stray comma or period at the start, no trailing dots, and long dictations no longer repeat a word where pieces join.
+- **Check my mic.** A live microphone check in Settings > Audio, from the tray menu, or by saying "check my mic".
+- **Fewer false warnings.** Samsara no longer warns that a connected app changed when a check was only slow.
+- **Clearer Help.** Every Cockpit and Stats voice command has a one-sentence description.
+
 ## [0.41.0] - 2026-11-03
 
 0.41.0 - steadier dictation, a Stats page on Home, saved window layouts, clearer messages, and a tidier Settings.
