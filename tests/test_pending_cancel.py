@@ -39,6 +39,7 @@ def _set_pending_action():
 
 def _app():
     app = object.__new__(dictation.DictationApp)
+    app.config = {'verbatim': {'enabled': False}}  # 1125: acknowledgement path reads _verbatim_rule via dictation_retry.claim
     app.audio_coordinator = Mock()
     app.play_sound = Mock()
     app._indicator_reset = Mock()

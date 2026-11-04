@@ -321,6 +321,10 @@ def _guard_segments(segments, guard, params, pcm, origin, missed):
         missed.append(MissedRange(origin + min(getattr(s, 'start', 0.) for s in segments),
                                   origin + max(getattr(s, 'end', 0.) for s in segments)))
         return [], whole[0]
+    if not whole[0] and whole[1] is None:
+        # 1130: a result the whole-hold guard accepts is kept as is. Re-judging each
+        # segment alone dropped a low-confidence spoken tail the 1026 policy keeps.
+        return list(segments), None
     kept, reason = [], None
     for item in segments:
         rejection, replacement = whole if len(segments) == 1 else verdict([item])

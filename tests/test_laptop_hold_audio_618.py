@@ -113,8 +113,12 @@ def test_streaming_capture_reports_device_discontinuity(monkeypatch, problem):
     assert c.capture_loss
     c._app._dictation_consumer = c
     c._app._show_outcome_chip = Mock()
-    assert recovery.capture_problem(c._app, None)
-    c._app._show_outcome_chip.assert_called_once_with(recovery.LOST, 'error')
+    # 1125: a device gap is evidence, never a veto on the PCM that arrived (was: whole hold LOST + error chip).
+    assert not recovery.capture_problem(c._app, None)
+    c._app._show_outcome_chip.assert_not_called()
+    audio = np.ones(1600, np.float32)
+    assert not recovery.capture_problem(c._app, audio)
+    assert c._app._capture_loss_1125 is True
 
 
 @pytest.mark.parametrize('preroll,expected_frames', [(0, 0), (300, 3), (400, 4), (500, 5)])
@@ -242,7 +246,7 @@ def test_long_recovery_is_chunked_once_without_temperature_ladders(build_worker)
 def test_failed_retry_keeps_audio_and_both_displays_get_truthful_feedback(build_worker):
     worker, session, audio, calls = build_worker([[segment(compression_ratio=13.5)], [segment(compression_ratio=9.4)]])
     _, _, text = recovery.stream_final(worker, audio, {})
-    from samsara.transcript_gates import LOOP_WARNING
+    LOOP_WARNING = recovery.UNCLEAR  # 1125: plain "Didn't catch that - Try again" replaced the loop wording
     assert not text and session._decode_failure == LOOP_WARNING  # 1052d native ladder failure
     np.testing.assert_array_equal(session.app._hold_retry_audio.audio, audio)
     for full in (True, False):
@@ -255,7 +259,8 @@ def test_failed_retry_keeps_audio_and_both_displays_get_truthful_feedback(build_
         session._mark_done = Mock()
         assert recovery.deliver_failure(session, 2.6)
         shown = overlay.show_empty_result if full else overlay.update_text
-        assert shown.call_args.args[0] == LOOP_WARNING  # 1052d
+        # 1125/1126: the overlay is cleared; the plain note goes through the chip (show_note).
+        assert shown.call_args.args[0] == ''
         assert 'no speech' not in shown.call_args.args[0].lower()
         session._mark_done.assert_called_once()
 
@@ -318,7 +323,7 @@ def test_model_lock_wait_counts_against_final_deadline(build_worker):
 
 def finalizing_session():
     session = StreamingSession.__new__(StreamingSession)
-    app = NS(recording=False, _stop_in_flight=True, config={'streaming_mode': True},
+    app = NS(recording=False, _stop_in_flight=True, config={'streaming_mode': True}, model_rate=16000,  # 1125: retain() reads it
              _capslock_lifecycle_lock=threading.Lock())
     session.app = app
     app._streaming_session = session
@@ -370,5 +375,5 @@ def test_batch_guard_failure_has_recovery_and_failure_is_not_empty_speech(build_
     assert not result.text and result.diag_path == 'hold_1052d'
     assert result.language_rejected
     assert len(calls) == 1
-    session.app._show_outcome_chip.assert_called_once_with(recovery.UNCLEAR, 'warning')  # 1118: no loop omitted.
+    session.app._show_outcome_chip.assert_called_once_with(recovery.UNCLEAR, 'info', 8000)  # 1125/1126: plain non-red note that clears itself
     np.testing.assert_array_equal(session.app._hold_retry_audio.audio, audio)

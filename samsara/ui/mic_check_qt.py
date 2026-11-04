@@ -35,12 +35,12 @@ class LevelBar(QWidget):
         width = self.width()
         quiet = (check.QUIET_DBFS + 60) / 60
         loud = .9
-        for start, end, color in ((0, quiet, theme.TEXT_SECONDARY), (quiet, loud, theme.ACCENT), (loud, 1, "#dc6767")):
+        for start, end, color in ((0, quiet, theme.TEXT_SECONDARY), (quiet, loud, theme.ACCENT), (loud, 1, theme.ERROR)):
             painter.fillRect(round(start * width), 4, round((end - start) * width), 14, theme.qcolor(color))
         position = round(min(1, max(0, (self.level_dbfs + 60) / 60)) * (width - 4))
         painter.fillRect(position, 0, 4, 23, QColor(theme.TEXT_PRIMARY))
         if time.monotonic() < self.flash_until:
-            painter.fillRect(width - 10, 0, 10, 23, QColor("#ff4545"))
+            painter.fillRect(width - 10, 0, 10, 23, theme.qcolor(theme.ERROR))
         painter.setPen(QColor(theme.TEXT_PRIMARY))
         for x, span, alignment, label in ((0, 150, Qt.AlignmentFlag.AlignLeft, "Too quiet"),
                                          (150, width - 300, Qt.AlignmentFlag.AlignCenter, "Good"),

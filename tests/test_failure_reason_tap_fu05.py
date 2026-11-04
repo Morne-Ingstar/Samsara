@@ -70,9 +70,11 @@ def test_tutorial_empty_capture_final_reaches_display_and_home(qapp, monkeypatch
         if duration < .51:
             assert actual == f'Too short - hold {label} while you speak, release when done'
             assert instruction_line(app.config, None) == f'Hold {label} and speak.'
-            measure.assert_not_called()
-        else:
+            # 1125: every non-empty final is measured once for the relaxed-decode evidence;
+            # a short tap is then ended without the second (skip_decode) measurement.
             measure.assert_called_once()
+        else:
+            assert measure.call_count == 2  # 1125 evidence + the existing skip_decode measurement
         app.model.transcribe.assert_not_called()
         registration.callback.assert_not_called()
         assert app._log_history.call_count == (1 if duration > streaming.MIN_PARTIAL_AUDIO_S else 0)

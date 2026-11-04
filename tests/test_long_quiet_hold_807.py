@@ -57,18 +57,24 @@ def word(text, start, end):
     return NS(word=text, start=start, end=end, probability=.9)
 
 
-def bind_audio(session, monkeypatch, audio, result):
+def bind_audio(session, monkeypatch, audio, result, worker=None):
     session._stop_capture.return_value = audio
     session.app._dictation_consumer.snapshot_streaming_audio.return_value = audio
     detector = NS(measure=Mock(return_value=result))
     monkeypatch.setattr(presence, '_presence', detector)
+    # 1118/1125: the app always gives the worker its hold timing; the first frame is inside the press/earcon grace.
+    if worker is not None:
+        worker._speech_presence_capture = presence.HoldEvidence(0, .4, 0)
     return detector
 
 
 def test_real_silero_rejects_synthetic_cricket_fixture():
     audio, result = clips()['crickets'], measured('crickets')
     assert result.known and not result.passes()
-    assert decoder._speech_bounds(result, RATE, len(audio)) == []
+    # 1118: one measured frame counts as speech. This fixture's first frame scores 0.1001, which in the app
+    # lies inside the press/earcon grace (HoldEvidence); without a capture context it would count.
+    capture = presence.HoldEvidence(0, .4, 0)
+    assert decoder._speech_bounds(result, RATE, len(audio), capture) == []
 
 
 @pytest.mark.parametrize('name', ['mixed', 'normal', 'quiet', 'quiet_hold'])
@@ -151,10 +157,12 @@ def test_missing_word_timestamps_cannot_authorize_sparse_text():
 def test_final_only_delivers_aligned_sentence_after_long_pause(make_worker, monkeypatch, name):
     audio, result = clips()[name], measured(name)
     worker, session = make_worker([])
-    bind_audio(session, monkeypatch, audio, result)
+    bind_audio(session, monkeypatch, audio, result, worker)
     def decode(pcm, **params):
         offset = (pcm.ctypes.data-audio.ctypes.data)//audio.itemsize/RATE
-        words = [word(' phantom', -.2, -.1), word(' Real sentence.', 28.5-offset, 29.-offset),
+        # 1126: overlap dedup needs one timed word per spoken word (as the real decoder gives).
+        words = [word(' phantom', -.2, -.1), word(' Real', 28.5-offset, 28.75-offset),
+                 word(' sentence.', 28.75-offset, 29.-offset),
                  word(' phantom', len(pcm)/RATE+.1, len(pcm)/RATE+.2)]
         return iter([_segment(text=' phantom Real sentence. phantom', words=words)]), NS(language='en')
     session.app.model.transcribe.side_effect = decode
@@ -169,7 +177,7 @@ def test_final_only_delivers_aligned_sentence_after_long_pause(make_worker, monk
 
 def test_rejected_sparse_words_cannot_return_via_partial_or_retry(make_worker, monkeypatch):
     worker, session = make_worker([_segment(text=' phantom', words=[word(' phantom', -.2,-.1)])])
-    bind_audio(session, monkeypatch, clips()['mixed'], measured('mixed'))
+    bind_audio(session, monkeypatch, clips()['mixed'], measured('mixed'), worker)
     session._last_partial = 'Previous unaligned phantom'
     worker._final_pass()
     assert session.on_final.call_args.args == (None,)
@@ -179,7 +187,7 @@ def test_rejected_sparse_words_cannot_return_via_partial_or_retry(make_worker, m
 
 def test_crickets_never_decode_or_reach_delivery(make_worker, monkeypatch):
     worker, session = make_worker([_segment(text='Invented words')])
-    bind_audio(session, monkeypatch, clips()['crickets'], measured('crickets'))
+    bind_audio(session, monkeypatch, clips()['crickets'], measured('crickets'), worker)
     worker._final_pass()
     session.app.model.transcribe.assert_not_called()
     session.app.process_transcription.assert_not_called()
@@ -192,7 +200,7 @@ def test_ordinary_decoding_keeps_audio_parameters_and_existing_guards(make_worke
     scores = [.9]*int(np.ceil(len(audio)/512))
     result = presence.Presence(False) if kind == 'unknown' else evidence(scores, len(audio))
     worker, session = make_worker([_segment(text='Real sentence.')])
-    bind_audio(session, monkeypatch, audio, result)
+    bind_audio(session, monkeypatch, audio, result, worker)
     if kind == 'disabled':
         session.app.config['dictation'] = {'speech_presence_gate': False}
     worker._final_pass()
@@ -203,7 +211,7 @@ def test_ordinary_decoding_keeps_audio_parameters_and_existing_guards(make_worke
 
 def test_cancelled_sparse_final_does_not_start_native_decode(make_worker, monkeypatch):
     worker, session = make_worker([_segment(text='Unused')])
-    bind_audio(session, monkeypatch, clips()['mixed'], measured('mixed'))
+    bind_audio(session, monkeypatch, clips()['mixed'], measured('mixed'), worker)
     session.cancel_event.set()
     worker._final_pass()
     session.app.model.transcribe.assert_not_called()
@@ -215,7 +223,7 @@ def test_sparse_decoder_rejection_retries_same_compact_timeline(make_worker, mon
     # 1052d: exhausted native ladder is reported; no compact/5 s recovery.
     audio, result = clips()['mixed'], measured('mixed')
     worker, session = make_worker([_segment(text=' Clear.', words=[word(' Clear.', 2., 2.5)])])
-    bind_audio(session, monkeypatch, audio, result)
+    bind_audio(session, monkeypatch, audio, result, worker)
     monkeypatch.setattr(worker, '_decoder_guard', Mock(return_value='decoder_failure'))
     worker._final_pass()
     assert session.on_final.call_args.args == (None,)
@@ -226,7 +234,7 @@ def test_sparse_decoder_rejection_retries_same_compact_timeline(make_worker, mon
 def test_known_empty_region_result_does_not_decode_even_if_earlier_gate_passed(make_worker, monkeypatch):
     worker, session = make_worker([_segment(text='Invented words')])
     result = measured('mixed')
-    detector = bind_audio(session, monkeypatch, clips()['mixed'], result)
+    detector = bind_audio(session, monkeypatch, clips()['mixed'], result, worker)
     detector.measure.side_effect = [result, evidence([0.]*1875, 60*RATE)]
     worker._final_pass()
     session.app.model.transcribe.assert_not_called()
@@ -236,7 +244,7 @@ def test_known_empty_region_result_does_not_decode_even_if_earlier_gate_passed(m
 def test_plan_inference_failure_retains_existing_decoder(make_worker, monkeypatch):
     worker, session = make_worker([_segment(text='Real sentence.')])
     audio, result = clips()['mixed'], measured('mixed')
-    detector = bind_audio(session, monkeypatch, audio, result)
+    detector = bind_audio(session, monkeypatch, audio, result, worker)
     detector.measure.side_effect = [result, RuntimeError('synthetic detector failure')]
     worker._final_pass()
     assert session.on_final.call_args.args[0]
@@ -247,7 +255,7 @@ def test_plan_inference_failure_retains_existing_decoder(make_worker, monkeypatc
 def test_sparse_recovery_retains_audio_and_preserves_explicit_try_again(make_worker, monkeypatch):
     audio, result = clips()['mixed'], measured('mixed')
     worker, session = make_worker([_segment(text=' Recovered.', words=[word(' Recovered.', 2., 2.5)])])
-    bind_audio(session, monkeypatch, audio, result)
+    bind_audio(session, monkeypatch, audio, result, worker)
     monkeypatch.setattr(worker, '_decoder_guard', Mock(return_value='decoder_failure'))
     worker._final_pass()
     np.testing.assert_array_equal(session.app._hold_retry_audio.audio, audio)

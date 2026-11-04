@@ -376,7 +376,8 @@ class TestChipRendering:
         indicator.render(image)
         # Sample just inside the chip's left edge, clear of the label text.
         px = image.pixelColor(int(chip_rect.x() + 4), int(chip_rect.center().y()))
-        expected = QColor(theme.ERROR)
+        # 1038: error/warning chips use a dark tint of their colour (80% BG0 mix) and stay until dismissed.
+        expected = QColor(theme.qcolor(theme._mix(theme.ERROR, theme.BG0, .80)))
         assert abs(px.red() - expected.red()) < 30
         assert abs(px.green() - expected.green()) < 30
         assert abs(px.blue() - expected.blue()) < 30
@@ -388,7 +389,8 @@ class TestChipRendering:
 
         # TTL well above the "is it showing" pump so the chip cannot expire
         # before that assertion runs.
-        indicator.show_outcome("MISS", "error", ttl_ms=300)
+        # 1038: errors and warnings stay until dismissed, so the TTL is exercised on a success chip.
+        indicator.show_outcome("DONE", "success", ttl_ms=300)
         _pump(qapp, 20)
         assert indicator.height() > base_h
 
@@ -418,8 +420,8 @@ class TestChipRendering:
 
     def test_empty_label_clears(self, indicator):
         indicator.show()
-        indicator.show_outcome("MISS", "error", ttl_ms=None)
-        indicator.show_outcome("", "error")
+        indicator.show_outcome("DONE", "success", ttl_ms=None)  # 1038: an error stays until dismissed
+        indicator.show_outcome("", "success")
         assert indicator._active_chip() is None
 
     def test_never_takes_focus(self, indicator):
@@ -447,7 +449,7 @@ class TestHiddenByConfig:
         assert chip_rect is not None
 
     def test_hidden_chip_hides_again_after_its_ttl(self, qapp, indicator):
-        indicator.show_outcome("MISS", "error", ttl_ms=300)
+        indicator.show_outcome("DONE", "success", ttl_ms=300)  # 1038: errors stay until dismissed
         _pump(qapp, 20)
         assert indicator.isVisible()
 
@@ -606,6 +608,7 @@ class TestTestButtonVolume:
                 self._playback_buffer = None
                 self.audio_coordinator = None
                 self._sound_stream_device = None
+                self._sound_stream_sr = 44100  # 1121: play_sound reads it for hold_diagnostics.cue (set with _sound_cache)
                 self._sound_stream = types.SimpleNamespace(active=True)
 
         return _Stub()

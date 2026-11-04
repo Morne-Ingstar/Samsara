@@ -82,7 +82,9 @@ def test_ci_routes_desktop_tests_to_a_bounded_native_step():
     assert unset == 'Remove-Item Env:\\QT_QPA_PLATFORM -ErrorAction SilentlyContinue'
     assert platform.split('#', 1)[0].strip() == "$env:QT_QPA_PLATFORM = 'windows'"
     assert shlex.split(command) == [
-        'python', '-m', 'pytest', '-m', 'requires_desktop', '-p', 'no:cacheprovider',
+        # 1117: CI uses a temp folder outside AppData (--basetemp).
+        'python', '-m', 'pytest', '--basetemp=${{ github.workspace }}/.pytest-tmp/native',
+        '-m', 'requires_desktop', '-p', 'no:cacheprovider',
         '--timeout=120', '--timeout-method=thread', '-v',
     ]
 

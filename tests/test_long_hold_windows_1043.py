@@ -153,14 +153,25 @@ def test_recovery_error_preserves_native_words_and_retains_audio(capture, caplog
     assert any('chunk_decode_failed' in r.message for r in caplog.records)
 
 
+def timed(text, *times):
+    """1126: overlap dedup needs one timed word per spoken word, as the real decoder gives."""
+    tokens = text.split()
+    words = [NS(word=' ' + t, start=a, end=b, probability=.9) for t, (a, b) in zip(tokens, times)]
+    return NS(text=' ' + text, start=words[0].start, end=words[-1].end, avg_logprob=-.2,
+              no_speech_prob=.1, compression_ratio=1.1, temperature=0., words=words)
+
+
 def test_context_overlap_deduplicates_recovery_only():
-    original = segment('We checked the northern gate.', 0, 24)
-    recovered = segment('northern gate. The carrots are ready.', 23.8, 28)
+    # 1126: decode_recovery._append was replaced by hold_text.append_chunk (interval-bounded, timed words).
+    from samsara.hold_text import append_chunk
+    original = timed('We checked the northern gate.', (0, 1), (1, 2), (2, 3), (23.1, 23.5), (23.5, 24))
+    recovered = timed('northern gate. The carrots are ready.', (23.1, 23.5), (23.5, 24), (24, 24.4),
+                      (24.4, 25), (25, 25.4), (25.4, 26))
     result = [original]
-    decode_recovery._append(result, [recovered])
+    append_chunk(result, [recovered], [original], (23.0, 24.5))
     assert ''.join(s.text for s in result).strip() == 'We checked the northern gate. The carrots are ready.'
     repeated = segment('The carrots are ready.', 30, 33)
-    decode_recovery._append(result, [repeated])
+    append_chunk(result, [repeated], [recovered])
     assert len(result) == 3
 
 
@@ -173,10 +184,13 @@ def test_continuous_pcm_windows_cover_every_sample_and_stay_bounded():
 
 
 def test_middle_gap_context_cannot_repeat_next_native_words():
-    # 1052d has ordered chunks, no out-of-order recovery context.
-    result = [segment('Finish the garden. The golden gate', 56, 61)]
-    original = segment('The golden gate is closed.', 60, 64)
-    decode_recovery._append(result, [original])
+    # 1052d has ordered chunks, no out-of-order recovery context. 1126: append_chunk replaces _append.
+    from samsara.hold_text import append_chunk
+    left = timed('Finish the garden. The golden gate', (56, 57), (57, 58), (58, 59), (60, 60.3),
+                 (60.3, 60.6), (60.6, 61))
+    original = timed('The golden gate is closed.', (60, 60.3), (60.3, 60.6), (60.6, 61), (61, 62), (62, 64))
+    result = [left]
+    append_chunk(result, [original], [left], (60, 61))
     assert ''.join(s.text for s in result).strip() == 'Finish the garden. The golden gate is closed.'
     assert original.text.strip() == 'The golden gate is closed.'
 
