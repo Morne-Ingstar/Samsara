@@ -208,8 +208,22 @@ def signoff_failure_reason(text, segments, duration_s=None, config=None, *, user
 OUTRO_PHRASES = (
     "thank you for watching", "thanks for watching", "like and subscribe",
     "subscribe", "see you next time", "the end",
+    # 1133: wording seen in owner reports and Whisper's known outro habits.
+    "thank you for watching the video", "thanks for watching the video",
+    "thanks for watching this video", "please subscribe",
+    "please like and subscribe", "please subscribe to my channel",
+    "subscribe to my channel", "see you in the next video",
+    "see you in the next one", "see you next time",
+    "i will see you next time", "i ll see you next time",
+    "ill see you next time", "i ll see you in the next video",
+    "i will see you in the next video",
 )
 _OUTRO_TOKENS = {tuple(re.findall(r"\w+", phrase)) for phrase in OUTRO_PHRASES}
+_OUTRO_CONNECTORS = {"and"}
+# 1133: a recorded mic's idle noise sits around this level; a made-up outro over
+# audio this quiet AND scored low-confidence by the decoder is not speech.
+# Anything louder (quiet speakers included, see 1026) is kept.
+OUTRO_NOISE_CEILING = .0005
 
 
 def _finite_number(value):
@@ -221,6 +235,34 @@ def _finite_number(value):
         return None
 
 
+def _is_outro_sequence(tokens):
+    """One known outro phrase, or several joined only by 'and' ("see you next
+    time and thanks for watching"). Any other word means real content."""
+    if not tokens:
+        return False
+    if tokens in _OUTRO_TOKENS:
+        return True
+    reachable = [False] * (len(tokens) + 1)
+    reachable[0] = True
+    for start in range(len(tokens)):
+        if not reachable[start]:
+            continue
+        if tokens[start] in _OUTRO_CONNECTORS and start:
+            reachable[start + 1] = True
+        for phrase in _OUTRO_TOKENS:
+            end = start + len(phrase)
+            if end <= len(tokens) and tokens[start:end] == phrase:
+                reachable[end] = True
+    return reachable[-1] and tokens[-1] not in _OUTRO_CONNECTORS and tokens[0] not in _OUTRO_CONNECTORS
+
+
+def _low_confidence(segment):
+    no_speech = _finite_number(_value(segment, "no_speech_prob"))
+    logprob = _finite_number(_value(segment, "avg_logprob"))
+    return ((no_speech is not None and no_speech >= .5)
+            or (logprob is not None and logprob <= -1.0))
+
+
 def _outro_is_unsupported(segment, audio, rate):
     """Whole known phrase plus a near-silent PCM span; fail open.
 
@@ -230,7 +272,7 @@ def _outro_is_unsupported(segment, audio, rate):
     import numpy as np
 
     tokens = tuple(re.findall(r"\w+", (_value(segment, "text") or "").casefold()))
-    if tokens not in _OUTRO_TOKENS:
+    if not _is_outro_sequence(tokens):
         return False
     start = _finite_number(_value(segment, "start"))
     end = _finite_number(_value(segment, "end"))
@@ -249,6 +291,8 @@ def _outro_is_unsupported(segment, audio, rate):
             if level > DECODER_SPEECH_FLOOR:
                 return False
             if level <= .0001:
+                return True
+            if level <= OUTRO_NOISE_CEILING and _low_confidence(segment):
                 return True
     # 1026: low confidence cannot establish silence, even below the speech
     # floor. Quiet speech and missing alignment must survive.
