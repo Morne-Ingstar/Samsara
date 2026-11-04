@@ -147,9 +147,6 @@ def _populate_microphone_combo(combo, devices, config):
         combo.setCurrentIndex(selected)
     finally:
         combo.blockSignals(blocked)
-    mirror = getattr(combo, '_audio_mic_combo', None)
-    if mirror is not None:
-        mirror.setCurrentIndex(combo.currentIndex())
 
 
 def _microphone_updates(combo):

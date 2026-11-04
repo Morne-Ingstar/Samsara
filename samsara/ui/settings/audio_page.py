@@ -58,6 +58,12 @@ BASE = [
         "tts.speed"
     ],
     [
+        "Speech volume",
+        "Adjust speech independently of feedback sounds.",
+        "tts_volume_slider",
+        "tts.volume"
+    ],
+    [
         "Ava captions",
         "Show Ava's responses as text.",
         "ava_captions",
@@ -71,12 +77,6 @@ BASE = [
     ]
 ]
 ADVANCED = [
-    [
-        "Speech volume",
-        "Adjust speech independently of feedback sounds.",
-        "tts_volume_slider",
-        "tts.volume"
-    ],
     [
         "Speech during feedback",
         "Remaining speech volume while feedback sounds play.",
@@ -138,7 +138,9 @@ GROUPS = {
     'sound_feedback': 'Audio Feedback',
     'tts_feedback_level': 'Text-to-Speech',
     'tts_engine': 'Voice',
-    'tts_volume_slider': 'Voice',
+    'tts_duck_slider': 'Voice',
+    'cmd_exit_earcon': 'Audio Feedback',
+    'cmd_tts_char_limit': 'Voice',
     'adv_ducking_level': 'Playback Reduction While Dictating',
 }
 
@@ -150,24 +152,10 @@ def open_mic_setup_guide(app):
 
 def build(owner):
     from .calm_layout import group_page
-    from PySide6.QtWidgets import QPushButton, QSizePolicy
+    from PySide6.QtWidgets import QPushButton
 
     page = owner.make_page(TITLE, SUBTITLE, BASE, [row for row in ADVANCED if not row[3].startswith("echo_cancellation.")])
     from .presentation import SettingRow
-    from .presentation import CleanComboBox
-    # Share the existing preferred-mic model and save path with General.
-    source = owner._widgets['mic_combo']
-    picker = CleanComboBox()
-    picker.setModel(source.model())
-    picker.setCurrentIndex(source.currentIndex())
-    picker.setSizeAdjustPolicy(CleanComboBox.SizeAdjustPolicy.AdjustToContents)
-    picker.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
-    picker.view().setStyleSheet(source.view().styleSheet())
-    source.currentIndexChanged.connect(picker.setCurrentIndex)
-    picker.currentIndexChanged.connect(source.setCurrentIndex)
-    picker.activated.connect(source.activated.emit)
-    source._audio_mic_combo = picker
-    owner._widgets['audio_mic_combo'] = picker
     # PLACEHOLDER COPY (1015): one guide in the shared page header.
     open_guide = lambda: open_mic_setup_guide(owner.app)
     add_guide = getattr(page, "add_guide", None)
@@ -180,8 +168,9 @@ def build(owner):
     from samsara.ui.mic_score_qt import open_mic_score
     score_button = QPushButton("Mic score...")
     score_button.clicked.connect(lambda: open_mic_score(owner.app))
-    controls = [picker, score_button] if add_guide is not None else [picker, guide_button, score_button]
-    guide_row = SettingRow("Microphone", "Choose and test the microphone Samsara listens to.", controls, parent=page.container)
+    controls = [score_button] if add_guide is not None else [guide_button, score_button]
+    # PLACEHOLDER COPY (1073)
+    guide_row = SettingRow("Microphone", "Test the microphone Samsara listens to.", controls, parent=page.container)
     guide_row.setObjectName("microphoneSetupGuide")
     page.base.insertWidget(0, guide_row)
     owner._widgets["audio_mic_setup_guide_button"] = guide_button

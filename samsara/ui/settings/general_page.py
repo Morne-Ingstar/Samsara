@@ -4,19 +4,6 @@ from samsara.listening_display import LABEL, QUESTION
 TITLE = "General"
 SUBTITLE = "Make Samsara comfortable for everyday use."
 BASE = [
-    [LABEL, QUESTION, "listening_display", "ui.listening_display"],
-    [
-        "Interface size",
-        "Size text and controls for comfortable use.",
-        "ui_scale_combo",
-        "ui_scale"
-    ],
-    [
-        "Theme",
-        "Choose Samsara's appearance.",
-        "theme_combo",
-        "ui.theme"
-    ],
     [
         "Microphone",
         "Choose where Samsara listens.",
@@ -28,6 +15,25 @@ BASE = [
         "Choose the language you dictate in.",
         "lang_combo",
         "language"
+    ],
+    [LABEL, QUESTION, "listening_display", "ui.listening_display"],
+    [
+        "Indicator position",
+        "Choose the indicator's starting position.",
+        "adv_indicator_pos",
+        "listening_indicator_position"
+    ],
+    [
+        "Interface size",
+        "Size text and controls for comfortable use.",
+        "ui_scale_combo",
+        "ui_scale"
+    ],
+    [
+        "Theme",
+        "Choose Samsara's appearance.",
+        "theme_combo",
+        "ui.theme"
     ],
     [
         "Contextual hints",
@@ -51,12 +57,6 @@ ADVANCED = [
         "Start in the tray with the main window hidden.",
         "start_hidden",
         "start_hidden"
-    ],
-    [
-        "Indicator position",
-        "Choose the indicator's starting position.",
-        "adv_indicator_pos",
-        "listening_indicator_position"
     ],
     [
         "Floating windows",

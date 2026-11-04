@@ -216,12 +216,12 @@ def test_every_schema_key_has_one_home_or_an_explicit_ui_less_reason(window):
 
 def test_six_pages_keep_approved_base_budgets(window):
     assert settings_qt._TAB_NAMES == ['General', 'Dictation', 'Audio', 'Ava', 'Shortcuts', 'Help']
-    # 479: everyday choices move into the four owned pages' basic sections.
-    for name, count in {'General': 7, 'Dictation': 10, 'Audio': 11, 'Shortcuts': 11}.items():
+    # 1073: Indicator position and Speech volume join their main sections.
+    for name, count in {'General': 9, 'Dictation': 10, 'Audio': 12, 'Shortcuts': 11}.items():
         assert len(window._pages[name].base_rows) == count
-    # 525: General basic stays at 7; only the retired Advanced capture row leaves.
+    # 1073: Indicator position leaves Advanced; Idle preview stays for 1076.
     assert sum(row.page_name == 'General' and row.disclosure is window._pages['General'].advanced
-               for row in window._destination_rows) == 5
+               for row in window._destination_rows) == 4
     # 595 adds Ava's setup guide ahead of the eight preference rows.
     assert [len(window._pages[name].base_rows) for name in ('Ava', 'Help')] == [9, 6]
     for tool in settings_qt.tools_page.TOOLS:

@@ -30,7 +30,11 @@ def test_everyday_row_is_basic_once(page, widget, key):
 def test_natural_neighbours():
     def names(page):
         return [row[2].split(',')[0] for row in page.BASE]
-    assert names(general_page)[:3] == ['listening_display', 'ui_scale_combo', 'theme_combo']
+    # 1073 / T71 d1: "Move to Positions 1-2"; c6: position joins display.
+    assert names(general_page)[:6] == [
+        'mic_combo', 'lang_combo', 'listening_display', 'adv_indicator_pos',
+        'ui_scale_combo', 'theme_combo',
+    ]
     audio = names(audio_page)
     start = audio.index('tts_feedback_level')
     assert audio[start:start + 4] == ['tts_feedback_level', 'tts_engine', 'tts_voice_combo', 'tts_speed']
