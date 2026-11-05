@@ -100,17 +100,47 @@ def cancelled(session):
 
 # 1052a: the retry slot above remains available even when disk diagnostics are off.
 import json
+import sys
 import threading
 import time
 import uuid
 import wave
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import thread as _futures_thread
 from contextvars import ContextVar
 from datetime import datetime, timezone
+from functools import wraps
 
 import numpy as np
 
 _incident_audit = ContextVar('incident_native_audit_1052a', default=None)
+_store_lock = threading.Lock()
+
+
+def _incident_warning():
+    # Diagnostics can fail even while building/logging an exception (low memory).
+    try:
+        logger.warning('[INCIDENT] observation_failed=1')
+    except Exception:
+        pass
+
+
+def _best_effort(observation):
+    @wraps(observation)
+    def run(*args, **kwargs):
+        try:
+            return observation(*args, **kwargs)
+        except Exception:
+            _incident_warning()
+    return run
+
+
+def _exiting(app=None):
+    # is_finalizing() is still false while CPython joins surviving app threads.
+    # Its thread-pool exit hook has already permanently disabled submit then.
+    return (getattr(app, '_running', True) is False or sys.is_finalizing()
+            or getattr(threading, '_SHUTTING_DOWN', False)
+            or getattr(_futures_thread, '_shutdown', False))
 
 
 def incident_folder():
@@ -124,29 +154,68 @@ def _enabled(app):
 
 class IncidentStore:
     """One serialized writer; disk work and PCM conversion never run on capture."""
-    def __init__(self, folder, maximum=5):
+    def __init__(self, folder, maximum=5, *, exiting=_exiting):
         self.folder = folder
         try:
             self.maximum = max(1, min(5, int(maximum)))
         except (TypeError, ValueError):
             self.maximum = 5
-        self.worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix='incident-holds')
+        self.exiting = exiting
+        self.worker = None if exiting() else self._new_worker()
         self.previous = None
         self.lock = threading.RLock()
+        self._writer_lock = threading.Lock()
         self.generation = 0
 
+    @staticmethod
+    def _new_worker():
+        return ThreadPoolExecutor(max_workers=1, thread_name_prefix='incident-holds')
+
+    @_best_effort
+    def _run_job(self, operation, args):
+        # A retired pool can still have one running job. Replacement must not
+        # overlap its disk writes or race Clear/rotation against another writer.
+        with self._writer_lock:
+            return operation(*args)
+
+    def _submit(self, operation, *args):
+        failed = False
+        try:
+            with self.lock:
+                if self.exiting():
+                    return
+                if self.worker is None:
+                    self.worker = self._new_worker()
+                try:
+                    return self.worker.submit(self._run_job, operation, args)
+                except RuntimeError:
+                    failed = True
+                    if self.exiting() or not (getattr(self.worker, '_shutdown', False)
+                                              or getattr(self.worker, '_broken', False)):
+                        return
+                    self.worker.shutdown(wait=False, cancel_futures=True)
+                    self.worker = self._new_worker()
+                    return self.worker.submit(self._run_job, operation, args)
+        except Exception:
+            failed = True
+        finally:
+            if failed:
+                _incident_warning()
+
+    @_best_effort
     def submit(self, record):
         with self.lock:
             if record['generation'] != self.generation:
                 return
+            metadata = json.loads(json.dumps(record['metadata']))
             if record.get('submitted'):
-                metadata = json.loads(json.dumps(record['metadata']))
-                return self.worker.submit(self._refresh, record, metadata)
-            record['submitted'] = True
+                return self._submit(self._refresh, record, metadata)
             generation = record['generation']
             # Freeze metadata before a following hold can change its reasons.
-            audio, metadata = record['audio'], json.loads(json.dumps(record['metadata']))
-        return self.worker.submit(self._write, audio, metadata, generation, record)
+            future = self._submit(self._write, record['audio'], metadata, generation, record)
+            if future is not None:
+                record['submitted'] = True
+            return future
 
     def _refresh(self, record, metadata):
         try:
@@ -156,7 +225,7 @@ class IncidentStore:
                         and getattr(self, 'enabled', lambda: True)()):
                     path.write_text(json.dumps(metadata, indent=2, allow_nan=False), encoding='utf-8')
         except Exception:
-            logger.warning('[INCIDENT] local archive update failed')
+            _incident_warning()
 
     def _write(self, audio, metadata, generation, record=None):
         try:
@@ -186,8 +255,9 @@ class IncidentStore:
                 old.with_suffix('.json').unlink(missing_ok=True)
         except Exception:
             # Never log transcripts, audio or decoder context on failure.
-            logger.warning('[INCIDENT] local archive write failed')
+            _incident_warning()
 
+    @_best_effort
     def clear(self):
         with self.lock:
             self.generation += 1
@@ -198,23 +268,26 @@ class IncidentStore:
                     for path in self.folder.glob('hold_*'):
                         if path.suffix in ('.wav', '.json'):
                             path.unlink(missing_ok=True)
-        return self.worker.submit(remove)
+        return self._submit(remove)
 
 
 def _store(app):
-    store = getattr(app, '_incident_store_1052a', None)
-    if store is None:
-        store = IncidentStore(incident_folder(), app.config.get('diagnostics', {}).get('incident_holds_max', 5))
-        store.enabled = lambda: _enabled(app)
-        app._incident_store_1052a = store
-    return store
+    with _store_lock:
+        store = getattr(app, '_incident_store_1052a', None)
+        if store is None:
+            store = IncidentStore(incident_folder(), app.config.get('diagnostics', {}).get('incident_holds_max', 5),
+                                  exiting=lambda: _exiting(app))
+            store.enabled = lambda: _enabled(app)
+            app._incident_store_1052a = store
+        return store
 
 
+@_best_effort
 def begin_incident(session):
     """Called on hold start, before any final can finish out of order."""
     from samsara.hold_diagnostics import bind
     bind(session)
-    if not _enabled(session.app):
+    if not _enabled(session.app) or _exiting(session.app):
         return
     store = _store(session.app)
     now = time.monotonic()
@@ -332,9 +405,10 @@ def incident_model(app):
     return ObservedModel()
 
 
+@_best_effort
 def complete_incident(session, text):
     data = getattr(session, '_incident_1052a', None)
-    if data is None or data.get('complete') or not _enabled(session.app):
+    if data is None or data.get('complete') or not _enabled(session.app) or _exiting(session.app):
         return
     data['complete'] = True
     if data['generation'] != _store(session.app).generation:
@@ -418,7 +492,7 @@ def complete_incident(session, text):
         if getattr(session.app, '_incident_session_1052a', None) is session:
             session.app._incident_session_1052a = None
     except Exception:
-        logger.warning('[INCIDENT] capture could not be archived')
+        _incident_warning()
 
 
 def prepare_final(session, text, raw_text, duration_s):
@@ -431,10 +505,11 @@ def prepare_final(session, text, raw_text, duration_s):
     return result
 
 
+@_best_effort
 def update_incident(session):
     """Refresh the same slot after paste; never recreate a cleared/rotated slot."""
     record = getattr(session, '_incident_record_1121', None)
-    if record is None or not _enabled(session.app):
+    if record is None or not _enabled(session.app) or _exiting(session.app):
         return
     from samsara.hold_diagnostics import get
     store = _store(session.app)
