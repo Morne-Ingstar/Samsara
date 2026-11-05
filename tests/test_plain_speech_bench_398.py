@@ -1,7 +1,9 @@
 """Queue 398 focused gate: real catalogue, fake providers, no app bootstrap."""
 import json
 from collections import Counter
+from collections.abc import MutableMapping
 from contextlib import contextmanager
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -14,6 +16,73 @@ def live():
     corpus, _ = bench.load_corpus()
     with bench.isolated_home(), bench.synthetic_desktop(corpus) as context:
         yield corpus, bench.LiveTiers(corpus, context)
+
+
+@pytest.mark.parametrize('bytecode', [None, '0'])
+@pytest.mark.parametrize('raise_inside', [False, True])
+def test_isolated_home_preserves_inherited_environment_and_nested_cleanup(
+        tmp_path, monkeypatch, bytecode, raise_inside):
+    # Windows can inherit a gate manifest that putenv cannot write back. Model
+    # that restriction portably, without reading or copying the process env.
+    class InheritedEnvironment(MutableMapping):
+        def __init__(self):
+            self.data = {'SAMSARA_HOME_DIR': str(tmp_path),
+                         'GATE_SOURCE_FILES': 'x' * 32768,
+                         'HOME': str(tmp_path)}
+            if bytecode is not None:
+                self.data['PYTHONDONTWRITEBYTECODE'] = bytecode
+
+        def __getitem__(self, key):
+            return self.data[key]
+
+        def __setitem__(self, key, value):
+            if key == 'GATE_SOURCE_FILES':
+                raise ValueError('inherited manifest cannot be rewritten')
+            self.data[key] = value
+
+        def __delitem__(self, key):
+            del self.data[key]
+
+        def __iter__(self):
+            return iter(self.data)
+
+        def __len__(self):
+            return len(self.data)
+
+    environment = InheritedEnvironment()
+    monkeypatch.setattr(bench, 'os', SimpleNamespace(environ=environment))
+    root = logging.getLogger()
+    handlers = list(root.handlers)
+    homes = []
+
+    class BodyError(Exception):
+        pass
+
+    try:
+        with bench.isolated_home() as outer:
+            homes.append(outer)
+            assert outer.is_dir() and outer != tmp_path
+            assert environment['SAMSARA_HOME_DIR'] == str(outer)
+            assert environment['PYTHONDONTWRITEBYTECODE'] == '1'
+            environment['PYTEST_CURRENT_TEST'] = 'updated while isolated'
+            with bench.isolated_home() as inner:
+                homes.append(inner)
+                assert inner.is_dir() and inner != outer
+                assert environment['SAMSARA_HOME_DIR'] == str(inner)
+            assert not inner.exists()
+            assert environment['SAMSARA_HOME_DIR'] == str(outer)
+            if raise_inside:
+                raise BodyError()
+    except BodyError:
+        assert raise_inside
+
+    assert environment['SAMSARA_HOME_DIR'] == str(tmp_path)
+    assert environment.get('PYTHONDONTWRITEBYTECODE') == bytecode
+    assert environment['HOME'] == str(tmp_path)
+    assert len(environment['GATE_SOURCE_FILES']) == 32768
+    assert environment['PYTEST_CURRENT_TEST'] == 'updated while isolated'
+    assert all(not home.exists() for home in homes)
+    assert root.handlers == handlers
 
 
 def test_frozen_corpus_shape_and_independent_plain_phrasings(live):
@@ -97,13 +166,17 @@ def test_resolver_suggest_is_no_answer(live):
     assert tiers.intent('copy').canonical_id is None
 
 
-def test_synthetic_windows_are_fixed_and_do_not_enumerate(live):
+def test_synthetic_windows_are_fixed_and_do_not_enumerate(live, monkeypatch):
     corpus, _ = live
     from plugins.commands import app_verbs, windows
     assert app_verbs.resolve_window('firefox') == (102, 'Synthetic Firefox', 'firefox.exe')
     assert windows.get_all_movable_windows() == [(r['hwnd'], r['title'], r['pid'])
                                                 for r in corpus['synthetic_windows']]
     assert app_verbs.resolve_window('nonexistent') is None
+    from samsara import effect_policy, execution_policy
+    monkeypatch.setattr(execution_policy, 'foreground_window_identity',
+                        lambda: pytest.fail('benchmark read the live foreground'))
+    assert effect_policy.resolve_submit_target() == effect_policy.SubmitTarget()
 
 
 def test_production_model_menu_prompt_grounding_and_late_deadline(live, monkeypatch):

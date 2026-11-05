@@ -61,20 +61,30 @@ def isolated_home():
     root_logger = logging.getLogger()
     handler = logging.NullHandler()
     root_logger.addHandler(handler)
-    with tempfile.TemporaryDirectory(prefix='samsara-plain-bench-') as directory:
-        try:
-            with patch.dict(os.environ, {'SAMSARA_HOME_DIR': directory,
-                                         'PYTHONDONTWRITEBYTECODE': '1'}):
+    try:
+        with tempfile.TemporaryDirectory(prefix='samsara-plain-bench-') as directory:
+            # 1157: patch.dict restores the entire environment. On Windows an
+            # inherited gate manifest can exceed putenv's 32767-character limit,
+            # leaving HOME and the hook paths missing after that restore fails.
+            with contextlib.ExitStack() as cleanup:
+                for key, value in {'SAMSARA_HOME_DIR': directory,
+                                   'PYTHONDONTWRITEBYTECODE': '1'}.items():
+                    previous = os.environ.get(key)
+                    if previous is None:
+                        cleanup.callback(os.environ.pop, key, None)
+                    else:
+                        cleanup.callback(os.environ.__setitem__, key, previous)
+                    os.environ[key] = value
                 yield Path(directory)
-        finally:
-            root_logger.removeHandler(handler)
-            handler.close()
+    finally:
+        root_logger.removeHandler(handler)
+        handler.close()
 
 
 @contextlib.contextmanager
 def synthetic_desktop(corpus):
     from plugins.commands import app_verbs, windows
-    from samsara import command_scope
+    from samsara import command_scope, effect_policy
     rows = corpus['synthetic_windows']
     context = command_scope.MatchContext.for_app(corpus['synthetic_foreground']['app'])
 
@@ -89,7 +99,11 @@ def synthetic_desktop(corpus):
     with patch.object(app_verbs, 'resolve_window', resolve), \
             patch.object(windows, 'get_all_movable_windows',
                          lambda: [(r['hwnd'], r['title'], r['pid']) for r in rows]), \
-            patch.object(command_scope, 'capture_context', lambda: context):
+            patch.object(command_scope, 'capture_context', lambda: context), \
+            patch.object(effect_policy, 'resolve_submit_target',
+                         lambda app=None: effect_policy.SubmitTarget()):
+        # Menu authorization may inspect Enter/delete effects. Keep unknown
+        # targets conservative without reading the owner's focused control.
         yield context
 
 
