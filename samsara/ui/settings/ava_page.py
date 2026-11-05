@@ -16,6 +16,18 @@ BASE = [
         "cloud_llm.provider"
     ],
     [
+        "Cloud credential",
+        "Enter your provider credential and test the connection.",
+        "cloud_api_key,ava:Show,ava:Test Connection",
+        "cloud_llm.api_key"
+    ],
+    [
+        "Cloud model override",
+        "Use a particular provider model.",
+        "cloud_model",
+        "cloud_llm.model"
+    ],
+    [
         "Local model",
         "Choose the installed model used locally.",
         "ava_cmd_model",
@@ -50,32 +62,20 @@ BASE = [
         "After a normal command miss, Ava may choose one available command.",
         "ava_interpret_misses",
         "ava_command_session.interpret_misses"
-    ]
+    ],
 ]
 ADVANCED = [
     [
-        "Keep a conversation log",
-        "Saves each request to Ava, her reply and the context she used in a file on this PC, for troubleshooting. Off by default.",
-        "ava_conversation_log_enabled",
-        "ava.conversation_log_enabled"
+        "Keep model warm",
+        "Keep the local model ready between requests.",
+        "ava_cmd_keep_warm",
+        "ava_command_session.keep_warm"
     ],
     [
-        "Ava consent",
-        "Read how Ava handles local and cloud requests.",
-        "ava:Read this again",
-        ""
-    ],
-    [
-        "Cloud credential",
-        "Enter your provider credential and test the connection.",
-        "cloud_api_key,ava:Show,ava:Test Connection",
-        "cloud_llm.api_key"
-    ],
-    [
-        "Cloud model override",
-        "Use a particular provider model.",
-        "cloud_model",
-        "cloud_llm.model"
+        "Warm at startup",
+        "Send a small request at startup to prepare Ava.",
+        "ava_warm_on_boot",
+        "ava.warm_on_boot"
     ],
     [
         "Web search",
@@ -88,18 +88,6 @@ ADVANCED = [
         "Limit how long a cloud request can take.",
         "cloud_timeout",
         "cloud_llm.timeout_seconds"
-    ],
-    [
-        "Keep model warm",
-        "Keep the local model ready between requests.",
-        "ava_cmd_keep_warm",
-        "ava_command_session.keep_warm"
-    ],
-    [
-        "Warm at startup",
-        "Send a small request at startup to prepare Ava.",
-        "ava_warm_on_boot",
-        "ava.warm_on_boot"
     ],
     [
         "Ava personality",
@@ -124,12 +112,6 @@ ADVANCED = [
         "Choose the local model for editing.",
         "ava_edit_model",
         "ava_edit.model"
-    ],
-    [
-        "Demo pacing",
-        "Use slower editing animations for demonstrations.",
-        "ava_edit_demo_pacing",
-        "ava_edit.demo_pacing"
     ],
     [
         "Automatic corrections",
@@ -166,7 +148,19 @@ ADVANCED = [
         "Remove filler words and spoken self-corrections.",
         "sc_repair_disfluencies",
         "smart_corrections.repair_disfluencies"
-    ]
+    ],
+    [
+        "Keep a conversation log",
+        "Saves each request to Ava, her reply and the context she used in a file on this PC, for troubleshooting. Off by default.",
+        "ava_conversation_log_enabled",
+        "ava.conversation_log_enabled"
+    ],
+    [
+        "Ava consent",
+        "Read how Ava handles local and cloud requests.",
+        "ava:Read this again",
+        ""
+    ],
 ]
 
 def _conversation_log_control(owner):
@@ -258,7 +252,9 @@ def build(owner):
         if key.startswith("sc_") and row.widget_keys[0] == key:
             page.advanced.rows.removeWidget(row)
             rows.addWidget(row)
-    page.advanced.rows.addWidget(group)
+    # 1074: the Smart Corrections group precedes the final log and consent rows.
+    log_row = owner._rows_by_widget["ava_conversation_log_enabled"]
+    page.advanced.rows.insertWidget(page.advanced.rows.indexOf(log_row), group)
     owner._widgets["ava_route_status"].setMinimumWidth(260)
     # Keep shared condition/search refreshes intact; refine Ava's model row.
     refresh = owner._refresh_conditions

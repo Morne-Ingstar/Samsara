@@ -752,17 +752,6 @@ class AvaCloudPage:
         self._widgets["ava_edit_model_row"] = model_row
         edit_options_layout.addWidget(model_row)
 
-        demo_pacing = QCheckBox("Use demo pacing (slower)")
-        demo_pacing.setChecked(edit_cfg.get(
-            "demo_pacing", config_defaults.DEFAULTS["ava_edit.demo_pacing"]) == "cinematic")
-        self._widgets["ava_edit_demo_pacing"] = demo_pacing
-        pacing_row = QWidget()
-        pacing_layout = QHBoxLayout(pacing_row)
-        pacing_layout.setContentsMargins(0, 0, 0, 0)
-        pacing_layout.addWidget(demo_pacing)
-        pacing_layout.addStretch()
-        self._widgets["ava_edit_demo_pacing_row"] = pacing_row
-        edit_options_layout.addWidget(pacing_row)
         layout.addWidget(edit_options)
 
         def _sync_edit_options(checked):
@@ -770,7 +759,6 @@ class AvaCloudPage:
             for key in (
                 "ava_edit_timeout_row",
                 "ava_edit_model_row",
-                "ava_edit_demo_pacing_row",
             ):
                 widget = self._widgets.get(key)
                 if widget is not None:
@@ -783,7 +771,6 @@ class AvaCloudPage:
             _mark_edit_touched("enabled"), _sync_edit_options(checked)))
         edit_timeout.valueChanged.connect(lambda _value: _mark_edit_touched("timeout_seconds"))
         edit_model.currentIndexChanged.connect(lambda _index: _mark_edit_touched("model"))
-        demo_pacing.toggled.connect(lambda _checked: _mark_edit_touched("demo_pacing"))
         _sync_edit_options(edit_enabled.isChecked())
 
         def _save(_acc):
@@ -888,10 +875,6 @@ class AvaCloudPage:
                 if "model" in edit_touched:
                     ava_edit_cfg["model"] = self._widgets[
                         "ava_edit_model"].currentData()
-                if "demo_pacing" in edit_touched:
-                    ava_edit_cfg["demo_pacing"] = (
-                        "cinematic" if self._widgets[
-                            "ava_edit_demo_pacing"].isChecked() else "instant")
                 updates["ava_edit"] = ava_edit_cfg
 
             if self._ava_route_touched:
@@ -1028,7 +1011,7 @@ class AvaCloudPage:
         picker = self._widgets['openrouter_picker']
         if row is not None and picker.parent() is not row:
             # Source scaffolding is hidden; add to the destination's existing row.
-            row.grid.addWidget(button, 2, 0, 1, 3)
+            row.grid.addWidget(button, 2, 0, 1, 3, Qt.AlignmentFlag.AlignLeft)
             row.grid.addWidget(picker, 3, 0, 1, 3)
             picker.hide()
         is_openrouter = self._widgets['cloud_provider'].currentText() == 'OpenRouter'

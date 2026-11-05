@@ -912,7 +912,21 @@ class _WizardWindow(QDialog):
         self._work('hardware', lambda: hardware_check.check_hardware(consent=True))
 
     def _fill_hardware(self, facts):
-        self._facts = facts
+        detected = facts is not None and bool(
+            facts.gpus or facts.ram_bytes or facts.processor or facts.cores)
+        self._facts = facts if detected else None
+        for control in (self._gpu, self._vram, self._ram, self._cpu, self._cores):
+            control.setReadOnly(detected)
+            control.setFrame(not detected)
+            control.setStyleSheet(
+                'background: transparent; border: none;' if detected else '')
+            if isinstance(control, QLineEdit):
+                control.setPlaceholderText('' if detected else (
+                    'For example, NVIDIA RTX 3060' if control is self._gpu else 'Optional'))
+        if not detected:
+            self._hardware_status.setText(COPY['check_failed'])
+            self._hardware_status.show()
+            return
         self._filling = True
         gpu = max(facts.gpus, key=lambda g: ('nvidia' in g.name.lower(), g.dedicated_bytes), default=None)
         self._gpu.setText(gpu.name if gpu else '')
@@ -1213,6 +1227,7 @@ class _WizardWindow(QDialog):
             if isinstance(value, hardware_check.Hardware):
                 self._fill_hardware(value)
             else:
+                self._fill_hardware(None)
                 self._hardware_status.setText(COPY['check_failed'])
         elif kind == 'ollama':
             self._on_ollama_status(*(value if isinstance(value, tuple) else (False, [])))

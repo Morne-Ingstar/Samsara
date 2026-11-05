@@ -1053,6 +1053,8 @@ SETTINGS_SCHEMA = {
         "options": ["instant", "cinematic"],
         "default": "instant",
         "tab": "advanced",
+        "settings_ui": False,  # 1074: recording-only pacing stays config-only.
+        "ui_less_reason": "Demonstration animation pacing is configured in config.json.",
         "depends_on": "ava_edit.enabled",
     },
     "ava_edit.model": {

@@ -33,7 +33,7 @@ AUDITED_KEYS = set([
     "ava_command_session.interpret_misses",
     "ava_command_session.keep_warm",
     "ava_command_session.model",
-    "ava_edit.demo_pacing",
+    # 1074: Demo pacing is config-only.
     "ava_edit.enabled",
     "ava_edit.model",
     "ava_edit.timeout_seconds",
@@ -176,7 +176,7 @@ def window(qapp, monkeypatch, qt_widget_scope):
 
 
 def test_every_audited_key_has_one_reachable_editor(window):
-    assert len(AUDITED_KEYS) == 145  # 405 retires both echo-cancellation editors.
+    assert len(AUDITED_KEYS) == 144  # 1074: Demo pacing leaves Settings.
     bindings = window.config_row_inventory()
     # 827c: the connection switch has one reachable home on Integrations.
     assert [(page, widget) for key, page, widget in bindings
@@ -223,7 +223,8 @@ def test_six_pages_keep_approved_base_budgets(window):
     assert sum(row.page_name == 'General' and row.disclosure is window._pages['General'].advanced
                for row in window._destination_rows) == 4
     # 1124: 1015 moved Ava's guide from a ninth row into the page header.
-    assert [len(window._pages[name].base_rows) for name in ('Ava', 'Help')] == [8, 6]
+    # 1074: cloud credential/model join the eight main rows; guide is in the header.
+    assert [len(window._pages[name].base_rows) for name in ('Ava', 'Help')] == [10, 6]
     for tool in settings_qt.tools_page.TOOLS:
         window._ensure_tool(tool)
     assert set(window._tool_pages) == {'Command library', 'Alarms', 'Health', 'Music', 'Components', 'Integrations'}

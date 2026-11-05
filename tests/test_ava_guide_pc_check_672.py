@@ -84,6 +84,12 @@ def test_check_stays_grouped_during_work_and_failure_can_retry(window, monkeypat
     w._check_btn.click()
     jobs.pop()()
     assert w._check_btn.text() == 'Run again'
+    # 1074: detected facts stay read-only; a failed recheck restores manual entry.
+    assert w._ram.isReadOnly()
+    probe.side_effect = OSError('private diagnostic')
+    w._check_btn.click()
+    jobs.pop()()
+    assert not w._ram.isReadOnly()
     w._ram.setValue(24)
     assert w._facts is None
     assert w._hardware_status.isHidden()
