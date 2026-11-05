@@ -67,7 +67,8 @@ def test_problem_survives_timer_clear_and_hide_then_click_releases_waiter(displa
     d = display
     d.show('Synthetic problem', kind)
     d.show('Later information')
-    for seconds in (1, 11, 600):
+    # 1141: routine clears/hide cannot cut short a one-off error's reading time.
+    for seconds in (1, 2, 3):
         d.clock[0] = seconds
         d.i.clear_outcome()
         d.i.hide()
@@ -105,9 +106,11 @@ def test_queued_problem_cannot_be_lost_to_later_information(display):
     d.show('First problem', 'error')
     d.show('Second problem', 'error')
     d.show('Later information')
+    d.clock[0] = 2
     d.i.dismiss_error(); d.flush()
     assert d.text() == 'Second problem'
-    d.clock[0] = 600; d.expire()
+    # 1141: the queued error gets four seconds from display, not arrival.
+    d.clock[0] = 5.999; d.expire()
     assert d.text() == 'Second problem'
     d.i.dismiss_error(); d.flush()
     assert d.text() == 'Later information'
@@ -143,9 +146,14 @@ def test_long_error_has_full_hover_accessibility_and_single_announcement(display
     for _ in range(3):
         d.band().update(); qapp.processEvents(); d.expire()
     assert sum(text in message for message in announcements) == 1
-    d.clock[0] = 120
+    # 1141: a long one-off error stays readable for its duration, then fades.
+    duration = message_duration_ms(text, 'error') / 1000
+    d.clock[0] = duration - .001
     d.expire()
     assert d.text() == text
+    d.clock[0] = duration
+    d.expire()
+    assert d.text() == ''
 
 
 @pytest.mark.parametrize('kind', ['error', 'warning'])

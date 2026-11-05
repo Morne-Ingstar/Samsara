@@ -96,7 +96,7 @@ def post_reason(app, kind, *, handsfree=False, sustained_clipping=False, headlin
     label = 'Captured\n' + text if quiet else text
     severity = 'accent' if quiet else 'error'
     try:
-        duration = message_duration_ms(label, severity)
+        duration = message_duration_ms(label, severity, action=bool(hint))
         if getattr(app, 'listening_indicator', None) is not None:
             schedule_feedback(app, label, severity, duration, source='capture_' + kind)
         else:

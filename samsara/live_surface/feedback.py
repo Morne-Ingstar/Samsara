@@ -64,6 +64,9 @@ class Feedback:
 MOUSE_HOTKEY_OWNER = "mouse_hotkey"
 
 
+WINDOWS_WARNING_OWNER = "windows_warning"
+
+
 def feedback_for(kind: str, *, source: str = "", detail: dict | None = None) -> Feedback:
     """Explicit dispatch vocabulary; legacy pending is a question, never guessed."""
     detail = detail or {}
@@ -73,6 +76,9 @@ def feedback_for(kind: str, *, source: str = "", detail: dict | None = None) -> 
         return Feedback(FeedbackKind(kind), owner="tutorial_sample")
     if source == "mouse_hotkey_warning":
         return Feedback(FeedbackKind.WARNING, owner=MOUSE_HOTKEY_OWNER)
+    if source == "windows_warning":
+        # 1141: owned so the producer can clear it when the condition ends.
+        return Feedback(FeedbackKind.WARNING, owner=WINDOWS_WARNING_OWNER)
     if source == "hold_pending":
         return Feedback(FeedbackKind.RUNNING, FeedbackPurpose.RUNNING, "hold")
     if source in ("dictate_staged", "dictation_staged_chunk", "draft_parked"):

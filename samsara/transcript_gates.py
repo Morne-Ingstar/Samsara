@@ -423,7 +423,7 @@ _ECHO_MIN_WORDS = 4
 #: consequence (nothing was added), because the alternative -- the way
 #: this bug has behaved so far -- is text appearing that the user never
 #: said, or nothing happening with no reason given.
-_CONTEXT_ECHO_CHIP = 'echo of your draft - not staged'
+_CONTEXT_ECHO_CHIP = 'That sounded like your own draft read back - skipped'
 
 
 def _is_context_echo(text, context_tail):

@@ -1048,8 +1048,9 @@ class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QW
         if self._protected_outcome():
             return
         self._chip_feedback = None
-        self._chip_deadline = None
         self._chip_timer.stop()
+        # 1141: keep the expired deadline until _clear_outcome checks protection;
+        # removing it here would turn a timed problem into a persistent one.
         self._clear_outcome()
 
     def set_device_lost(self, lost: bool):

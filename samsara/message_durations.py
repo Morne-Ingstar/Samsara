@@ -10,6 +10,8 @@ MAX_MESSAGE_MS = 10000
 # A one-off warning is read, not acted on: it times out like other notes.
 MIN_WARNING_MS = 4000
 MAX_WARNING_MS = 12000
+# A one-off error with a Try again / Report button gets a little longer (1141).
+MAX_ACTION_MS = 15000
 
 
 def routine_receipt(label: str, kind: str) -> bool:
@@ -22,20 +24,21 @@ def routine_progress(purpose, owner) -> bool:
     return getattr(purpose, 'value', purpose) == 'running' and owner == 'hold'
 
 
-def message_duration_ms(label: str, kind: str, requested_ms=1800, *, purpose='result'):
+def message_duration_ms(label: str, kind: str, requested_ms=1800, *, purpose='result', action=False):
     """Normalize legacy numeric TTLs; preserve explicit persistent lifecycles.
 
     Questions/running work belong to their producer. Errors stay until
-    dismissal or the next user action. A warning with a numeric TTL is a
-    one-off event and times out by reading time (4-12 s); only a warning
-    posted with no TTL (an ongoing condition) lasts until its producer clears it.
+    dismissal or the next user action. A warning or error with a numeric TTL
+    is a one-off event and times out by reading time (4-12 s, up to 15 s when
+    it offers a button: action=True); only one posted with no TTL (an ongoing
+    condition) lasts until its producer clears it (1140 warnings, 1141 errors).
     """
     kind, purpose = getattr(kind, 'value', kind), getattr(purpose, 'value', purpose)
-    if purpose != 'result' or kind in ('error', 'pending', 'live') or requested_ms is None:
+    if purpose != 'result' or kind in ('pending', 'live') or requested_ms is None:
         return None
-    if kind == 'warning':
+    if kind in ('warning', 'error'):
         reading = MESSAGE_BASE_MS + MESSAGE_CHAR_MS * max(0, len(str(label)) - 20)
-        return max(MIN_WARNING_MS, min(MAX_WARNING_MS, reading))
+        return max(MIN_WARNING_MS, min(MAX_ACTION_MS if action else MAX_WARNING_MS, reading))
     return min(MAX_MESSAGE_MS, MESSAGE_BASE_MS + MESSAGE_CHAR_MS * max(0, len(str(label)) - 20))
 
 
@@ -44,7 +47,7 @@ def message_protected(label, kind, expires_at, now, *, purpose='result') -> bool
     kind = getattr(kind, 'value', kind)
     return (bool(label) and getattr(purpose, 'value', purpose) == 'result'
             and kind not in ('pending', 'live')
-            and (kind == 'error' or (kind == 'warning' and expires_at is None)
+            and (kind in ('error', 'warning') and expires_at is None
                  or expires_at is not None and now < expires_at))
 
 
@@ -133,7 +136,7 @@ class ReceiptDwell:
     def restore(self):
         """Rearm early callbacks or promote a waiter; report whether text stays."""
         now = monotonic()
-        if self._label and (self._kind == 'error' or (self._kind == 'warning' and self.deadline is None)):
+        if self._label and self._kind in ('error', 'warning') and self.deadline is None:
             return True
         if self.deadline is not None and now < self.deadline:
             self._start_timer(max(1, round((self.deadline - now) * 1000)))

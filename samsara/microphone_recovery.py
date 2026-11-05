@@ -192,6 +192,13 @@ def set_state(app, lost, *, notify=False):
         notice.interrupted(show_warning, lambda: (
             app._no_microphone if condition == 'missing' else
             not app._no_microphone and getattr(app, '_using_default_mic', False)))
+    if condition is None:
+        # 1141: the mic problem ended, so its Windows-warning message goes too.
+        try:
+            from samsara.live_surface.feedback import WINDOWS_WARNING_OWNER, schedule_owner_clear
+            schedule_owner_clear(app, WINDOWS_WARNING_OWNER)
+        except Exception:
+            pass
     if deferred:
         return  # Keep actual availability; defer only startup warning surfaces.
     indicator = getattr(app, 'listening_indicator', None)

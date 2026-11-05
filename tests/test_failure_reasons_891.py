@@ -150,7 +150,8 @@ def test_cancelled_streaming_result_has_no_new_notice(monkeypatch):
 
 
 def test_only_error_floor_changes():
-    assert message_duration_ms('x', 'error', 500) is None  # 1038
+    assert message_duration_ms('x', 'error', 500) == 4000  # 1141: one-off error times out (was 1038 persistent)
+    assert message_duration_ms('x', 'error', None) is None
     assert message_duration_ms('x', 'success', 500) == 2500
     assert message_duration_ms('x', 'warning', 500) == 4000  # 1140: one-off warning times out
 

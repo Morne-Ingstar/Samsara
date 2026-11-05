@@ -33,7 +33,9 @@ def test_expired_warning_is_not_protected_and_does_not_block():
 
 
 def test_errors_still_stay():
-    assert message_duration_ms('Paste failed', 'error', 1800) is None
+    # 1141: a one-off error (numeric ttl) now fades; only ttl None persists.
+    assert message_duration_ms('Paste failed', 'error', 1800) is not None
+    assert message_duration_ms('Paste failed', 'error', None) is None
 
 
 def test_slot_warning_ends_and_newer_message_not_cleared_by_old_timer():

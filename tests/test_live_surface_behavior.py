@@ -257,11 +257,10 @@ def test_command_results_and_ava_pending_are_not_silently_ignored(surface):
     indicator.clear_outcome()
     c.drain()
     assert c.view().notice.kind is NoticeKind.ERROR
-    # 1124: 1038 keeps an error until dismissal or the next action.
-    assert c.view().notice.expires_at is None
+    # 1141: a one-off error (numeric ttl) fades by reading time; it no longer
+    # waits for dismissal (this pinned the 1038/1124 "errors persist" rule).
+    assert c.view().notice.expires_at is not None
     clock[0] += 60; c.refresh_expired()
-    assert c.view().notice.kind is NoticeKind.ERROR
-    indicator.dismiss_error(); c.drain()
     assert c.view().notice.kind is NoticeKind.NONE
 
 
@@ -274,10 +273,11 @@ def test_optional_ai_off_expires_without_further_input(surface):
     assert c.widget._chip.toolTip() == "Optional AI is off"
     clock[0] += 4.1
     QTest.qWait(150)
-    # 1124: 1038 replaced the short error timeout with explicit dismissal.
-    assert c.widget.view.notice.kind is NoticeKind.ERROR
-    assert c.widget.view.notice.expires_at is None
-    indicator.dismiss_error(); c.drain()
+    # 1141: the error fades by reading time (4 s floor), no dismissal needed;
+    # this pinned the 1038/1124 "errors persist" rule.
+    clock[0] += 4.0
+    QTest.qWait(150)
+    c.refresh_expired(); c.drain()
     assert c.widget.view.notice.kind is NoticeKind.NONE
     assert c.widget.view.form is VisibleForm.MARK
 
@@ -289,8 +289,8 @@ def test_optional_ai_off_cannot_replace_live_words_or_leak_into_next_capture(sur
     partials.partial("Synthetic words remain visible.")
     indicator.show_outcome("Optional AI is off", "error", 1800)
     c.drain()
-    # 1124: 1038 prioritises persistent errors, retaining the capture's words.
-    assert c.widget.view.form is VisibleForm.STATUS
+    # 1141: a one-off error no longer persists, so it does not take over the
+    # display; the capture's words stay (was a 1038/1124 persistent-error rule).
     assert c.view().provisional_text == "Synthetic words remain visible."
     indicator.dismiss_error(); c.drain()
     assert c.widget.view.form is VisibleForm.LIVE

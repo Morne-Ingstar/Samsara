@@ -372,7 +372,8 @@ class TestTheLiveIncident:
             dictation._CONTEXT_ECHO_CHIP, "warning")
 
     def test_the_chip_says_what_happened_and_why(self):
-        assert dictation._CONTEXT_ECHO_CHIP == "echo of your draft - not staged"
+        # 1141: plain wording, no "staged" jargon.
+        assert dictation._CONTEXT_ECHO_CHIP == "That sounded like your own draft read back - skipped"
 
     def test_the_refusal_is_logged_with_a_fixed_reason_token(self, caplog):
         app, _manager = _make_loop_app(self.SEQUENCE)
