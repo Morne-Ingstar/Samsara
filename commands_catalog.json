@@ -8299,12 +8299,14 @@
       ],
       "canonical_id": "cockpit.clarify_cockpit_item",
       "description": "Previews an explicit change for a numbered unresolved memo entry.",
-      "examples": [],
+      "examples": [
+        "clarify cockpit item one as complete sample task"
+      ],
       "kind": "plugin",
       "object": "cockpit_item",
       "pack": "utilities",
       "plugin": "cockpit",
-      "precondition": "",
+      "precondition": "Create a memo preview with an unresolved entry first. Use its number and an exact writable task title; previews completion for approval.",
       "risk": "write",
       "source": "plugins/commands/cockpit.py:238",
       "undoable": false,
@@ -14595,13 +14597,7 @@
         "stop talking",
         "thats enough"
       ],
-      "args": [
-        {
-          "name": "text",
-          "required": false,
-          "type": "text"
-        }
-      ],
+      "args": [],
       "canonical_id": "speech_control.stop_speaking",
       "description": "Stops Samsara's spoken audio, keeping drafts and pending questions.",
       "examples": [],

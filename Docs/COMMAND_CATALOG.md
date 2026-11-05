@@ -423,7 +423,7 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 |---|---|---|---|---|---|---|---|---|---|
 | `cockpit.approve_cockpit_memo_batch` | `approve cockpit memo batch` | proposal_id:text*, proposal_hash:text*, request_id:text*, source_hash:text*, context_hash:text*, generation:int* | - | Bound approval policy identity; this is not a spoken command. | destructive | no (declared: no undo) |  | Identifies a memo batch approval that must be completed in its review window. | `plugins/commands/cockpit.py:221` |
 | `cockpit.choose_cockpit_target` | `choose cockpit target` | remainder:text* | `choose cockpit target item two candidate one` | Create a memo preview with a second item and a matching first target candidate; refreshes the preview without applying changes. | write | no (undeclared: no verified recovery) |  | Selects which suggested task a numbered memo change should update. | `plugins/commands/cockpit.py:194` |
-| `cockpit.clarify_cockpit_item` | `clarify cockpit item` | remainder:text* | - | - | write | no (undeclared: no verified recovery) |  | Previews an explicit change for a numbered unresolved memo entry. | `plugins/commands/cockpit.py:238` |
+| `cockpit.clarify_cockpit_item` | `clarify cockpit item` | remainder:text* | `clarify cockpit item one as complete sample task` | Create a memo preview with an unresolved entry first. Use its number and an exact writable task title; previews completion for approval. | write | no (undeclared: no verified recovery) |  | Previews an explicit change for a numbered unresolved memo entry. | `plugins/commands/cockpit.py:238` |
 | `cockpit.cockpit_today` | `cockpit today`, `read cockpit today`, `what should i do in cockpit` | remainder:text | `cockpit today` | Connect Cockpit first; reads its current briefing. | read | no (not needed: read only) |  | Reads today's recommended tasks, appointments and waiting items. | `plugins/commands/cockpit.py:330` |
 | `cockpit.complete_cockpit_item` | `complete cockpit item` | remainder:text* | `complete cockpit item sample task` | Requires a writable Cockpit task with that exact title; previews completion for approval. | write | no (undeclared: no verified recovery) |  | Previews marking a task as done for approval. | `plugins/commands/cockpit.py:417` |
 | `cockpit.move_cockpit_item` | `move cockpit item` | remainder:text* | `move cockpit item sample task to tomorrow` | Requires a writable Cockpit task or event with that exact title; previews a change for approval. | write | no (undeclared: no verified recovery) |  | Previews moving a task or appointment to another day for approval. | `plugins/commands/cockpit.py:394` |
@@ -812,7 +812,7 @@ Columns: canonical id; every phrase the registry maps to it; args as name:type (
 
 | canonical id | phrases | args | examples | before you say it | risk | undo | whole | description | source |
 |---|---|---|---|---|---|---|---|---|---|
-| `speech_control.stop_speaking` | `quiet`, `stop speaking`, `stop talking`, `thats enough` | text:text | - | - | ui | yes (declared: reversible (not verified rollback)) |  | Stops Samsara's spoken audio, keeping drafts and pending questions. | `plugins/commands/speech_control.py:6` |
+| `speech_control.stop_speaking` | `quiet`, `stop speaking`, `stop talking`, `thats enough` | - | - | - | ui | yes (declared: reversible (not verified rollback)) |  | Stops Samsara's spoken audio, keeping drafts and pending questions. | `plugins/commands/speech_control.py:6` |
 
 ## stats (1)
 

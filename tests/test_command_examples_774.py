@@ -198,6 +198,17 @@ def _isolated_effects(monkeypatch, executor, app, phrase, tmp_path):
     elif stem == 'comfy':
         stub('_state', NS(last_prompt='a red fox in the snow'))
         stub('_start', module.DispatchResult(DispatchState.QUEUED, phrase, phrase))
+    elif stem == 'cockpit':
+        # 1155: run the real clarification parser against a synthetic preview.
+        fresh = NS(request_id='sample-clarification', read_page=lambda: 'Sample preview.')
+        app._cockpit_memo_runner = NS(
+            proposal={'unresolved': [{'key': 'sample-unresolved'}]},
+            client=NS(context=lambda: {'records': [
+                {'id': 'task:sample', 'kind': 'task', 'title': 'sample task'}]}),
+            clarify=effect('clarify', fresh))
+        monkeypatch.setattr(module, 'announce', lambda *_a: None)
+        from samsara.runtime import thread_registry
+        monkeypatch.setattr(thread_registry, 'spawn', lambda _name, work, **_kw: work())
     elif stem == 'core_utils':
         if phrase == 'save alias':
             app._personal_alias_offer = {'miss': 'my window list', 'canonical': 'show windows', 'expires': time.monotonic() + 60}
@@ -425,6 +436,10 @@ def test_example_runs_real_handler_with_isolated_effects(catalog_router, monkeyp
         else:
             assert result.state in {DispatchState.COMPLETED, DispatchState.QUEUED}, (sentence, result)
         assert observed, (sentence, 'Handler did not request an effect')
+        if phrase == 'clarify cockpit item':
+            # 1155: the reviewed example must preview exactly this completion.
+            assert observed == [('clarify', ('sample-unresolved', 'task:sample', {'status': 'done'}), {})]
+            assert app._cockpit_memo_runner.request_id == 'sample-clarification'
         if phrase in {'claude message prepare', 'message chat gpt'}:
             # 1031a: an AI example proves the real submit ran once without yes.
             assert result.state is DispatchState.COMPLETED

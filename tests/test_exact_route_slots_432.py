@@ -5,7 +5,6 @@ production registry supplies declarations; monitor state and effects are fake.
 """
 import json
 import logging
-import subprocess
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -48,6 +47,22 @@ VOICE_SLOTS = {
     'reword selection': ('Foo', {'remainder': 'reword selection Foo'}),
     'rephrase selection': ('Foo', {'remainder': 'rephrase selection Foo'}),
     'select previous': ('three words', {'remainder': 'three words'}),
+    # 1155: required slots added since the last production-inventory refresh.
+    'skip cockpit item': ('one', {'remainder': 'one'}),
+    'choose cockpit target': ('item one candidate two', {'remainder': 'item one candidate two'}),
+    'clarify cockpit item': ('one as complete Sample task', {'remainder': 'one as complete Sample task'}),
+    'move cockpit item': ('Sample task to tomorrow', {'remainder': 'Sample task to tomorrow'}),
+    'set cockpit deadline': ('Sample task to tomorrow', {'remainder': 'Sample task to tomorrow'}),
+    'complete cockpit item': ('Sample task', {'remainder': 'Sample task'}),
+    'set cockpit priority': ('Sample task to high', {'remainder': 'Sample task to high'}),
+    'slack message': ('Sample contact saying hello', {'remainder': 'Sample contact saying hello'}),
+    'trust slack conversation': ('Sample contact', {'remainder': 'Sample contact'}),
+    'save this tab to layout': ('writing', {'remainder': 'writing'}),
+    'clear layout tabs': ('writing', {'remainder': 'writing'}),
+    'favorites font size': ('eighteen', {'remainder': 'eighteen'}),
+    'favorites window size': ('wide', {'remainder': 'wide'}),
+    'remove favorite': ('two', {'remainder': 'two'}),
+    'rename favorite': ('two to Project notes', {'remainder': 'two to Project notes'}),
 }
 CONTROLLER_SLOTS = {
     'interact focus': {'subject_token': 'opaque-controller-token'},
@@ -56,6 +71,12 @@ CONTROLLER_SLOTS = {
     'interact move': {'subject_token': 'opaque-controller-token', 'monitor': 2},
     'interact snap': {'subject_token': 'opaque-controller-token', 'side': 'left'},
     'interact close': {'subject_token': 'opaque-controller-token'},
+    # 1155: Cockpit approval is a controller identity, never a spoken command.
+    'approve cockpit memo batch': {
+        'proposal_id': 'sample-proposal', 'proposal_hash': 'sample-proposal-hash',
+        'request_id': 'sample-request', 'source_hash': 'sample-source-hash',
+        'context_hash': 'sample-context-hash', 'generation': 0,
+    },
 }
 
 
@@ -90,6 +111,9 @@ def live(production, monkeypatch):
     monkeypatch.setattr(windows.win32api, 'EnumDisplayMonitors',
                         lambda: [(m['handle'], None, m['rect']) for m in monitors])
     monkeypatch.setattr(windows.win32api, 'GetCursorPos', lambda: (300, 400))
+    # 1155: layout slots require a known saved name during whole-utterance matching.
+    monkeypatch.setattr(windows, '_load_all_layouts',
+                        lambda: {'writing': {'windows': [], 'browser_tabs': []}})
 
     def forbidden(*_args, **_kwargs):
         raise AssertionError('validation must not cause a window/cursor effect')
@@ -121,6 +145,11 @@ def _decision(executor, app, phrase, args, *, route=ep.Route.EXACT, generation=0
 def test_every_required_voice_slot_has_the_same_policy_decision_as_typed(live, monkeypatch, phrase):
     executor, app, _windows, _monitors = live
     remainder, typed = VOICE_SLOTS[phrase]
+    expected_route = ep.Route.EXACT
+    if phrase == 'clear layout tabs':
+        # 1155: the tabs-to-tab wash makes this command use its grammar fallback.
+        app.config['commands']['grammar_tier'] = True
+        expected_route = ep.Route.GRAMMAR
     entry = executor._registry_entry(phrase)
     scope = entry.scope
     if scope is not None:
@@ -129,7 +158,7 @@ def test_every_required_voice_slot_has_the_same_policy_decision_as_typed(live, m
                             lambda: MatchContext.for_app(exe, tags=scope.tags))
     captured, _result = _capture(executor, app, monkeypatch, f'{phrase} {remainder}')
     assert captured['command_id'] == phrase
-    assert captured['route'] is ep.Route.EXACT
+    assert captured['route'] is expected_route
     # 887: selection requests retain the whole utterance for their intent parser.
     expected_remainder = typed.get('remainder', remainder)
     assert captured['args']['remainder'] == expected_remainder
@@ -151,7 +180,9 @@ def test_controller_tokens_are_never_inferred_from_voice(live, monkeypatch, phra
         decision = _decision(executor, app, phrase, captured['args'])
         assert isinstance(decision, ep.Denied)
         assert decision.reason == 'invalid_args'
-        assert decision.detail == "missing required argument 'subject_token'"
+        # 1155: preserve the exact refusal for each controller's required identity.
+        missing = 'proposal_id' if phrase == 'approve cockpit memo batch' else 'subject_token'
+        assert decision.detail == f"missing required argument '{missing}'"
     else:
         assert result.state is DispatchState.MISS
 
@@ -454,7 +485,15 @@ def test_json_lists_and_tuples_have_identical_user_route_decisions(live, route, 
     expected = _decision(executor, app, 'send',
                          {'app_name': ('chrome', 'firefox'), 'monitor': destinations}, route=route)
     assert actual == expected
-    assert isinstance(actual, ep.Allowed if destinations[-1] == 'right' else ep.Denied)
+    # 1155: 1031e/1031f reserve semantic slot authority for exact/grammar routes.
+    if route in {ep.Route.MACRO, ep.Route.SCHEDULE}:
+        assert actual == ep.Denied('invalid_args', risk='ui',
+                                   detail="argument 'app_name' must be a app_name")
+    elif destinations[-1] == 'right':
+        assert isinstance(actual, ep.Allowed)
+    else:
+        assert actual == ep.Denied('invalid_args', risk='ui',
+                                   detail="argument 'monitor' must be a monitor")
 
 
 @pytest.mark.parametrize('name', ['command and conquer', 'photo to pdf', 'back to the future'])
@@ -528,36 +567,37 @@ def test_validator_intentionally_refuses_when_handler_reader_would_guess(live, m
     assert isinstance(_decision(executor, app, 'send', {'monitor': destination}), ep.Denied)
 
 
-def test_fresh_interpreter_requires_plugin_registration_before_authorize(tmp_path):
-    # The subprocess inherits the gate's isolated environment. Read only
-    # repository source; no Git, owner profile, service, or window effect.
-    script = r'''
-import ast
-import sys
-from pathlib import Path
-from types import SimpleNamespace
-from samsara import execution_policy as ep, plugin_commands
-assert 'plugins.commands.windows' not in sys.modules
-tree = ast.parse(Path('plugins/commands/windows.py').read_text(encoding='utf-8'))
-handler = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'handle_send')
-declaration = handler.decorator_list[0]
-metadata = {kw.arg: ast.literal_eval(kw.value) for kw in declaration.keywords}
-plugin_commands._REGISTRY['send'] = {'phrase': 'send', 'metadata': metadata}
-app = SimpleNamespace(config={}, _ava_cmd_generation=0)
-inv = ep.Invocation('send', {'monitor': 'monitor 1'}, ep.Route.EXACT, 0)
-before = ep.authorize(inv, app=app, quiet=True)
-assert before == ep.Denied('invalid_args', risk='ui', detail="argument 'monitor' must be a monitor"), before
-assert 'plugins.commands.windows' not in sys.modules
-plugin_commands._REGISTRY.pop('send')  # remove the pre-import declaration stub
-from plugins.commands import windows
-assert windows._strict_monitors(), 'readable real monitor required by this test'
-after = ep.authorize(inv, app=app, quiet=True)
-assert isinstance(after, ep.Allowed), after
-print('before: refused; after plugin import: allowed with real monitor 1; no handler called')
-'''
-    completed = subprocess.run([sys.executable, '-B', '-c', script],
-                               cwd=Path(__file__).resolve().parents[1],
-                               text=True, capture_output=True, timeout=30)
-    assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert 'after plugin import: allowed with real monitor 1' in completed.stdout
+def test_fresh_interpreter_requires_plugin_registration_before_authorize(monkeypatch):
+    # 1155: recreate fresh registration state in-process; the gate forbids children.
+    # Keep the historical node id and restore all module/registry state afterwards.
+    import ast
+    import importlib
+    import plugins.commands as commands
+
+    importlib.import_module('plugins.commands.windows')
+    source = Path(__file__).resolve().parents[1] / 'plugins/commands/windows.py'
+    tree = ast.parse(source.read_text(encoding='utf-8'))
+    handler = next(node for node in tree.body
+                   if isinstance(node, ast.FunctionDef) and node.name == 'handle_send')
+    metadata = {kw.arg: ast.literal_eval(kw.value) for kw in handler.decorator_list[0].keywords}
+    with monkeypatch.context() as patch:
+        patch.delitem(sys.modules, 'plugins.commands.windows')
+        patch.delattr(commands, 'windows')
+        patch.setattr(arg_types, '_ARG_TYPE_VALIDATORS', {})
+        patch.setattr(plugin_commands, '_REGISTRY', {'send': {'phrase': 'send', 'metadata': metadata}})
+        app = SimpleNamespace(config={}, _ava_cmd_generation=0)
+        inv = ep.Invocation('send', {'monitor': 'monitor 1'}, ep.Route.EXACT, 0)
+        assert ep.authorize(inv, app=app, quiet=True) == ep.Denied(
+            'invalid_args', risk='ui', detail="argument 'monitor' must be a monitor")
+        assert 'plugins.commands.windows' not in sys.modules
+        assert not arg_types._ARG_TYPE_VALIDATORS
+        plugin_commands._REGISTRY.pop('send')
+        windows = importlib.import_module('plugins.commands.windows')
+        assert arg_types._ARG_TYPE_VALIDATORS['monitor'] is windows._validate_monitor
+        assert arg_types._ARG_TYPE_VALIDATORS['app_name'] is windows._validate_app_name
+        patch.setattr(windows, '_strict_monitors', lambda: [
+            dict(index=1, rect=(0, 0, 1920, 1080), width=1920, height=1080)])
+        patch.setitem(plugin_commands._REGISTRY['send'], 'func',
+                      lambda *_a: pytest.fail('authorization called handler'))
+        assert isinstance(ep.authorize(inv, app=app, quiet=True), ep.Allowed)
 

@@ -447,6 +447,9 @@ _SCHEMA_TYPE = {"int": "int", "integer": "int", "float": "int", "str": "text", "
 # Keep these explicit: synthesizing a suffix from an argument type produces
 # plausible sentences that a handler may not actually understand.
 _COMMAND_HELP = {
+    # PLACEHOLDER COPY (1155): clarify an unresolved entry without applying it.
+    "clarify cockpit item": (["clarify cockpit item one as complete sample task"],
+                             "Create a memo preview with an unresolved entry first. Use its number and an exact writable task title; previews completion for approval."),
     # PLACEHOLDER COPY (1120): reviewed microphone check examples.
     "check my mic": (["check my mic", "test my microphone"],
                      "Opens Check my mic. Choose Start check, stay quiet, then read the sentence when asked."),
@@ -563,6 +566,7 @@ _COMMAND_HELP = {
 _NO_ARGUMENT_PHRASES = frozenset({
     "hands free", "move preview to this screen", "reset floating windows",
     "refresh cube", "refresh numbers",
+    "stop speaking",  # 1155: reads the tail only to reject it.
     # 820: these controls reject tails; the window number is in the phrase.
     "cancel", "confirm close", "keep it open",
     *(f"close {number}" for number in range(1, 100)),
