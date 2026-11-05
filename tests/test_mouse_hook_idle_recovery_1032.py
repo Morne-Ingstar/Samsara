@@ -41,7 +41,8 @@ def test_failed_replacement_keeps_listening_through_five_minute_backoff(recovery
     monkeypatch.setattr(s.hook, '_self_test', lambda: 'dead')
     s.hook.watchdog_tick()
     assert s.hook.installed and not s.hook.suppress_buttons
-    assert s.hook._retry_due == s.clock.now + 300
+    # 1142: a missed replacement probe alone must not start a retry timer.
+    assert s.hook._retry_due is None
     stop.assert_not_called()
     assert not s.installs and len(s.notices) == 1
 
@@ -169,8 +170,9 @@ def test_return_rechecks_previously_healthy_hook_without_waiting_for_movement_wi
     s.hook._backoff_step = 99  # returning user bypasses stale escalation too
     activity(s, monkeypatch, tick=101)
     s.hook.watchdog_tick()
-    probe.assert_called_once()
-    assert len(s.installs) == (1 if verdict == 'dead' else 0)
+    # 1142: resumed keyboard/session input alone is not a mouse-loss signal.
+    probe.assert_not_called()
+    assert len(s.installs) == 0
     assert s.hook._retry_due is None
 
 

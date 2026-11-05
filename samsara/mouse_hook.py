@@ -33,6 +33,11 @@ sample). A loss needs SILENT_CHECKS consecutive silent checks (>= 3 s) AND a
 failed self-test: a zero-motion mouse move injected with SendInput that our
 own hook must see within PROBE_WAIT_S.
 
+1142: session input resuming is not mouse-loss evidence. A keyboard event
+or a real mouse callback just before the probe can resume the session while
+the injected move itself never reaches us. Require silent cursor movement
+before acting on a missed probe, including on a replacement hook.
+
 Panic release: stop()/release() unhook on the thread that installed the hook
 (after its message loop ends); an atexit handler releases every live hook.
 The OS also removes a hook when its process exits, so a crashed process
@@ -92,6 +97,9 @@ SILENT_CHECKS = 3
 #: How long the self-test waits for our own injected move to reach the hook.
 PROBE_WAIT_S = 0.25
 ACTIVE_RETRY_S = 30.0
+#: Once actual loss is detected during activity, do not wait behind the
+#: install-error/probe history. Still bound retries if a thread keeps dying.
+ACTIVE_LOSS_RETRY_S = 1.0
 INPUT_IDLE_S = 30.0
 
 _perf = time.perf_counter
@@ -553,7 +561,10 @@ class MouseHook:
         if self._silent_checks < SILENT_CHECKS:
             return ''
         self._silent_checks = 0
+        before = self.callback_count
         verdict = self._self_test()
+        if self.callback_count != before:
+            verdict = 'alive'  # real input arriving at the verdict boundary wins
         self._watch_count = self.callback_count     # the probe's own callback is not user traffic
         if verdict == 'alive':
             self.false_alarms += 1
@@ -573,7 +584,12 @@ class MouseHook:
 
     def _self_test(self) -> str:
         """'alive' | 'dead' | 'inconclusive': inject a zero-motion move and wait
-        for any callback to arrive."""
+        for any callback to arrive.
+
+        'dead' means only that the probe missed a responsive hook thread.
+        It needs independent mouse-loss evidence before replacing a hook.
+        SendInput acceptance does not prove delivery through the hook chain.
+        """
         before = self.callback_count
         started = _perf()
         self._probe_event = None
@@ -670,15 +686,9 @@ class MouseHook:
                     self._input_retry_used = True
             elif resumed:
                 self._confirm_due = now
-        if resumed and not self.recovering and self.installed:
-            # A hook may have disappeared while checks were paused. Verify
-            # immediately instead of waiting for three more silent movements.
-            if self._self_test() == 'dead':
-                self._begin_recovery('mouse hook silent after input resumed')
-                self._stop_hook_thread()
-                self._attempt_install()
-            self._watch_pos, self._watch_count, self._silent_checks = None, self.callback_count, 0
-            return
+        # 1142: GetLastInputInfo includes keyboard/injected input. Returning
+        # from idle is not evidence of missing mouse callbacks; _hook_lost
+        # below must corroborate a failed probe with silent mouse movement.
         if self.recovering:
             self._begin_recovery(self.install_error or 'mouse hook interrupted')
         if self.recovering and self.installed:
@@ -689,9 +699,10 @@ class MouseHook:
                 verdict = self._self_test()
                 if verdict == 'alive':
                     self._recovered()
-                elif verdict == 'dead':
-                    self._reinstall('replacement hook missed its own injected self-test')
-                return
+                else:
+                    self._recover_from_callbacks()  # a late event outranks the probe
+                # A missed replacement probe alone cannot consume reinstalls
+                # or enter backoff. Keep listening; check actual loss below.
         elif self._healthy_since is not None and now - self._healthy_since >= HEALTHY_RESET_S:
             self._episode_notified = False
             self._backoff_step = 0
@@ -704,9 +715,9 @@ class MouseHook:
             return
         reason = self._hook_lost()
         if reason:
-            self._reinstall(reason)
+            self._reinstall(reason, active_input=self._activity_active)
 
-    def _reinstall(self, reason: str) -> None:
+    def _reinstall(self, reason: str, *, active_input=False) -> None:
         if self.recovering and self.installed and self.callback_count != self._recovery_count:
             self._recovered()  # a late event outranks a missed probe
             return
@@ -719,7 +730,7 @@ class MouseHook:
         if len(self._reinstalls) >= REINSTALL_LIMIT or self._backoff_step:
             # Keep the replacement listening with suppression off: a failed
             # injection must never prevent a real returning event reaching us.
-            self._schedule_retry(reason)
+            self._schedule_retry(reason, active_loss=active_input)
             return
         self._stop_hook_thread()
         self._reinstalls.append(now)
@@ -741,11 +752,13 @@ class MouseHook:
                 self._begin_recovery(self.install_error)
             self._schedule_retry(self.install_error or 'hook thread not ready', install_failed=True)
 
-    def _schedule_retry(self, reason: str, *, install_failed=False) -> None:
+    def _schedule_retry(self, reason: str, *, install_failed=False, active_loss=False) -> None:
         delay = (INSTALL_RETRY_S if install_failed else
                  RETRY_BACKOFF_S[min(self._backoff_step, len(RETRY_BACKOFF_S) - 1)])
         if self._activity_active:
             delay = min(delay, ACTIVE_RETRY_S)
+        if active_loss and not install_failed:
+            delay = min(delay, ACTIVE_LOSS_RETRY_S)
         self._backoff_step += 1
         self._retry_due = _perf() + delay
         self._retry_input_tick = self._last_input_tick
