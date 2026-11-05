@@ -893,6 +893,7 @@ class _WizardWindow(QDialog):
         self._key_summary = _text('')
         col.addWidget(self._key_summary)
         col.addWidget(_text(COPY['ready_note']))
+        col.addWidget(_text("While Ava reads, say stop (mic listening, outside dictation), click Stop, or use tray > Stop speaking. Say repeat that to hear it again."))  # PLACEHOLDER COPY (1149)
         col.addStretch()
         self._save_status = self._status()
         col.addWidget(self._save_status)

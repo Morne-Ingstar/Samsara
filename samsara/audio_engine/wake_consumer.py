@@ -1008,23 +1008,9 @@ class WakeConsumer:
         if self._mouth_shadow is not None:
             self._mouth_shadow.observe(self, frame)
 
-        # Epoch-change detection: abort utterance and reset state
-        if self._last_epoch is not None and frame.device_epoch != self._last_epoch:
-            self._log_frame(logging.WARNING, 'frame_562', "[ACE] Wake path: epoch change — aborting utterance, resetting state")
-            self._utterance_frames   = []
-            self._buffer_rms_history = []
-            self._last_voice_ns = None
-            self._speech_start_ns = None
-            self._onset_context = None
-            app.is_speaking   = False
-            app.silence_start = None
-            self._close_hands_free_duck_safe(app, self._hands_free_capture_duck_token)
-            self._hands_free_capture_duck_token = None
-            try:
-                app._vad_reset()
-            except Exception as e:
-                self._log_frame(logging.DEBUG, 'frame_572', f"_vad_reset failed after epoch change: {e}")
-        self._last_epoch = frame.device_epoch
+        from .speech_stop import observe as observe_speech_stop
+        if observe_speech_stop(self, frame):
+            return
 
         # Full hold deafness also applies after speech onset, preventing
         # concurrent wake/hold capture. Sound suppression observes every

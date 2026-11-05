@@ -510,8 +510,10 @@ def handle_claude_read_rest(app, remainder):
 @command("repeat that", pack="core", risk_class="safe", reversible=True,
          side_effects=["audio"])
 def handle_claude_repeat(app, remainder):
-    """Repeats the part of Claude's reply that was last read aloud."""  # PLACEHOLDER COPY (531)
-    return claude_reply.followup(app, "repeat that")
+    """Repeats stopped speech, or the last part of the agent reply."""  # PLACEHOLDER COPY (1149)
+    from samsara.tts.speech_control import repeat_speech
+    return (repeat_speech(app, stopped_only=True)
+            or claude_reply.followup(app, "repeat that") or repeat_speech(app))
 
 
 @command("stop claude", aliases=["stop claude reply", "stop the reply", "quiet claude"],

@@ -211,6 +211,11 @@ class AudioCoordinator:
         self._speech_windows = deque(maxlen=16)
         self._speech_pending = 0
         self._speech_generation = 0
+        self._speech_stop_serial = 0
+        self._speech_item_serial = 0
+        self._speech_replay = None
+        self._speech_replay_stopped = False
+        self._speech_echo_texts = deque(maxlen=16)
 
         # Active TTS handle in SPEAKING state.
         self._active_handle: Optional[SpeechHandle] = None
@@ -372,6 +377,15 @@ class AudioCoordinator:
             effective_speed = speed if speed is not None else tts_cfg.get('speed', 1.0)
             effective_volume = volume if volume is not None else tts_cfg.get('volume', 0.8)
             effective_voice = voice_id or tts_cfg.get('voice_id')
+            self._speech_item_serial += 1
+            stop_serial = self._speech_stop_serial
+            self._speech_replay = dict(text=text, category=category, voice_id=voice_id,
+                                       speed=speed, volume=volume, caption_source=caption_source,
+                                       interruptible=interruptible)
+            self._speech_replay_stopped = False
+            if not self.is_speaking:
+                self._speech_echo_texts.clear()
+            self._speech_echo_texts.append(text)
 
             # A later utterance may already be queued when this one finishes.
             # Keep the speech window open until the final playback callback.
@@ -393,11 +407,12 @@ class AudioCoordinator:
                     last = current and self._speech_pending == 0
                 if last:
                     self.transition_to(IDLE, context={'reason': 'tts_complete'})
-                if on_done:
-                    try:
-                        on_done()
-                    except Exception:
-                        safe_exception(logger, "AudioCoordinator: on_done callback raised")
+                with self._dispatch_lock:
+                    if on_done and stop_serial == self._speech_stop_serial:
+                        try:
+                            on_done()
+                        except Exception:
+                            safe_exception(logger, "AudioCoordinator: on_done callback raised")
 
             self._active_interruptible = interruptible
             self.transition_to(SPEAKING, context={'text': text})
@@ -419,6 +434,11 @@ class AudioCoordinator:
 
         self._active_handle = handle
         self._last_spoken_handle = handle
+        try:
+            from .speech_control import announce_reading
+            announce_reading(self, text, caption_source)
+        except Exception:
+            logger.debug("AudioCoordinator: speech controls unavailable", exc_info=True)
         return handle
 
     # ------------------------------------------------------------------

@@ -1300,6 +1300,8 @@ class SamsaraTrayQt(QObject, TrayNotifications):
         menu = self._menu
         menu.clear()
         add = self._add
+        from samsara.ui.speech_controls_qt import add_tray_controls
+        add_tray_controls(menu, app)
         _show_action, settings_action, support_action, restart_action, exit_action = (
             self._core_actions(menu)
         )

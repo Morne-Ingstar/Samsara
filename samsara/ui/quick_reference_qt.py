@@ -578,6 +578,8 @@ class _QuickReferenceWindow(QMainWindow):
         self._row(lay, "Undo phrase", scratch["phrase"], scratch["enabled"])
 
         stop = state["stop"]
+        # PLACEHOLDER COPY (1149): separate from session stop and mode descriptions.
+        self._row(lay, "Stop spoken audio only", "While reading: say stop (mic listening, outside dictation), click Stop, or tray > Stop speaking. Say repeat that to replay.", True)
         self._row(lay, "Stop (keeps the draft, mic stays on)", ", ".join(stop["words"]) or "(none)", stop["enabled"])
 
         sleep = state["sleep"]

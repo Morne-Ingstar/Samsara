@@ -190,6 +190,7 @@ class _CaptionsWindow(QWidget):
         # captioning, which is the one thing this must never do.
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setAccessibleName("Ava captions")
+        self.setWindowTitle("Ava captions")
         self.setObjectName("avaCaptions")
 
         outer = QVBoxLayout(self)
@@ -215,9 +216,13 @@ class _CaptionsWindow(QWidget):
         self._text.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         inner.addWidget(self._text)
 
-        self._hint = QLabel("Click anywhere to dismiss " + chr(0xB7) + " Drag to move")
+        from samsara.ui.speech_controls_qt import SpeechControls
+        self._speech_controls = SpeechControls(app, self)
+        inner.addWidget(self._speech_controls)
+
+        self._hint = QLabel("Click text to dismiss " + chr(0xB7) + " Drag to move")  # PLACEHOLDER COPY (1149)
         self._hint.setObjectName("avaCaptionHint")
-        self._hint.setAccessibleName("Click anywhere on the caption to dismiss it. Drag it to move it.")
+        self._hint.setAccessibleName("Click the caption text to dismiss it. Drag it to move it.")
         inner.addWidget(self._hint)
 
         # Linger / hard-cap timer. One timer, restarted -- a held caption
@@ -225,7 +230,7 @@ class _CaptionsWindow(QWidget):
         # countdown.
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
-        self._timer.timeout.connect(self.hide)
+        self._timer.timeout.connect(self._expire)
 
         self._dragging = False
         self._drag_origin = None
@@ -296,6 +301,13 @@ class _CaptionsWindow(QWidget):
     def _arm(self, seconds: float) -> None:
         self._timer.stop()
         self._timer.start(int(max(seconds, 0.1) * 1000))
+
+    def _expire(self) -> None:
+        coordinator = getattr(self._app, "audio_coordinator", None)
+        if coordinator is not None and coordinator.is_speaking is True:
+            self._arm(1.0)  # Keep Stop reachable throughout a long reading.
+        else:
+            self.hide()
 
     def dismiss(self) -> None:
         self._timer.stop()
@@ -506,6 +518,21 @@ def release_caption(app) -> None:
             logger.debug("Ava captions: could not start the linger: %s", exc)
 
     _post(_run)
+
+
+def focus_controls(app) -> None:
+    """Explicit tray action: focus Stop without activating incoming captions."""
+    def focus():
+        window = _ensure_window(app)
+        if not window.isVisible():
+            window.show_text("Reading aloud", True, caption_linger_s(app.config), "SAMSARA")
+        window._speech_controls.refresh()
+        window.setWindowFlag(Qt.WindowType.WindowDoesNotAcceptFocus, False)
+        window.show()
+        window.raise_()
+        window.activateWindow()
+        window._speech_controls.stop.setFocus(Qt.FocusReason.OtherFocusReason)
+    _post(focus)
 
 
 def hide_captions() -> None:

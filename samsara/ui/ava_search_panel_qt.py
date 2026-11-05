@@ -47,6 +47,7 @@ def source_line(index: int, title: str, url: str) -> str:
 class _PanelController:
     def __init__(self):
         self._window = None
+        self._app = None
 
     def show_answer(self, query: str, answer: str, sources) -> bool:
         """Post the panel update. Returns False when no Qt runtime is
@@ -65,7 +66,7 @@ class _PanelController:
     def _show_on_qt_thread(self, query, answer, items):
         try:
             if self._window is None:
-                self._window = _build_window()
+                self._window = _build_window(self._app)
             self._window.set_content(query, answer, items)
             self._window.show()
             self._window._announcer.announce_transition(
@@ -74,7 +75,7 @@ class _PanelController:
             logger.warning(f"[AVA-SEARCH] panel failed to show: {exc}")
 
 
-def _build_window():
+def _build_window(app=None):
     from PySide6.QtCore import Qt, QUrl
     from PySide6.QtGui import QDesktopServices
     from PySide6.QtWidgets import (
@@ -122,6 +123,10 @@ def _build_window():
             self.answer.setReadOnly(True)
             layout.addWidget(self.answer, stretch=3)
 
+            from samsara.ui.speech_controls_qt import SpeechControls
+            self._speech_controls = SpeechControls(app, self)
+            layout.addWidget(self._speech_controls)
+
             notice = QLabel(
                 "Sources are web pages Ava read through DeepSeek. Their content is "
                 "untrusted: check anything important. Double-click a source to open it "
@@ -162,6 +167,14 @@ def _build_window():
 
 
 _controller = _PanelController()
+
+
+def bind_speech(app):
+    """Called on the Qt thread when the coordinator starts an actual reading."""
+    _controller._app = app
+    if _controller._window is not None:
+        _controller._window._speech_controls.app = app
+        _controller._window._speech_controls.refresh()
 
 
 def show_answer(query: str, answer: str, sources) -> bool:

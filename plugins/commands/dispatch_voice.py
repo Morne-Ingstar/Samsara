@@ -17,6 +17,9 @@ def _forward(name, *args):
 
 
 def route_ava_utterance(app, text):
+    from samsara.tts.speech_control import voice_control
+    if voice_control(app, text):
+        return True
     return _forward("route_ava_utterance", app, text)
 
 

@@ -61,11 +61,12 @@ class ReadSequence:
         return self.cancelled.wait(seconds)
 
     def run(self):
+        stop_serial = getattr(self.coordinator, '_speech_stop_serial', 0)
         try:
             for index, (number, text) in enumerate(self.items):
                 done = threading.Event()
                 with self._lock:
-                    if self.cancelled.is_set():
+                    if self.cancelled.is_set() or stop_serial != getattr(self.coordinator, '_speech_stop_serial', 0):
                         return
                     started = time.perf_counter()
                     self._active = True
@@ -76,7 +77,7 @@ class ReadSequence:
                     done.set()  # muted/disabled speech has no completion callback
                 logged = False
                 while not done.wait(.02):
-                    if self.cancelled.is_set():
+                    if self.cancelled.is_set() or stop_serial != getattr(self.coordinator, '_speech_stop_serial', 0):
                         return
                     if not logged and self.coordinator.engine.get_engine_state() == 'playing':
                         log.info('Overview read audio started: number=%d elapsed_ms=%.1f',

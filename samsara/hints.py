@@ -95,6 +95,20 @@ class HintManager:
         self._schedule_save()
         return self._counters[counter_id]
 
+    def show_embedded_once(self, hint_id: str, show) -> bool:
+        """Qt-thread hint inside an existing window, including during TTS.
+
+        Record only a successful presentation. A missing/hidden control must
+        not consume the one opportunity, unlike a delayed toast.
+        """
+        if not self._enabled or hint_id in self._shown:
+            return False
+        if not show():
+            return False
+        self._shown.add(hint_id)
+        self._save()
+        return True
+
     def get_counter(self, counter_id: str) -> int:
         return self._counters.get(counter_id, 0)
 
