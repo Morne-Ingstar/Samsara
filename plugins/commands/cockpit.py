@@ -45,11 +45,12 @@ def announce(app, message):
 
 def runner_for(app, home=None):
     from samsara.cockpit_client import CockpitClient
+    from samsara.cockpit_owner_adapter import owner_adapter
     from samsara.cockpit_memos import ProposalRunner, load_sources
     from samsara.ava_structured_request import StructuredRequest
     runner = getattr(app, "_cockpit_memo_runner", None)
     if runner is None:
-        runner = ProposalRunner(app, CockpitClient(owner_adapter=getattr(app, "_cockpit_owner_adapter", None)), StructuredRequest(app),
+        runner = ProposalRunner(app, CockpitClient(owner_adapter=owner_adapter()), StructuredRequest(app),
                                 lambda: load_sources(app.config, home)[0])
         app._cockpit_memo_runner = runner
     return runner
@@ -230,7 +231,54 @@ def approval_identity(app, remainder=""):
 
 def briefing_client(app):
     from samsara.cockpit_client import CockpitClient
-    return getattr(app, '_cockpit_read_client', None) or CockpitClient(owner_adapter=getattr(app, '_cockpit_owner_adapter', None))
+    from samsara.cockpit_owner_adapter import owner_adapter
+    return getattr(app, '_cockpit_read_client', None) or CockpitClient(owner_adapter=owner_adapter())
+
+
+@command('clarify cockpit item', pack='utilities', risk_class='write', ai_composable=False,
+         side_effects=['network', 'ui'], param_schema={'remainder': {'type': 'str', 'required': True, 'max_len': 600}})
+def clarify_item(app, remainder=''):
+    """Previews an explicit change for a numbered unresolved memo entry."""
+    # PLACEHOLDER COPY (1136)
+    def work():
+        from samsara.cockpit_memos import MemoDisposition
+        runner = getattr(app, '_cockpit_memo_runner', None)
+        match = re.fullmatch(r'(\d+|\w+) as (move|deadline|complete|priority|note) (.+)', remainder.strip(), re.I)
+        if not runner or not runner.proposal or not match:
+            raise MemoDisposition('Say clarify cockpit item one as note, then the task name, colon, and the note.')
+        number = WORDS.get(match[1].lower(), int(match[1]) if match[1].isdigit() else 0)
+        entries = runner.proposal['unresolved']
+        if not 1 <= number <= len(entries):
+            raise MemoDisposition('Name a numbered unresolved entry from this preview.')
+        action, value = match[2].lower(), match[3]
+        if action == 'complete':
+            target, fields = value, {'status': 'done'}
+        elif action == 'note' and ':' in value:
+            target, note = value.split(': ', 1) if ': ' in value else ('', '')
+            fields = {'notes_append': note}
+        else:
+            parts = re.fullmatch(r'(.+) to (.+)', value)
+            if not parts:
+                raise MemoDisposition('Name the target and the complete new value.')
+            target, setting = parts.groups()
+            fields = {'priority' if action == 'priority' else 'due_date': setting}
+        context = runner.client.context()
+        row = find_briefing_item(dict(actionable=context['records']), target)
+        if action == 'move':
+            move = re.fullmatch(r'(tomorrow|\d{4}-\d{2}-\d{2})(?: at ((?:[01]\d|2[0-3]):[0-5]\d))?', setting, re.I)
+            if not move:
+                raise MemoDisposition('Name a calendar date, with an optional appointment time.')
+            fields = {'start_after' if row['kind'] == 'task' else 'date': move[1].lower()}
+            if move[2]:
+                fields['time'] = move[2]
+        from datetime import date, timedelta
+        for field in ('start_after', 'due_date', 'date'):
+            if fields.get(field) == 'tomorrow':
+                fields[field] = (date.fromisoformat(context['local_date']) + timedelta(days=1)).isoformat()
+        fresh = runner.clarify(entries[number - 1]['key'], row['id'], fields)
+        app._cockpit_memo_runner = fresh
+        return 'New clarification preview ' + fresh.request_id[:8] + '. ' + fresh.read_page() + ' Say review cockpit batch to approve.'
+    return _briefing_work(app, work)
 
 
 def find_briefing_item(briefing, target):

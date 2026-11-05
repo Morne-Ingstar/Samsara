@@ -555,6 +555,13 @@ class ProposalRunner:
 
     def repreview(self, *, selected_keys=None, target_choices=None):
         from samsara import execution_policy as policy
+        # PLACEHOLDER COPY (1136)
+        if self.application_uncertain:
+            raise MemoDisposition("Recover the previous batch receipt before changing the preview.")
+        receipt = (self.last_result or {}).get("receipt") or self.last_result or {}
+        if receipt.get("status") in {"applied", "undone"}:
+            # PLACEHOLDER COPY (1136)
+            raise MemoDisposition("This batch was applied. Clarify unresolved work in a new preview.")
         if self.operation is not None:
             policy._release_slot(self.operation)
             self.operation.cancel(self.app, "preview changed", chip=False)
@@ -594,6 +601,53 @@ class ProposalRunner:
         self._reviewed = set()
         return deepcopy(self.proposal)
 
+    def clarify(self, key, target_id, fields):
+        """Explicit owner fields, never a candidate-only promotion of model text."""
+        from samsara import execution_policy as policy
+        # PLACEHOLDER COPY (1136)
+        if self.application_uncertain:
+            raise MemoDisposition("Recover the previous batch receipt before clarifying unresolved work.")
+        if not self._current():
+            raise MemoDisposition("The memo sources or approval session changed; start again.")
+        entry = next((r for r in self.draft["unresolved"] if r["key"] == key), None)
+        if not entry or entry["reason"] not in {"ambiguous_target", "ambiguous_time"}:
+            raise MemoDisposition("This entry cannot be clarified as a task or appointment change.")
+        context = self.client.context()
+        row = next((r for r in context["records"] if r["id"] == target_id), None)
+        if (not row or not row.get("writable") or row["kind"] not in {"task", "event"}
+                or entry["candidate_ids"] and target_id not in entry["candidate_ids"]):
+            raise MemoDisposition("Name an advertised, writable target for this clarification.")
+        allowed = {"start_after", "due_date", "status", "priority", "notes_append"} if row["kind"] == "task" else {"date", "time"}
+        if not fields or set(fields) - allowed:
+            raise MemoDisposition("State the complete supported change for this clarification.")
+        request_id = uuid.uuid4().hex
+        text = target_id + " " + json.dumps(fields, sort_keys=True)
+        instruction = normalize_memo_v1(dict(memo_id="clarification_" + request_id,
+            source_kind="direct_instruction", source_locator="session", captured_at=context["captured_at"],
+            capture_timezone=context.get("timezone"), text=text, has_transcript=True, partial=False, upstream_id=None))
+        memos = self.selection.memos + [instruction]
+        if len(memos) > 20 or sum(len(m["text"]) for m in memos) > 50000:
+            raise MemoDisposition("Select a smaller memo batch before adding a clarification.")
+        draft = dict(schema_version=EXTRACTION_VERSION, items=[dict(item_key="clarified",
+            action="update_task" if row["kind"] == "task" else "update_event", target_id=target_id,
+            fields=deepcopy(fields), evidence=deepcopy(entry["evidence"]) + [dict(memo_id=instruction["memo_id"], start=0, end=len(text))],
+            match=dict(method="explicit_id", candidates=[dict(id=target_id, reason="Explicit owner clarification")], needs_resolution=False),
+            time_resolution=None)], unresolved=[deepcopy(r) for r in self.draft["unresolved"] if r["key"] != key],
+            no_change=[dict(deepcopy(r), related_item_key=None) for r in self.draft["no_change"]])
+        validate_extraction_v1(draft, context, memos)
+        if not self._current():
+            raise MemoDisposition("The memo sources or approval session changed; start again.")
+        self.cancel()
+        fresh = ProposalRunner(self.app, self.client, self.extractor,
+                               lambda: self.source_reader() + [deepcopy(instruction)])
+        fresh.selection = Selection(json.dumps(memos), self.selection.timezone, "clarification")
+        fresh.context, fresh.draft, fresh.request_id = context, draft, request_id
+        fresh.provider_identity = deepcopy(self.provider_identity)
+        fresh.generation, fresh._cancelled, fresh._voice_page = self.generation, False, 0
+        fresh.clarification_of = (self.request_id, key)
+        fresh.repreview()
+        return fresh
+
     def read_page(self, page=0, page_size=3):
         """Local speech templates, complete changed values; model questions unused."""
         if type(page) is not int or page < 0 or not 1 <= page_size <= 5:
@@ -630,8 +684,10 @@ class ProposalRunner:
         counts = self.proposal["counts"]
         remainder = ""
         if page == 0:
-            remainder = " ".join("Unresolved: " + q["reason"].replace("_", " ") + "."
-                                 for q in self.proposal["unresolved"])
+            # PLACEHOLDER COPY (1136): unresolved numbers are separate from actionable items.
+            remainder = " ".join(f"Unresolved {n}: " + q["reason"].replace("_", " ") +
+                                 ". Use clarify cockpit item with the full change."
+                                 for n, q in enumerate(self.proposal["unresolved"], 1))
             remainder += " ".join("Unchanged: " + q["reason"].replace("_", " ") + "."
                                   for q in self.proposal["no_change"])
         return (f"PLACEHOLDER: {counts['selected']} selected; {counts['excluded']} excluded; "
@@ -670,6 +726,7 @@ class ProposalRunner:
             current_invocation=lambda: policy.Invocation(inv.command_id, deepcopy(self._binding), inv.route, self.generation),
             reply_guard=lambda: self._current() and time.time() < self.proposal["expires_at"],
             on_approve=self._apply, on_reject=lambda _op: self.client.cancel())
+        self.client.bind_approval(self._binding, self.operation)
         if listen:
             policy.listen_for_confirmation(self.app, self.operation.prompt)
         return self.operation

@@ -8,6 +8,7 @@ from __future__ import annotations
 from copy import deepcopy
 import json
 import re
+import threading
 
 import requests
 
@@ -23,18 +24,22 @@ class CockpitClient:
     def __init__(self, *, owner_adapter=None, request=None):
         self._owner = owner_adapter
         self._request_override = request
+        self._approval = None
+        self._approval_lock = threading.Lock()
 
     @property
     def can_confirm(self):
-        return self._owner is not None
+        return self._owner is not None and getattr(self._owner, "available", True)
 
-    def _json(self, method, path, body=None):
+    def _json(self, method, path, body=None, *, headers=None):
         with requests.Session() as session:
             session.trust_env = False
             request = self._request_override or session.request
             try:
-                response = request(method, BASE_URL + path, json=body,
-                                   timeout=(3, 30), allow_redirects=False)
+                options = dict(json=body, timeout=(3, 30), allow_redirects=False)
+                if headers is not None:
+                    options["headers"] = headers
+                response = request(method, BASE_URL + path, **options)
             except requests.RequestException as exc:
                 raise CockpitError("Cockpit response lost or unavailable; recover by request ID.") from exc
             try:
@@ -85,16 +90,40 @@ class CockpitClient:
             raise CockpitError("Invalid request ID.")
         return self._json("GET", "/api/changes/" + request_id)
 
+    def bind_approval(self, binding, operation):
+        """Remember the exact unapproved policy object staged by the runner."""
+        from samsara import execution_policy as policy
+        if (not isinstance(operation, policy.PendingOperation) or operation.approved is not None
+                or operation is not policy.pending_operation()
+                or operation.invocation.route != policy.Route.EXACT
+                or operation.invocation.command_id != "approve cockpit memo batch"
+                or operation.invocation.args != binding):
+            raise CockpitError("A current owner approval is required.")
+        with self._approval_lock:
+            self._approval = (operation, deepcopy(binding))
+
     def confirm(self, binding, operation):
-        if self._owner is None:
+        if not self.can_confirm:
             raise CockpitError("Cockpit voice approval is not available yet.")
         # An actual resolved policy object, never a dict/flag from an extractor.
         from samsara import execution_policy as policy
         if (not isinstance(operation, policy.PendingOperation) or operation.approved is not True
                 or operation.invocation.args != binding or operation.is_expired()
+                or not operation._event.is_set()
+                or operation.invocation.route != policy.Route.EXACT
+                or operation.invocation.command_id != "approve cockpit memo batch"
                 or not policy.is_fresh(operation._app, operation.generation)):
             raise CockpitError("A current owner approval is required.")
-        return self._owner.confirm(deepcopy(binding), operation)
+        with self._approval_lock:
+            if self._approval is None or self._approval[0] is not operation or self._approval[1] != binding:
+                raise CockpitError("A current owner approval is required.")
+            self._approval = None  # Consume even if the response is lost.
+        from samsara.cockpit_owner_adapter import _client_call
+        token = _client_call.set((self._owner, operation, deepcopy(binding)))
+        try:
+            return self._owner.confirm(deepcopy(binding), operation)
+        finally:
+            _client_call.reset(token)
 
     def apply(self, binding, authorization):
         body = {key: binding[key] for key in ("proposal_id", "proposal_hash", "request_id")}
@@ -102,5 +131,7 @@ class CockpitClient:
         return self._json("POST", "/api/changes/apply", body)
 
     def cancel(self):
+        with self._approval_lock:
+            self._approval = None
         if self._owner is not None:
             self._owner.cancel()
