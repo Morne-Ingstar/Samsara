@@ -18,6 +18,7 @@ to unit test without mocking the wake pipeline.
 
 import hashlib
 import json
+import math
 import re
 from pathlib import Path
 
@@ -27,6 +28,148 @@ logger = get_logger(__name__)
 
 MIN_SYLLABLES = 3
 WAKE_MODELS_DIR = Path(__file__).parent / 'wake_models'
+
+# Primary listener phrases; app-target profiles below remain independent.
+PHRASE_TO_MODEL = {
+    'jarvis': 'hey_jarvis', 'hey jarvis': 'hey_jarvis', 'alexa': 'alexa',
+    'hey mycroft': 'hey_mycroft', 'hey rhasspy': 'hey_rhasspy',
+}
+
+
+def resolve_wake_model(phrase, model=None, models_dirs=None):
+    """Resolve a model ID or user-dropped ONNX without creating directories."""
+    if models_dirs is None:
+        from samsara.paths import samsara_home_dir
+        models_dirs = (WAKE_MODELS_DIR, samsara_home_dir() / 'wake_models')
+    name = str(model or '').strip()
+    if name and name in set(PHRASE_TO_MODEL.values()) | {'timer', 'weather'}:
+        return name
+    candidate = Path(name) if name else None
+    if candidate and candidate.is_absolute():
+        return str(candidate) if candidate.is_file() and candidate.suffix.lower() == '.onnx' else None
+    filename = name or phrase.lower().strip().replace(' ', '_') + '.onnx'
+    if Path(filename).name == filename:
+        for directory in models_dirs:
+            candidate = Path(directory) / filename
+            if candidate.suffix.lower() == '.onnx' and candidate.is_file():
+                return str(candidate)
+    return PHRASE_TO_MODEL.get(phrase.lower().strip()) if not name else None
+
+
+def wake_threshold(value, default=0.2):
+    try:
+        number = float(value)
+        if not isinstance(value, bool) and math.isfinite(number) and 0 <= number <= 1:
+            return number
+    except (ValueError, TypeError, OverflowError):
+        pass
+    return default
+
+
+def normalize_wake_phrases(wake):
+    """Migrate once without replacing a custom phrase or valid threshold.
+
+    A second model-less phrase is retained but disabled. An empty list means
+    the user intentionally removed every primary wake phrase.
+    """
+    before = json.dumps(wake, sort_keys=True)
+    entries = wake.get('phrases')
+    migrate_roles = not isinstance(entries, list) or (bool(entries) and not any(
+        isinstance(row, dict) and 'role' in row for row in entries))
+    if not isinstance(entries, list):
+        entries = [{'phrase': wake.get('phrase') or 'jarvis',
+                    'model': wake.get('model') or wake.get('model_path'),
+                    'enabled': True, 'threshold': wake.get('oww_threshold', .2), 'role': 'samsara'}]
+    if migrate_roles and not any(isinstance(row, dict) and str(row.get('phrase') or '').strip().lower() == 'hey ava'
+                                 for row in entries):
+        # 1042a measured 1.67 false episodes/hour at .2: owner opt-in only.
+        entries = [*entries, dict(phrase='hey ava', role='ava', enabled=False, threshold=.2)]
+    normalized, seen, fallback = [], set(), False
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        phrase = str(entry.get('phrase') or '').strip().lower()
+        if not phrase or phrase in seen:
+            continue
+        seen.add(phrase)
+        row = dict(entry)
+        row.update(phrase=phrase, model=entry.get('model') or '',
+                   enabled=bool(entry.get('enabled', True)),
+                   role=(entry.get('role') if entry.get('role') in ('samsara', 'ava')
+                         else 'ava' if phrase == 'hey ava' else 'samsara'),
+                   threshold=wake_threshold(entry.get('threshold', wake.get('oww_threshold', .2))))
+        model = resolve_wake_model(phrase, row['model'])
+        if model and not row['model']:
+            row['model'] = model
+        if row['enabled'] and not model:
+            if fallback:
+                row['enabled'] = False
+                logger.warning('[WAKE] Disabled additional recognizer fallback: %s', phrase)
+            fallback = True
+        normalized.append(row)
+    wake['phrases'] = normalized
+    return json.dumps(wake, sort_keys=True) != before
+
+
+def detector_for_config(wake, factory=None):
+    from samsara.wake_detector import WakeWordDetector
+    factory = factory or WakeWordDetector
+    normalize_wake_phrases(wake)
+    enabled = [row for row in wake['phrases'] if row['enabled']]
+    if len(enabled) == 1:
+        row = enabled[0]
+        detector = factory(row['phrase'], threshold=row['threshold'], model_path=row.get('model'))
+    else:
+        detector = factory(wake['phrases'], threshold=wake.get('oww_threshold', .2))
+    detector.config_signature = json.dumps(wake['phrases'], sort_keys=True)
+    detector.legacy_phrase = wake.get('phrase')
+    return detector
+
+
+def refresh_primary_detector(app, changes=None, factory=None):
+    wake = app.config.setdefault('wake_word_config', {})
+    detector = getattr(app, '_wake_detector', None)
+    if changes is None and getattr(detector, 'legacy_phrase', wake.get('phrase')) != wake.get('phrase'):
+        changes = {'phrase': wake.get('phrase', 'jarvis')}
+    # Older Settings controls still edit the primary legacy phrase alone.
+    if changes and 'phrase' in changes and 'phrases' not in changes:
+        entries = wake.get('phrases') or []
+        phrase = str(changes['phrase']).strip().lower()
+        if entries and entries[0]['phrase'] != phrase:
+            entries[0] = dict(entries[0], phrase=phrase, model='')
+    normalize_wake_phrases(wake)
+    signature = json.dumps(wake['phrases'], sort_keys=True)
+    if getattr(getattr(app, '_wake_detector', None), 'config_signature', None) != signature:
+        detector = detector_for_config(wake, factory=factory)
+        app._wake_detector = detector
+        app._oww_wake_detected = False
+        app._oww_primary_hit = False
+        from samsara.wake_roles import clear_capture
+        clear_capture(app)
+
+
+def match_primary_wake(text, wake, detector=None):
+    """Match enabled primary phrases, longest first for overlapping aliases."""
+    from samsara.wake_word_matcher import match_wake_phrase
+    entries = wake.get('phrases')
+    if not isinstance(entries, list):
+        entries = [{'phrase': wake.get('phrase', 'jarvis'), 'enabled': True}]
+    for row in sorted(entries, key=lambda r: len(r.get('phrase', '')), reverse=True):
+        if row.get('enabled', True):
+            phrase = row['phrase']
+            if isinstance(getattr(detector, '_heads', None), list):
+                fast = {p for p, _, _ in getattr(detector, '_heads', ())}
+                allowed = fast | set(getattr(detector, 'fallback_phrases', ()))
+                if phrase not in allowed:
+                    continue
+            matched, kind, index = match_wake_phrase(text, phrase)
+            if matched:
+                return phrase, matched, kind, index
+    return wake.get('phrase', 'jarvis'), False, None, -1
+
+
+def is_fallback_phrase(detector, phrase):
+    return phrase in getattr(detector, 'fallback_phrases', ())
 
 _VOWEL_GROUPS = re.compile(r'[aeiouy]+')
 

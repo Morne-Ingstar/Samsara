@@ -3055,16 +3055,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         # Only rebuild a detector that has been loaded: before the lazy wake
         # load (or while it runs) the loader picks the new phrase up itself.
         if 'wake_word_config' in changes and self.wake_ready_state() == 'ready':
-            new_phrase = changes['wake_word_config'].get('phrase', '')
-            old_phrase = (
-                (self._wake_detector._wake_phrase if self._wake_detector else '')
-            )
-            if new_phrase and new_phrase.lower() != old_phrase:
-                self._oww_wake_detected = False
-                oww_threshold = float(
-                    changes['wake_word_config'].get('oww_threshold', 0.2)
-                )
-                self._wake_detector = WakeWordDetector(new_phrase, threshold=oww_threshold)
+            wake_profiles.refresh_primary_detector(self, changes['wake_word_config'], factory=WakeWordDetector)
     def reload_config_from_disk(self) -> int:
         """Re-read config.json from disk and apply any changes to the running app.
 
@@ -3146,16 +3137,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             try:
                 new_ww = changed['wake_word_config'][1]
                 if isinstance(new_ww, dict):
-                    new_phrase = new_ww.get('phrase', '')
-                    old_phrase = (
-                        self._wake_detector._wake_phrase if self._wake_detector else ''
-                    )
-                    if new_phrase and new_phrase.lower() != old_phrase:
-                        self._oww_wake_detected = False
-                        oww_threshold = float(new_ww.get('oww_threshold', 0.2))
-                        self._wake_detector = WakeWordDetector(
-                            new_phrase, threshold=oww_threshold
-                        )
+                    wake_profiles.refresh_primary_detector(self, new_ww, factory=WakeWordDetector)
             except Exception as e:
                 logger.exception(f"[CONFIG] wake_word_config update error: {e}")
         return len(changed)
@@ -7290,11 +7272,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             self._load_wake_profile_models()
             # The phrase may have changed while loading (update_config skips
             # rebuilding a detector that doesn't exist yet) -- honour it.
-            phrase = self.config.get('wake_word_config', {}).get('phrase', 'jarvis')
-            detector = self._wake_detector
-            if detector is not None and phrase.lower().strip() != detector._wake_phrase:
-                oww_threshold = float(self.config.get('wake_word_config', {}).get('oww_threshold', 0.2))
-                self._wake_detector = WakeWordDetector(phrase, threshold=oww_threshold)
+            wake_profiles.refresh_primary_detector(self, factory=WakeWordDetector)
         except Exception as exc:
             # Detector construction never raises by contract; if something
             # else did, wake listening still works via the Whisper fallback.
@@ -7449,8 +7427,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             return
         ww_cfg = self.config.get('wake_word_config', {})
         wake_phrase = ww_cfg.get('phrase', 'jarvis')
-        oww_threshold = float(ww_cfg.get('oww_threshold', 0.2))
-        self._wake_detector = WakeWordDetector(wake_phrase, threshold=oww_threshold)
+        self._wake_detector = wake_profiles.detector_for_config(ww_cfg, factory=WakeWordDetector)
         if self._wake_detector.is_available:
             logger.debug(f"[OWW] Wake word pre-filter active for '{wake_phrase}'")
         else:
@@ -8536,6 +8513,8 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
 
             self._emit_wake_trace({"stage": "utterance_start", "raw": text, "normalized": text_lower})
 
+            from samsara.wake_roles import route_transcript
+            if self.app_state == 'asleep' and route_transcript(self, text, buffer): return
             media_match = self._probe_media_transport(text)
             if media_match is not None:
                 if stage_timing is not None:
@@ -8793,9 +8772,11 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 self._dispatch_wake_profile(_wake_profile, corrected_lower=corrected_lower)
                 return
 
-            matched, match_type, match_index = match_wake_phrase(corrected_lower, wake_phrase)
+            wake_phrase, matched, match_type, match_index = wake_profiles.match_primary_wake(
+                corrected_lower, ww_config, self._wake_detector)
             if (matched and self.app_state == 'asleep'
                     and any(t.get('enabled', True) for t in self.config.get('wake_profiles', config_defaults.DEFAULTS['wake_profiles']))
+                    and not wake_profiles.is_fallback_phrase(self._wake_detector, wake_phrase)
                     and not getattr(buffer, 'primary_hit', False)):
                 # A profile detector's hit cannot authorize the generic wake phrase.
                 matched = False

@@ -14,20 +14,23 @@ def modelled_phrases():
 
 
 def normalize_wake_phrase(config):
-    """Migrate unsupported saved choices, retaining a notice until acknowledged."""
+    """Preserve listener rows before retiring the legacy single-choice slot."""
+    from samsara.wake_profiles import normalize_wake_phrases
     wake = config.setdefault('wake_word_config', {})
-    phrase = str(wake.get('phrase') or '').lower().strip()
+    migrated = normalize_wake_phrases(wake)
+    phrase = str(wake.get('phrase') or DEFAULT_WAKE_PHRASE).lower().strip()
     changed = wake.get('phrase_options') != modelled_phrases()
     if phrase not in modelled_phrases():
-        if phrase:
-            wake['phrase_fallback_pending'] = True
-            for key in ('measured_noise_floor', 'calibrated_microphone'):
-                wake.get('audio', {}).pop(key, None)
+        # 1042b: phrases is authoritative; retain 919's one-time boot migration
+        # for older setup controls without deleting the user's listener row.
+        wake['phrase_fallback_pending'] = True
+        for key in ('measured_noise_floor', 'calibrated_microphone'):
+            wake.get('audio', {}).pop(key, None)
         phrase = DEFAULT_WAKE_PHRASE
     changed = changed or wake.get('phrase') != phrase
     wake['phrase'] = phrase
     wake['phrase_options'] = modelled_phrases()
-    return changed
+    return changed or migrated
 
 
 def calibration_needed(config):

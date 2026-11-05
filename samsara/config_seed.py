@@ -142,6 +142,7 @@ def build_default_config(*, home, macro_defaults, notification_defaults):
         # New nested wake word config
         "wake_word_config": {
             "phrase": DEFAULT_WAKE_PHRASE,
+            "phrases": None,  # 1042b: migrate after the saved config is merged.
             "phrase_options": list(DEFAULT_WAKE_PHRASE_OPTIONS),
             "quick_silence_timeout": 1.0,
             "end_words": ["over", "done", "end dictation"],

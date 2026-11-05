@@ -58,26 +58,11 @@ from samsara.session_modes import SessionMode
 from samsara.subjects import OnsetContext
 from samsara.log import get_logger
 from samsara.runtime import thread_registry
-from samsara import flight_recorder, tutorial_capture, mic_score
+from samsara import flight_recorder, tutorial_capture, mic_score, wake_roles
+from samsara.wake_roles import AdmittedWakeBuffer, clear_oww_hits as _clear_oww_hits
 
 logger = get_logger(__name__)
 
-
-class AdmittedWakeBuffer(list):
-    """Audio and its OWW hits travel together through the asynchronous decode FIFO."""
-
-    def __init__(self, frames, *, primary_hit=False, profile_hits=()):
-        super().__init__(frames)
-        self.primary_hit = bool(primary_hit)
-        self.profile_hits = frozenset(profile_hits)
-
-
-def _clear_oww_hits(app):
-    app._oww_wake_detected = False
-    app._oww_primary_hit = False
-    app._oww_profile_hits = set()
-    app._oww_primary_hit_ns = None
-    app._oww_profile_hit_ns = {}
 
 # Streaming-preview tail window (dictation.py's DictatePreviewSession): the
 # toggle-DICTATE lane is exempted from the 7s hard cap (_hard_cap_applies),
@@ -456,6 +441,7 @@ class WakeConsumer:
         with self._lifecycle_lock:
             self._running = False
             self._stop_event.set()
+            wake_roles.clear_capture(self._app)
             self._speech_start_ns = None
             self._onset_context = None
             thread = self._thread
@@ -503,6 +489,7 @@ class WakeConsumer:
         app = self._app
         if self._mouth_shadow is not None:
             self._mouth_shadow.invalidate()
+        _clear_oww_hits(app)
         self._utterance_frames   = []
         self._buffer_rms_history = []
         self._last_voice_ns = None
@@ -1008,6 +995,8 @@ class WakeConsumer:
         if self._mouth_shadow is not None:
             self._mouth_shadow.observe(self, frame)
 
+        if self._last_epoch is not None and frame.device_epoch != self._last_epoch:
+            _clear_oww_hits(app)
         from .speech_stop import observe as observe_speech_stop
         if observe_speech_stop(self, frame):
             return
@@ -1297,12 +1286,16 @@ class WakeConsumer:
                 and app._wake_detector is not None
                 and app._wake_detector.is_available):
             _oww_chunk = oww_prefilter(raw_chunk, rms)
-            if app._wake_detector.detected(_oww_chunk):
+            _wake_phrase_hit = app._wake_detector.detected(_oww_chunk)
+            if _wake_phrase_hit:
+                wake_roles.begin_primary_capture(self, _wake_phrase_hit, raw_chunk)
+                app._last_wake_phrase = _wake_phrase_hit
                 app._oww_wake_detected = True
                 app._oww_primary_hit = True
                 app._oww_primary_hit_ns = int(frame.t_capture * 1_000_000_000)
                 app._wake_detector.reset()
-                flight_recorder.record('wake.oww_confirm', app_state=app.app_state)
+                flight_recorder.record('wake.oww_confirm', app_state=app.app_state,
+                                       phrase=_wake_phrase_hit)
 
         # Wake-profile OWW pre-filters: a profile with a loaded model
         # participates as a real pre-filter too, same as the primary
@@ -1537,6 +1530,7 @@ class WakeConsumer:
                         # Too short to count as a real utterance -- the
                         # capture window this onset opened closes here
                         # (buffer discarded, never reaches _flush at all).
+                        _clear_oww_hits(app)
                         flight_recorder.record(
                             'wake.session_close', reason='too_short',
                             speech_s=speech_s,
@@ -1640,17 +1634,22 @@ class WakeConsumer:
                 times = {}
             profile_hits = frozenset(pid for pid in profile_hits
                                      if pid not in times or earliest <= times[pid] <= latest)
+        primary_phrase = getattr(app, '_oww_primary_phrase', None) if primary_hit else None
+        primary_role = getattr(app, '_oww_primary_role', None) if primary_hit else None
         _clear_oww_hits(app)
         _primary_oww_eligible = (
             app._wake_detector is not None
-            and app._wake_detector.is_available
+            and (app._wake_detector.is_available
+                 or getattr(app._wake_detector, 'has_enabled_phrases', True) is False)
+            and not (getattr(app._wake_detector, 'requires_fallback', False) is True)
             and app.app_state == 'asleep'
             and not app.wake_word_triggered
         )
         _passive = app.app_state == 'asleep' and not app.wake_word_triggered
         _has_profiles = any(t.get('enabled', True) for t in
                             getattr(app, 'config', {}).get('wake_profiles', []))
-        if _passive and (_primary_oww_eligible or _has_profiles) and not (primary_hit or profile_hits):
+        _fallback = (getattr(app._wake_detector, 'requires_fallback', False) is True)
+        if _passive and (_primary_oww_eligible or _has_profiles) and not _fallback and not (primary_hit or profile_hits):
             if app._wake_detector is not None:
                 app._wake_detector.reset()
             flight_recorder.record('session.dispatch', op='dropped', kind='oww_gate_no_hit')
@@ -1668,9 +1667,10 @@ class WakeConsumer:
         # Jarvis detection was subsequently discarded by the adaptive RMS
         # gate. Profiles only relax the no-hit path; they must not erase a hit.
         oww_confirmed = bool(_passive and (primary_hit or profile_hits))
-        if _has_profiles:
+        if _has_profiles or primary_phrase:
             buffer_copy = tutorial_capture.carry(buffer_copy, AdmittedWakeBuffer(
-                buffer_copy, primary_hit=primary_hit, profile_hits=profile_hits))
+                buffer_copy, primary_hit=primary_hit, profile_hits=profile_hits,
+                primary_phrase=primary_phrase, primary_role=primary_role))
         # Passive candidates open no capture dip; confirmed wake sessions duck
         # through _start_wake_session. Existing capture owners pass through.
         owner_token = (

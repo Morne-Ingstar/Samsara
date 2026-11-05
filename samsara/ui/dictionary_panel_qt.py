@@ -5,7 +5,7 @@ Drop-in Qt replacement for samsara.ui.dictionary_frame.DictionaryFrame.
 Three sub-tabs:
   Vocabulary   — words injected into Whisper's initial_prompt
   Corrections  — deterministic dictated-text corrections (DictionaryStore)
-  Wake Words   — wake-phrase misrecognition map (samsara.wake_corrections)
+  Wake Words   — enabled listener phrases and misheard-phrase corrections
 
 Data is read/written through the same service layer as the CTk version;
 no file or DB access happens directly here.
@@ -23,7 +23,7 @@ from contextlib import nullcontext
 
 from PySide6.QtCore import Qt, Signal, Slot, QObject, QSettings, QItemSelectionModel
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QFileDialog, QFrame, QHBoxLayout, QHeaderView,
+    QAbstractItemView, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFrame, QHBoxLayout, QHeaderView,
     QLabel, QLayout, QLineEdit, QListWidget, QMenu, QMessageBox, QPushButton,
     QScrollArea, QSizePolicy, QTableWidget, QTableWidgetItem, QTabWidget,
     QToolButton, QVBoxLayout, QWidget,
@@ -257,7 +257,7 @@ class DictionaryPanelQt(QWidget):
         self._purposes = (
             "Add names, technical terms, or words Samsara often mishears.",
             "Replace standalone words in dictated text from the next dictation. Removing a seeded entry keeps it removed.",
-            "Map misheard wake phrases to your wake word.",
+            "Choose what each wake phrase does. Several fast phrases can listen together.",  # PLACEHOLDER COPY (1042b)
         )
         self._header = theme.hub_header("Dictionary", self._purposes[0], self)
         self._header.setMaximumWidth(theme.HUB_LIST_WIDTH)
@@ -278,8 +278,8 @@ class DictionaryPanelQt(QWidget):
 
         vocab_title = "Vocabulary"
         self._tabs.addTab(self._build_vocab_tab(vocab_title), vocab_title)
-        for mode, title in (("corrections", "Corrections"), ("wake", "Wake Words")):
-            self._tabs.addTab(self._build_kv_tab(mode, title), title)
+        self._tabs.addTab(self._build_kv_tab("corrections", "Corrections"), "Corrections")
+        self._tabs.addTab(self._build_wake_tab(), "Wake Words")
         self._tabs.currentChanged.connect(lambda index: self._header.purpose.setText(self._purposes[index]))
         for button in self.findChildren(QPushButton):
             theme.hub_control(button)
@@ -713,6 +713,213 @@ class DictionaryPanelQt(QWidget):
     # ------------------------------------------------------------------
     # Corrections / Wake Words tabs (shared factory)
     # ------------------------------------------------------------------
+
+    def _build_wake_tab(self):
+        from copy import deepcopy
+        from samsara.wake_profiles import normalize_wake_phrases
+        page = QWidget()
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(14, 14, 14, 16)
+        lay.setSpacing(8)
+        # Keep the original correction editor's native controls discoverable
+        # before spin-box/combo internals in the new listener rows (1042b).
+        legacy = self._build_kv_tab('wake', 'Wake Words')
+        legacy.setParent(page)
+        wake = deepcopy(self._app.config.get('wake_word_config', {}))
+        normalize_wake_phrases(wake)
+        self._wake_entries = wake['phrases']
+        # PLACEHOLDER COPY (1042b)
+        note = QLabel('Choose Samsara for commands and dictation, or Ava for conversation. '
+                      'Only one slow phrase can use the recognizer at a time.')
+        note.setWordWrap(True)
+        lay.addWidget(note)
+        self._wake_table = QTableWidget(0, 5)
+        self._wake_table.setAccessibleName('Wake phrases')
+        self._wake_table.setHorizontalHeaderLabels(['On', 'Phrase', 'Detection', 'Threshold', 'Role'])
+        self._wake_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._wake_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._wake_table.verticalHeader().hide()
+        self._wake_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        for column, width in enumerate((40, 110, 160, 80, 105)):
+            self._wake_table.setColumnWidth(column, width)
+        self._wake_table.setMinimumHeight(240)
+        listeners = QWidget(page)
+        listeners_layout = QVBoxLayout(listeners)
+        listeners_layout.setContentsMargins(0, 0, 0, 0)
+        listeners_layout.addWidget(self._wake_table)
+        lay.addWidget(listeners, stretch=1)
+        row = QHBoxLayout()
+        self._wake_phrase_input = QComboBox()
+        self._wake_phrase_input.setEditable(True)
+        self._wake_phrase_input.addItems(['hey jarvis', 'alexa', 'hey mycroft', 'hey Samsara', 'hey Ava'])
+        self._wake_phrase_input.setAccessibleName('New wake phrase')
+        self._wake_phrase_input.lineEdit().setAccessibleName('New wake phrase')
+        self._wake_phrase_input.setMaximumWidth(190)
+        self._wake_phrase_input.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        theme.hub_control(self._wake_phrase_input)
+        row.addWidget(self._wake_phrase_input)
+        add = QPushButton('Add phrase')
+        add.clicked.connect(self._wake_add)
+        row.addWidget(add)
+        model = QPushButton('Add model…')
+        model.setToolTip('Use the phrase shown on the left with a custom ONNX file.')
+        model.clicked.connect(self._wake_add_model)
+        row.addWidget(model)
+        remove = QPushButton('Remove selected')
+        remove.clicked.connect(self._wake_remove)
+        row.addWidget(remove)
+        row.addStretch()
+        lay.addLayout(row)
+        self._wake_status = QLabel('')
+        self._wake_status.setWordWrap(True)
+        lay.addWidget(self._wake_status)
+        corrections = QToolButton()
+        corrections.setText('▾ Misheard wake phrases')
+        corrections.setCheckable(True)
+        corrections.setChecked(True)
+        self._style_disclosure(corrections)
+        lay.addWidget(corrections, alignment=Qt.AlignmentFlag.AlignLeft)
+        corrections.toggled.connect(legacy.setVisible)
+        corrections.toggled.connect(lambda visible: corrections.setText(
+            ('▾' if visible else '▸') + ' Misheard wake phrases'))
+        lay.addWidget(legacy)
+        self._wake_render()
+        return page
+
+    def _wake_render(self):
+        from samsara.wake_profiles import resolve_wake_model
+        table = self._wake_table
+        table.setRowCount(0)
+        for index, row in enumerate(self._wake_entries):
+            table.insertRow(index)
+            check = QCheckBox()
+            check.setAccessibleName('Enable ' + row['phrase'])
+            check.setChecked(row['enabled'])
+            check.toggled.connect(lambda enabled, i=index: self._wake_toggle(i, enabled))
+            table.setCellWidget(index, 0, check)
+            table.setItem(index, 1, QTableWidgetItem(row['phrase']))
+            model = resolve_wake_model(row['phrase'], row.get('model'))
+            # PLACEHOLDER COPY (1042b)
+            status = 'fast (model)' if model else 'slow - no model'
+            item = QTableWidgetItem(status)
+            table.setItem(index, 2, item)
+            self._wake_set_detection(index, status, str(model) if model else
+                                     'No model is available. Uses the recognizer; only one slow phrase can be enabled.')
+            threshold = QDoubleSpinBox()
+            threshold.setRange(0, 1)
+            threshold.setSingleStep(.05)
+            threshold.setValue(row['threshold'])
+            threshold.setAccessibleName(row['phrase'] + ' threshold')
+            threshold.lineEdit().setAccessibleName(row['phrase'] + ' threshold')
+            threshold.setFixedHeight(32)
+            threshold.valueChanged.connect(lambda value, i=index: self._wake_threshold(i, value))
+            table.setCellWidget(index, 3, threshold)
+            role = QComboBox()
+            role.addItem('Samsara', 'samsara')
+            role.addItem('Ava', 'ava')
+            role.setCurrentIndex(role.findData(row['role']))
+            role.setAccessibleName(row['phrase'] + ' role')
+            role.setToolTip('Samsara: commands and dictation. Ava: conversation.')  # PLACEHOLDER COPY (1042b)
+            theme.hub_control(role)
+            role.currentIndexChanged.connect(lambda _, i=index, box=role: self._wake_role(i, box.currentData()))
+            table.setCellWidget(index, 4, role)
+            table.setRowHeight(index, 34)
+        self._wake_update_statuses()
+
+    def _wake_set_detection(self, index, status, detail):
+        item = self._wake_table.item(index, 2)
+        item.setText(status)
+        item.setToolTip(detail)
+        item.setData(Qt.ItemDataRole.AccessibleDescriptionRole, detail)
+
+    def _wake_update_statuses(self):
+        import json
+        from samsara.wake_profiles import resolve_wake_model
+        detector = getattr(self._app, '_wake_detector', None)
+        if getattr(detector, 'config_signature', None) != json.dumps(self._wake_entries, sort_keys=True):
+            return
+        fast = {phrase for phrase, _, _ in detector._heads}
+        for index, row in enumerate(self._wake_entries):
+            model = resolve_wake_model(row['phrase'], row.get('model'))
+            # PLACEHOLDER COPY (1042b): keep the cell short; expose detail accessibly.
+            status = 'fast (model)' if model else 'slow - no model'
+            detail = str(model) if model else 'No model is available. Uses the recognizer; only one slow phrase can be enabled.'
+            if row['enabled'] and row['phrase'] not in fast:
+                fallback = row['phrase'] in detector.fallback_phrases
+                status = ('slow - failed' if model else 'slow - no model') if fallback else 'not listening'
+                detail = ('Model unavailable. Uses the recognizer.' if model else detail) if fallback else 'Unavailable; this phrase is not listening.'
+            self._wake_set_detection(index, status, detail)
+
+    def _wake_save(self):
+        from copy import deepcopy
+        wake = deepcopy(self._app.config.get('wake_word_config', {}))
+        wake['phrases'] = deepcopy(self._wake_entries)
+        changes = {'wake_word_config': wake}  # update_config replaces top-level keys.
+        try:
+            saver = getattr(self._app, 'update_config', None)
+            if callable(saver):
+                saver(changes)
+            else:
+                self._app.update_config_and_save(changes)
+            self._wake_update_statuses()
+            self._wake_status.setText('Wake phrases saved.')  # PLACEHOLDER COPY (1042b)
+        except Exception as exc:
+            self._wake_status.setText('Could not save wake phrases. Try again.')
+            logger.error('[WAKE] Saving phrases failed: %s', exc)
+
+    def _wake_toggle(self, index, enabled):
+        from samsara.wake_profiles import resolve_wake_model
+        row = self._wake_entries[index]
+        if enabled and not resolve_wake_model(row['phrase'], row.get('model')):
+            if any(i != index and r['enabled'] and not resolve_wake_model(r['phrase'], r.get('model'))
+                   for i, r in enumerate(self._wake_entries)):
+                check = self._wake_table.cellWidget(index, 0)
+                check.blockSignals(True)
+                check.setChecked(False)
+                check.blockSignals(False)
+                self._wake_status.setText('Only one slow phrase can be enabled. Turn the other slow phrase off first.')
+                return
+        row['enabled'] = enabled
+        self._wake_save()
+
+    def _wake_threshold(self, index, value):
+        self._wake_entries[index]['threshold'] = value
+        self._wake_save()
+
+    def _wake_role(self, index, role):
+        self._wake_entries[index]['role'] = role
+        self._wake_save()
+
+    def _wake_add(self, checked=False, model=''):
+        from samsara.wake_profiles import resolve_wake_model
+        phrase = self._wake_phrase_input.currentText().strip().lower()
+        if not phrase or any(r['phrase'] == phrase for r in self._wake_entries):
+            self._wake_status.setText('Choose a new phrase to add.')
+            return
+        resolved = resolve_wake_model(phrase, model)
+        conflict = not resolved and any(r['enabled'] and not resolve_wake_model(r['phrase'], r.get('model'))
+                                        for r in self._wake_entries)
+        self._wake_entries.append(dict(phrase=phrase, model=model or resolved or '',
+                                       enabled=not conflict, threshold=.2,
+                                       role='ava' if phrase == 'hey ava' else 'samsara'))
+        self._wake_render()
+        self._wake_save()
+        if conflict:
+            self._wake_status.setText('Added disabled: only one slow phrase can be enabled at a time.')
+
+    def _wake_add_model(self):
+        path, _ = QFileDialog.getOpenFileName(self, 'Choose wake model', '', 'ONNX models (*.onnx)')
+        if path:
+            self._wake_add(model=path)
+
+    def _wake_remove(self):
+        rows = {index.row() for index in self._wake_table.selectionModel().selectedRows()}
+        if not rows:
+            self._wake_status.setText('Select a phrase to remove.')
+            return
+        self._wake_entries = [r for i, r in enumerate(self._wake_entries) if i not in rows]
+        self._wake_render()
+        self._wake_save()
 
     def _build_kv_tab(self, mode: str, title: str) -> QWidget:
         """Build a two-column key-value editor tab.

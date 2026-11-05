@@ -462,6 +462,14 @@ SETTINGS_SCHEMA = {
         "settings_ui": False,
         "ui_less_reason": "Config-only opt-in to the alternative latched wake route, which also requires command_mode.mode=toggle.",
     },
+    "wake_word_config.phrases": {
+        "type": "list",
+        "default": [],
+        "item_type": "dict",
+        "tab": "hotkeys",
+        "settings_ui": False,
+        "ui_less_reason": "Managed by Dictionary > Wake Words: enabled, model, threshold and samsara/ava role per phrase.",
+    },
     "wake_word_config.oww_threshold": {
         "type": "float",
         "min": 0.05,

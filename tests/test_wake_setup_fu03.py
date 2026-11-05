@@ -300,6 +300,8 @@ def test_unsupported_load_falls_back_once_and_preserves_other_settings(phrase, t
     cfg['wake_word_config']['audio']['measured_noise_floor'] = 0.005
     assert normalize_wake_phrase(cfg)
     assert cfg['wake_word_config']['phrase'] == 'jarvis'
+    # 1042b: the original listener survives alongside the legacy slot.
+    assert cfg['wake_word_config']['phrases'][0]['phrase'] == phrase
     assert cfg['wake_word_config']['phrase_fallback_pending']
     assert cfg['wake_word_config']['audio']['wake_command_timeout'] == 9
     assert calibration_needed(cfg)
@@ -324,6 +326,8 @@ def test_runtime_load_migrates_even_when_old_wake_migration_is_noop():
         setattr(app, name, Mock())
     migrate_loaded_config(app, {})
     assert app.config['wake_word_config']['phrase'] == 'jarvis'
+    # 1042b: migrate the authoritative phrase list in the same save batch.
+    assert app.config['wake_word_config']['phrases'][0]['phrase'] == 'alexa'
     assert app.config['wake_word_config']['phrase_fallback_pending']
     assert app.save_config.called
 

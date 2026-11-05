@@ -238,6 +238,7 @@ if os.path.exists(sounddevice_data):
 # files cannot make a local build differ from the clean CI artifact.
 datas += tracked_tree_datas(app_dir, 'sounds', 'sounds')
 datas += tracked_tree_datas(app_dir, 'profiles', 'profiles')
+datas += tracked_tree_datas(app_dir, 'samsara/wake_models', 'samsara/wake_models')
 datas.append((str(app_dir / 'commands.json'), '.'))
 # `command_catalog.ROOT` is the frozen runtime data root (`_MEIPASS`), as it
 # is for commands.json.  The execution-policy risk fallback needs this exact
