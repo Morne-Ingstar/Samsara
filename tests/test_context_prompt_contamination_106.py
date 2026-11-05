@@ -446,7 +446,7 @@ class TestOnlyCleanTextEntersTheTail:
         assert "submit" not in manager.buffer
         assert "submit" not in (app.model.transcribe.call_args_list[-1].kwargs.get("initial_prompt") or "")
         app._show_outcome_chip.assert_called_once_with(
-            "low-confidence decode - not staged", "warning"
+            "Didn't catch that - say it again", "warning"
         )
 
     def test_guard_suppressed_text_never_reaches_the_next_prompt(self):

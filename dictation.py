@@ -5888,7 +5888,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 logger.info(f'[GUARD] Refused low-confidence dictate decode: {describe_text(text)!r}')
                 self._log_cmd_utt_dropped('quality_exhausted', _capture_mode, audio_duration)
                 try:
-                    self._show_outcome_chip('low-confidence decode - not staged', 'warning')
+                    self._show_outcome_chip("Didn't catch that - say it again", 'warning')
                 except Exception as exc:
                     logger.debug(f'[CMD-UTT] low-confidence chip failed: {describe_text(exc)}')
                 return

@@ -61,8 +61,11 @@ def display(request, qapp, monkeypatch):
                          ids=['1-1500', '19-1500', '20-1550', '50-3350', '77-4970', '78-5000', '200-5000'])
 def test_exact_shared_formula(length, expected):
     # 1038: preserve historical node IDs and check persistent severity separately.
+    # 1140: a one-off warning times out (4-12 s); errors stay until dismissed.
+    warning = max(4000, min(12000, 2500 + 60 * max(0, length - 20)))
     for kind in ('success', 'accent', 'warning', 'error'):
-        assert message_duration_ms('x' * length, kind, 1) == (None if kind in ('warning', 'error') else expected)
+        want = {'warning': warning, 'error': None}.get(kind, expected)
+        assert message_duration_ms('x' * length, kind, 1) == want
 
 
 @pytest.mark.parametrize('label', ['typed', 'Captured', 'Synthetic receipt ' * 6])
@@ -194,7 +197,7 @@ def test_cancelled_queued_progress_never_reappears(display):
 def test_dead_queued_producer_does_not_show(display):
     d, alive = display, [True]
     d.show('Synthetic warning', 'warning')
-    assert d.deadline() is None  # 1038: warning is persistent.
+    assert d.deadline() == 4.0  # 1140: a one-off warning times out.
     d.show('Synthetic work', 'accent', None,
            Feedback(FeedbackKind.RUNNING, FeedbackPurpose.RUNNING, 'work', alive=lambda: alive[0]))
     alive[0] = False

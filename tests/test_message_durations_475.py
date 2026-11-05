@@ -100,10 +100,10 @@ def test_newer_result_replaces_and_gets_its_own_deadline(display):
     # 1038: an unrelated result waits for explicit dismissal of the refusal.
     d = display
     d.i.show_outcome('First refusal', 'warning'); d.flush()
-    assert d.deadline() is None
+    assert d.deadline() == 4.0  # 1140: a one-off warning times out
     d.clock[0] = 1.0
     d.i.show_outcome('New result', 'success'); d.flush()
-    assert d.text() == 'First refusal' and d.deadline() is None
+    assert d.text() == 'First refusal' and d.deadline() == 4.0
     d.i.dismiss_error(); d.flush()
     assert d.text() == 'New result' and d.deadline() == 3.5
     d.clock[0] = 3.5; d.expire()
@@ -223,7 +223,7 @@ def test_result_and_refusal_remain_searchable_in_history_after_expiry(display, t
         d.flush()
         d.clock[0] = 9
         d.expire()
-        assert d.text() == 'Synthetic refusal: nothing ran'  # 1038: warnings persist.
+        assert d.text() == ''  # 1140: a one-off warning times out.
         d.i.dismiss_error(); d.flush()
         rows = db.recent_windowed(search='Synthetic refusal')
         assert len(rows) == 1
@@ -283,7 +283,7 @@ def test_both_widgets_keep_feedback_visible_when_returning_to_rest(qapp, monkeyp
             compact.grab().save(str(directory / 'Compact_refusal_at_1_second.png'))
         clock[0] = 4
         c.refresh_expired(); compact._clear_outcome(); qapp.processEvents()
-        assert c.view().notice.message == label and compact._chip_label == label  # 1038
+        assert c.view().notice.message != label and compact._chip_label != label  # 1140: warning timed out
         full.dismiss_error(); compact.dismiss_error(); c.drain()
         assert c.view().form is VisibleForm.MARK and not c.widget._band.isVisible()
         assert not compact.isVisible()

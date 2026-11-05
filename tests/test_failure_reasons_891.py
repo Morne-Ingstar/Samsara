@@ -152,7 +152,7 @@ def test_cancelled_streaming_result_has_no_new_notice(monkeypatch):
 def test_only_error_floor_changes():
     assert message_duration_ms('x', 'error', 500) is None  # 1038
     assert message_duration_ms('x', 'success', 500) == 2500
-    assert message_duration_ms('x', 'warning', 500) is None  # 1038
+    assert message_duration_ms('x', 'warning', 500) == 4000  # 1140: one-off warning times out
 
 
 @pytest.mark.parametrize('duration,finished,expected', [(.1, True, 'short_tap'), (2., True, 'near_silent'), (2., False, None)])
