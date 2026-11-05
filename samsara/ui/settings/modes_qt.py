@@ -86,17 +86,12 @@ _CMD_TTS_CHAR_LIMIT_DESC = (
     "Ava's answers, Ava status messages and yes/no confirmations are always "
     "spoken. No limit (0) speaks every acknowledgement in full."
 )
-_CMD_CANCEL_WINDOW_DESC = (
-    "When a command is recognised while you are dictating, the indicator shows "
-    "\"running <command>... say no\" and waits this long before running it. "
-    "Say \"no\", \"cancel\" or \"stop\" to cancel; start talking and it waits to "
-    "hear you; keep dictating and it is cancelled. Reading commands run at once "
-    "and destructive ones still ask yes or no. Off (0) runs commands at once."
-)
-_CMD_CANCEL_WINDOW_ALL_DESC = (
-    "Also wait before the everyday words the dictation lane has always "
-    "accepted (submit, enter, escape, next field, focus / switch to ...). "
-    "Off by default: those are said on purpose, and a wait slows every send."
+_COMMAND_TIMING_DESC = (  # PLACEHOLDER COPY (1031f)
+    "Ordinary commands, AI requests, printer start/resume and worker launches run immediately. "
+    "A message you wrote to a known person has a 1 s sending grace: say cancel or send now. "
+    "Email, purchases, public posting, destructive deletion, unsaved closes, system/security "
+    "changes, arbitrary webhooks and shell commands ask once. No answer cancels; "
+    "confirmation never counts down to execution."
 )
 # Queue 62: every command_mode key the app reads now has a control below.
 # A key added here gets listed on the tab as config-file only.
@@ -994,37 +989,14 @@ class ModesPage:
             )
         )
 
-        # command_mode.cancel_window_s / cancel_window_all_commands (queue
-        # 69). The spin shows the EFFECTIVE value the policy uses, so a garbage
-        # config value reads as the default; 0 is shown as "Off".
-        from samsara.execution_policy import (  # noqa: PLC0415
-            CANCEL_WINDOW_MAX_S, cancel_window_settings)
-        from types import SimpleNamespace  # noqa: PLC0415
-        _cw_seconds, _cw_everyday = cancel_window_settings(SimpleNamespace(config=cfg))
-        cancel_window_spin = QDoubleSpinBox()
-        cancel_window_spin.setRange(0.0, CANCEL_WINDOW_MAX_S)
-        cancel_window_spin.setDecimals(1)
-        cancel_window_spin.setSingleStep(0.5)
-        cancel_window_spin.setSuffix(" s")
-        cancel_window_spin.setSpecialValueText("Off")
-        cancel_window_spin.setValue(_cw_seconds)
-        self._widgets['cmd_cancel_window'] = cancel_window_spin
+        # 1031f: legacy all-command timer keys no longer control execution.
+        timing = QLabel("By action")  # PLACEHOLDER COPY (1031f)
+        self._widgets['cmd_timing_policy'] = timing
         adv_area_layout.addLayout(
             self._setting_row(
-            "Cancel window for commands heard while dictating",
-            _CMD_CANCEL_WINDOW_DESC,
-            cancel_window_spin,
-            control_width=180,
-            )
-        )
-        cancel_window_all_cb = QCheckBox()
-        cancel_window_all_cb.setChecked(_cw_everyday)
-        self._widgets['cmd_cancel_window_all'] = cancel_window_all_cb
-        adv_area_layout.addLayout(
-            self._setting_row(
-            "Also for everyday words (submit, enter, focus...)",
-            _CMD_CANCEL_WINDOW_ALL_DESC,
-            cancel_window_all_cb,
+            "Command timing",
+            _COMMAND_TIMING_DESC,
+            timing,
             control_width=180,
             )
         )
@@ -1140,9 +1112,6 @@ class ModesPage:
                 cmd_cfg['miss_limit'] = self._widgets['cmd_miss_limit'].value()
                 if 'cmd_tts_char_limit' in self._widgets:
                     cmd_cfg['tts_char_limit'] = self._widgets['cmd_tts_char_limit'].value()
-                if 'cmd_cancel_window' in self._widgets:
-                    cmd_cfg['cancel_window_s'] = round(self._widgets['cmd_cancel_window'].value(), 1)
-                    cmd_cfg['cancel_window_all_commands'] = self._widgets['cmd_cancel_window_all'].isChecked()
                 # Queue 62 keys.
                 cmd_cfg['utterance_silence_s'] = round(self._widgets['cmd_utterance_silence'].value(), 2)
                 cmd_cfg['dictate_utterance_silence_s'] = round(

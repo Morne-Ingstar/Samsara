@@ -166,6 +166,8 @@ def schedule_feedback(app, label, kind, ttl_ms, *, source="", detail=None):
     if context is not None and context[0] is app:
         _, source, detail = context
     feedback = producer_feedback(app, kind, source, detail)
+    from samsara.consent_feedback import pending_label
+    label = pending_label(app, label, feedback)
     if source == "command_miss":
         # A miss belongs in History even if the display drops/filters its notice.
         remember_feedback(app, label, feedback, raw_text=(detail or {}).get("heard", ""))

@@ -54,6 +54,8 @@ def message_protected(label, kind, expires_at, now, *, purpose='result') -> bool
 def message_priority(kind, *, purpose='result', owner='') -> int:
     """Capture and errors may interrupt; ordinary results wait their turn."""
     kind, purpose = getattr(kind, 'value', kind), getattr(purpose, 'value', purpose)
+    if owner.startswith('policy:') and purpose in ('question', 'running'):
+        return 6  # Bound consent must be visible before it can be answered.
     if kind == 'live':
         return 5
     if kind == 'error':

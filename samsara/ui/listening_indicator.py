@@ -72,6 +72,7 @@ from samsara.ui import theme
 from samsara.ui.indicator_docking import IndicatorDocking
 from samsara.ui.indicator_drag import IndicatorDrag
 from samsara.dictation_retry import CompactRetryNotice
+from samsara.consent_feedback import compact_max_lines
 from samsara.ui.splash_qt import _system_reduced_motion as _reduced_motion
 from samsara.ui.tray_qt import SPIN_SECONDS_PER_TURN, paint_mark
 from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer
@@ -1049,8 +1050,7 @@ class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QW
             return
         self._chip_feedback = None
         self._chip_timer.stop()
-        # 1141: keep the expired deadline until _clear_outcome checks protection;
-        # removing it here would turn a timed problem into a persistent one.
+        # 1141: keep the expired deadline through clearing so timed errors cannot become persistent.
         self._clear_outcome()
 
     def set_device_lost(self, lost: bool):
@@ -1287,7 +1287,7 @@ class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QW
         pill_w = self._pill_width(label, show_dot)
         chip = self._active_chip()
         chip_w = self._chip_width(chip[0]) if chip else 0
-        chip_h = max(36 if self._report_width() else _CHIP_H, message_height(chip[0], self._chip_font(), chip_w-2*_CHIP_PAD_X-self._report_width(), padding=6, max_lines=None if self._report_width() else 2)) if chip else 0
+        chip_h = max(36 if self._report_width() else _CHIP_H, message_height(chip[0], self._chip_font(), chip_w-2*_CHIP_PAD_X-self._report_width(), padding=6, max_lines=compact_max_lines(self))) if chip else 0
 
         if chip is None:
             return pill_w, _PILL_H, QRectF(0, 0, pill_w, _PILL_H), None
@@ -1382,7 +1382,7 @@ class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QW
             fill = theme._mix(_chip_fill()[kind], theme.BG0, .80)
         painter.fillPath(path, theme.qcolor(fill))
         font = self._chip_font()
-        lines, _ = message_lines(label, font, rect.width()-2*_CHIP_PAD_X-self._report_width(), max_lines=None if kind in ('error', 'warning') else 2)
+        lines, _ = message_lines(label, font, rect.width()-2*_CHIP_PAD_X-self._report_width(), max_lines=compact_max_lines(self))
         height = message_line_spacing(label, font)
         for index, line in enumerate(lines):
             line_rect = QRectF(rect.x()+_CHIP_PAD_X, rect.center().y()-len(lines)*height/2+index*height,

@@ -104,6 +104,8 @@ def handling(message, app, route):
 
 def _speak(app, text, **kwargs):
     from plugins.commands import ask_ollama
+    from samsara.consent_feedback import prioritize_confirmation
+    prioritize_confirmation(app)
     return ask_ollama.speak(app, text, category="confirmation", **kwargs)
 
 

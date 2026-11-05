@@ -94,6 +94,9 @@ def _feedback(app, label, question=None):
             FeedbackPurpose.QUESTION if question else FeedbackPurpose.RESULT,
             owner="ava_question" if question else "", resolves="" if question else "ava_question",
             alive=(lambda: getattr(app, "_ava_question", None) is question) if question else None)
+        if question and isinstance(question.runner, policy._ConfirmationListener):
+            from samsara.live_surface.feedback import producer_feedback
+            feedback = producer_feedback(app, "pending")
         schedule(indicator.show_feedback, label, "pending" if question else "accent",
                  None if question else 1800, feedback)
     else:
@@ -224,6 +227,9 @@ def ask(app, runner, kind, text, options, *, operation=None, duration=None, labe
             _feedback(app, label, q)
         _tick(app, q)  # Also retires a question if speech is cancelled or AI is switched off.
         spoken = text + (" " + "; ".join(options) + "." if options else "")
+        if operation is not None:
+            from samsara.consent_feedback import prioritize_confirmation
+            prioritize_confirmation(app)
         # The answer window starts after speech completes, including Silent mode.
         if not ava.speak(app, spoken, category="confirmation", on_done=lambda: _open(app, q)):
             _open(app, q)

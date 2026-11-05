@@ -1471,23 +1471,23 @@ class _ConfirmationListener:
 
 
 def listen_for_confirmation(app, prompt):
-    """Reuse 818's post-readback mic lease and both-display question bridge."""
     from samsara import ava_pending
     op = pending_operation()
     if app is None or op is None:
         return
+    from samsara.consent_feedback import question_label, prioritize_confirmation
     text = prompt + " Say yes to confirm or no to cancel."
     if not callable(getattr(app, "_ensure_wake_consumer", None)):
-        # Executor hosts without microphone routing retain spoken/keyed replies
-        # and need no post-speech callback support from their coordinator.
+        # Hosts without microphone routing retain spoken/keyed replies.
         from plugins.commands import ask_ollama as ava
+        prioritize_confirmation(app)
         return ava.speak(app, text, category="confirmation")
     runner = _ConfirmationListener(app, op)
     if callable(getattr(op, "message_readback", None)):
         runner.missed = lambda reason: None  # 1031c: do not persist private preview/body on a missed answer.
     return ava_pending.ask(app, runner, "policy",
         text, (), operation=op,
-        duration=6.0, label="Say yes or no")
+        duration=max(0.0, op.deadline - op._clock()), label=question_label(op))
 
 
 def retire_confirmation(app):

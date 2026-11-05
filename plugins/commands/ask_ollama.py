@@ -912,7 +912,7 @@ def speak(app, text, category="ava_response", on_done=None):
     if isinstance(text, str) and not getattr(_turn_local, "literal_answer", False):
         text = _strip_tags(text)
     max_len = get_max_response_length(app)
-    if max_len and isinstance(text, str) and len(text) > max_len:
+    if max_len and category != "confirmation" and isinstance(text, str) and len(text) > max_len:
         # Trim to the last sentence boundary at or before max_len so we never
         # cut off mid-word. Falls back to a hard slice only if no sentence
         # boundary exists within range.

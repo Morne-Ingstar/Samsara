@@ -200,10 +200,11 @@ ADVANCED = [
         "command_mode.inactivity_timeout_s"
     ],
     [
-        "Cancel window",
-        "Allow time to cancel commands heard during dictation.",
-        "cmd_cancel_window,cmd_cancel_window_all",
-        "command_mode.cancel_window_s,command_mode.cancel_window_all_commands"
+        "Command timing",
+        "Ordinary commands run immediately. Private messages have a 1 s sending grace; "
+        "email and security, privacy or irreversible effects ask once. No answer cancels.",
+        "cmd_timing_policy",
+        ""
     ],
     [
         "Command miss limit",

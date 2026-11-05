@@ -224,7 +224,7 @@ class _FeedbackBand(QWidget):
         return self._dismiss_width() + self._report_width()
 
     def _max_lines(self):
-        return None if self._report_width() else 2
+        return None if self._report_width() or self.notice and self.notice.owner.startswith('policy:') else 2
 
     def _dismiss_width(self):
         return 76 if self.notice and self.notice.purpose is FeedbackPurpose.QUESTION and self.notice.owner.startswith("suggestion:") else 0

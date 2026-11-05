@@ -508,22 +508,19 @@ def test_dictation_wires_the_window_into_the_lane():
 
 
 def test_settings_control_round_trips(qapp):
-    # 1029: shorter default; explicit Off and compatibility flag still round-trip.
+    # 1031f: obsolete timer controls are replaced with the actual effect policy.
     from tests.test_modes_config_keys_62 import _reload, _win
-    app, win, save = _win({"command_mode": {}})
-    assert win._widgets['cmd_cancel_window'].value() == 1.5
-    assert win._widgets['cmd_cancel_window'].specialValueText() == "Off"
-    assert win._widgets['cmd_cancel_window_all'].isChecked() is False
+    legacy = {"cancel_window_s": 3.0, "cancel_window_all_commands": True}
+    app, win, save = _win({"command_mode": dict(legacy)})
+    assert 'cmd_cancel_window' not in win._widgets
+    assert 'cmd_cancel_window_all' not in win._widgets
+    assert win._widgets['cmd_timing_policy'].text() == "By action"
+    row = win._rows_by_widget['cmd_timing_policy']
+    assert row.page_name == "Dictation"
+    assert "immediately" in row.full_help and "1 s" in row.full_help
     cm = save({})['command_mode']
-    assert cm['cancel_window_s'] == 1.5 and cm['cancel_window_all_commands'] is False
-
-    win._widgets['cmd_cancel_window'].setValue(0.0)
-    win._widgets['cmd_cancel_window_all'].setChecked(True)
-    win._apply_and_close()
-    assert app.config['command_mode']['cancel_window_s'] == 0.0
-    assert app.config['command_mode']['cancel_window_all_commands'] is True
-    assert ep.cancel_window_settings(app) == (0.0, True)
+    assert all(cm[key] == value for key, value in legacy.items())
+    assert ep.cancel_window_for("focus", app, reserved=True) == 0.0
     win2, _ = _reload(app)
-    assert win2._widgets['cmd_cancel_window'].value() == 0.0
-    assert win2._widgets['cmd_cancel_window'].text().strip() == "Off"
-    assert win2._widgets['cmd_cancel_window_all'].isChecked() is True
+    assert win2._widgets['cmd_timing_policy'].text() == "By action"
+    assert 'cmd_cancel_window_all' not in win2._widgets
