@@ -3628,8 +3628,8 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             self.start_wake_word_mode()
         if was_continuous:
             self.start_continuous_mode()
-
-        # Update tray icon tooltip
+        from samsara.microphone_recovery import changes_for
+        changes_for(self).request_wake()  # 1127: revive a stopped wake word too.
         self._update_tray_tooltip()
 
     def load_model_async(self):

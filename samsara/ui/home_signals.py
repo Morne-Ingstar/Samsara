@@ -38,7 +38,7 @@ UNKNOWN = "unknown"
 WARMING = "warming"
 
 DICTATION = "Dictation"
-HANDS_FREE = "Hands-free"
+HANDS_FREE = "Wake word"  # PLACEHOLDER COPY (1127): legacy identifier, wake capability.
 AVA = "Ava"
 
 #: Capability -> the consequence sentence a notice shows. The notice states
@@ -56,7 +56,7 @@ NOTICE_ORDER = (DICTATION, HANDS_FREE, AVA)
 #: home_qt.restart_hands_free; anything else keeps the default Voice help
 #: route. A fault that cannot be repaired by a button never names one.
 ACTION_RESTART_HANDS_FREE = "restart_hands_free"
-RESTART_HANDS_FREE_LABEL = "Restart hands-free"
+RESTART_HANDS_FREE_LABEL = "Restart wake word"  # PLACEHOLDER COPY (1127)
 ACTION_SETUP_MICROPHONE = "setup_microphone"  # PLACEHOLDER COPY (838b)
 SETUP_MICROPHONE_LABEL = "Set up microphone..."  # PLACEHOLDER COPY (838b)
 
@@ -291,7 +291,7 @@ def hands_free_state(app) -> CapabilityState:
     if fault is not None:
         return CapabilityState(
             HANDS_FREE, UNAVAILABLE,
-            "Hands-free stopped listening. Select Restart hands-free below to try again.",
+            "Wake word stopped listening. Select Restart wake word below to try again.",
             "Wake activation is on in Settings > Dictation > Wake activation",
             action_label=RESTART_HANDS_FREE_LABEL, action=ACTION_RESTART_HANDS_FREE)
     if getattr(app, "snoozed", False):
@@ -304,7 +304,7 @@ def hands_free_state(app) -> CapabilityState:
     if not mic:
         return CapabilityState(
             HANDS_FREE, UNAVAILABLE,
-            "Your selected device is unavailable. Choose another in Settings > Audio > Microphone.",  # PLACEHOLDER COPY (838b)
+            "Wake word cannot hear you. Connect a microphone or choose one in Settings > Audio > Microphone.",  # PLACEHOLDER COPY (838b)
             action_label=SETUP_MICROPHONE_LABEL, action=ACTION_SETUP_MICROPHONE)
 
     models = wake_models_state(app)
@@ -324,14 +324,14 @@ def hands_free_state(app) -> CapabilityState:
             "Check that this is on in Settings > Dictation > Wake activation")
     if running is None:
         return CapabilityState(
-            HANDS_FREE, UNKNOWN, "Samsara has not checked hands-free listening yet.",
+            HANDS_FREE, UNKNOWN, "Samsara has not checked wake word listening yet.",
             "Run a check in Voice help to refresh this status")
     if not running or not armed:
         # Enabled, loaded, a microphone is present -- and nothing is
         # listening. This is the state Home used to call "ready".
         return CapabilityState(
             HANDS_FREE, UNAVAILABLE,
-            "Hands-free stopped listening. Select Restart hands-free below to try again.",
+            "Wake word stopped listening. Select Restart wake word below to try again.",
             "Wake activation is on in Settings > Dictation > Wake activation",
             action_label=RESTART_HANDS_FREE_LABEL, action=ACTION_RESTART_HANDS_FREE)
     return CapabilityState(HANDS_FREE, READY, "",

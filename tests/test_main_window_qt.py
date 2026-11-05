@@ -1,3 +1,4 @@
+# 1127: assertions follow the accepted Wake word / Hands-free / Hold to talk names.
 """Tests for samsara.ui.main_window_qt.MainWindowQt's show()/restore-from-
 minimized behavior (tray "Show Samsara" / tray-icon-click bug fix).
 
@@ -218,10 +219,10 @@ class TestHeaderMark:
         mark = win._header_mark
         app.pair = ("listening", "armed")
         mark.refresh()
-        assert mark.accessibleName() == "Samsara \u2014 listening, hands-free armed"
+        assert mark.accessibleName() == "Samsara \u2014 listening, wake word ready"
         app.pair = ("recording", "off")
         mark.refresh()
-        assert mark.accessibleName() == "Samsara \u2014 recording, hands-free off"
+        assert mark.accessibleName() == "Samsara \u2014 recording, wake word off"
         assert win._badge.text() == "Mic ready"  # 824: neutral readiness label; mark does not change it.
 
     def test_timer_runs_while_shown_and_stops_on_hide(self, window, qapp):

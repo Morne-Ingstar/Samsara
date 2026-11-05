@@ -1,3 +1,4 @@
+# 1127: assertions follow the accepted Wake word / Hands-free / Hold to talk names.
 """Home (samsara/ui/home_qt.py), its signals (home_signals.py) and Voice help
 (voice_help_qt.py), after queue 86 turned Home from a control surface into a
 front door.
@@ -645,7 +646,7 @@ def _stopped_app(**over):
     hands-free stops and they cannot type."""
     app = _app(_wake_consumer=_WakeConsumer(running=False), **over)
     app._hands_free_fault = types.SimpleNamespace(
-        reason="Hands-free stopped: the microphone stopped feeding it.",
+        reason="Wake word stopped: the microphone stopped feeding it.",
         classification="transient", exception="OSError: device unavailable",
         at=1.0, attempts=0, retrying=False,
         evidence="the wake listener stopped with OSError: device unavailable")
@@ -669,7 +670,7 @@ class TestStoppedHandsFreeIsRecoverable:
         home = page(_stopped_app())
         notice = home.notice
         assert notice.capability == home_signals.HANDS_FREE
-        assert notice.headline.startswith("Hands-free stopped")
+        assert notice.headline.startswith("Wake word stopped")
         assert notice.consequence == "The wake word cannot hear you."
         assert home._notice_card.isVisibleTo(home)
         assert home._notice_btn.text() == home_signals.RESTART_HANDS_FREE_LABEL
@@ -708,7 +709,7 @@ class TestStoppedHandsFreeIsRecoverable:
         state = home_signals.capability_states(app)[home_signals.HANDS_FREE]
         assert state.status == home_signals.UNAVAILABLE
         assert state.detail == (
-            "Hands-free stopped listening. Select Restart hands-free below to try again.")
+            "Wake word stopped listening. Select Restart wake word below to try again.")
 
     def test_a_microphone_fault_offers_the_setup_action(self, page, monkeypatch):
         """The Audio row's setup button is the direct repair for a missing mic."""

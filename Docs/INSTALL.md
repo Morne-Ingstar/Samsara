@@ -29,7 +29,7 @@ Download `SamsaraSetup-0.41.2.exe` from the release page and run it.
   Choose "all users" in the first dialog if you want that instead.
 - The Components page lists what else is available, with sizes:
   - **Samsara** (required).
-  - **Hands-free: wake-word models**, preselected. Say the wake word instead
+  - **Wake word models**, preselected. Say the wake word instead
     of pressing a key.
   - **GPU acceleration: NVIDIA CUDA pack**, preselected when an NVIDIA GPU is
     detected. Shown greyed with "No NVIDIA GPU detected" otherwise. If the

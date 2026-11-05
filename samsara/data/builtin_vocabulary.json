@@ -310,7 +310,7 @@
   },
   {
     "word": "wake word",
-    "why": "Configure hands-free wake detection.",
+    "why": "Configure wake word detection.",
     "packs": [
       "core"
     ]

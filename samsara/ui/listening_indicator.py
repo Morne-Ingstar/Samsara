@@ -1,5 +1,5 @@
 """
-Samsara Listening State Indicator — PySide6 pill overlay.
+Samsara Listening State Indicator â€” PySide6 pill overlay.
 
 Replaces the Win32 UpdateLayeredWindow + PIL implementation with a
 native Qt widget rendered by QPainter.  No ctypes, no PIL, no
@@ -280,7 +280,7 @@ class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QW
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         # Display state
-        self._mode_text    = "Hold"
+        self._mode_text    = "Hold to talk"  # PLACEHOLDER COPY (1127)
         self._listening    = False
         self._snoozed      = False
         self._corner       = "bottom-center"
@@ -439,7 +439,7 @@ class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QW
         self._retire_input_window()
 
     def set_mode(self, mode_str):
-        self._mode_text = mode_str if mode_str else "Hold"
+        self._mode_text = mode_str if mode_str else "Hold to talk"
         self._update_accessibility()
         if self.isVisible():
             self._reposition()
@@ -1135,7 +1135,7 @@ class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QW
         except ImportError:
             return
         _state_map = {
-            Mode.IDLE:       "Hold",
+            Mode.IDLE:       "Hold to talk",
             Mode.HOLD:       "Dictating",
             Mode.TOGGLE:     "Dictating",
             Mode.CONTINUOUS: "Listening",
@@ -1145,7 +1145,7 @@ class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QW
             Mode.STREAMING:  "Streaming",
         }
         def _on_mode_change(old, new):
-            label = _state_map.get(new, "Hold")
+            label = _state_map.get(new, "Hold to talk")
             listening = new in (Mode.WAKE, Mode.CONTINUOUS,
                                 Mode.HOLD, Mode.TOGGLE,
                                 Mode.STREAMING)
@@ -1166,7 +1166,7 @@ class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QW
         bg, fg, label, mark = self._resolve_base_colors()
         ava = 'ava' in str(self._session_mode_name or self._mode_text).casefold()
         if getattr(self, '_game_mode', False) and not self._thinking and not ava:
-            label += ' · Game mode'
+            label += ' Â· Game mode'
         return bg, fg, label, mark
 
     def _resolve_base_colors(self):
@@ -1440,7 +1440,7 @@ class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QW
         super()._retire_input_window()
 
     # ------------------------------------------------------------------
-    # Pulse animation — Qt timer on main event loop (no background thread)
+    # Pulse animation â€” Qt timer on main event loop (no background thread)
     # ------------------------------------------------------------------
 
     def _pulse_tick(self):
@@ -1459,7 +1459,7 @@ class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QW
         self.update()
 
     # ------------------------------------------------------------------
-    # Flash animation — single-shot QTimer chain
+    # Flash animation â€” single-shot QTimer chain
     # ------------------------------------------------------------------
 
     def _start_flash(self, bg: str, fg: str):

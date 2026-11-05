@@ -1,3 +1,4 @@
+# 1127: assertions follow the accepted Wake word / Hands-free / Hold to talk names.
 """Queue 109 -- losing hands-free must be explained, recoverable and countable.
 
 Three defects from Astra's review,
@@ -301,7 +302,7 @@ class TestFatalLeavesRecoverableState:
 
         state = home_signals.hands_free_state(app)
         assert state.status == home_signals.UNAVAILABLE
-        assert state.detail.startswith("Hands-free stopped")
+        assert state.detail.startswith("Wake word stopped")
         assert state.action == home_signals.ACTION_RESTART_HANDS_FREE
         assert state.action_label == home_signals.RESTART_HANDS_FREE_LABEL
         assert state.evidence == "Wake activation is on in Settings > Dictation > Wake activation"
@@ -466,7 +467,7 @@ class TestReadinessIsRuntime:
         app._wake_consumer = _FakeConsumer(running=False)
         state = home_signals.hands_free_state(app)
         assert state.status == home_signals.UNAVAILABLE
-        assert state.detail == "Hands-free stopped listening. Select Restart hands-free below to try again."
+        assert state.detail == "Wake word stopped listening. Select Restart wake word below to try again."
         assert state.action == home_signals.ACTION_RESTART_HANDS_FREE
         assert home_signals.mic_available(app) is True
 
@@ -516,7 +517,7 @@ class TestReadinessIsRuntime:
         app._wake_consumer = _FakeConsumer(running=False)
         state = home_signals.hands_free_state(app)
         # 838b: the microphone setup row is registered under Audio.
-        assert state.detail == "Your selected device is unavailable. Choose another in Settings > Audio > Microphone."
+        assert state.detail == "Wake word cannot hear you. Connect a microphone or choose one in Settings > Audio > Microphone."
         # 838b: the notice opens the registered microphone setup guide.
         assert state.action == home_signals.ACTION_SETUP_MICROPHONE
         assert state.action_label == home_signals.SETUP_MICROPHONE_LABEL

@@ -1,3 +1,4 @@
+# 1127: assertions follow the accepted Wake word / Hands-free / Hold to talk names.
 """Behavior regressions with synthetic input; never import the desktop bootstrap."""
 import ast
 from pathlib import Path
@@ -294,7 +295,7 @@ def test_optional_ai_off_cannot_replace_live_words_or_leak_into_next_capture(sur
     assert c.view().provisional_text == "Synthetic words remain visible."
     indicator.dismiss_error(); c.drain()
     assert c.widget.view.form is VisibleForm.LIVE
-    assert c.widget._lane.text() == "Hold" and c.widget._state.text() == "recording"
+    assert c.widget._lane.text() == "Hold to talk" and c.widget._state.text() == "recording"
     assert "Synthetic words remain visible." in c.widget._transcript.toPlainText()
     indicator.show_outcome("Optional AI is off", "error", 1800)
     partials.stop()

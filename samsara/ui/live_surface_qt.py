@@ -41,7 +41,7 @@ REVIEW_SIZE = (500, 360)
 RESIZE_DURATION_MS = 120
 MARK_TWEEN_S = 0.30
 MARK_TURN_S = {"listening": 3.0, "recording": 2.4, "transcribing": 2.4}
-_WORD = re.compile(r"[\w]+(?:['’\-][\w]+)*", re.UNICODE)
+_WORD = re.compile(r"[\w]+(?:['â€™\-][\w]+)*", re.UNICODE)
 
 
 def _view_from(source: Any) -> SurfaceView:
@@ -480,7 +480,7 @@ class LiveSurfaceWidget(QWidget):
         self._provisional = QLabel(self); self._provisional.setWordWrap(True)
         self._provisional.setObjectName("surfaceProvisional")
         self._provisional.setAccessibleName("Provisional transcript")
-        self._badge = QLabel(self); self._badge.setText("▣  Draft")
+        self._badge = QLabel(self); self._badge.setText("â–£  Draft")
         self._badge.setAccessibleName("Draft pending")
         self._latest = self._button("Read the latest draft text", "Latest", self._latest_clicked)
         self._latest.setAccessibleDescription("Resume following newly settled draft text")
@@ -776,7 +776,7 @@ class LiveSurfaceWidget(QWidget):
         self.setAccessibleDescription("; ".join(part for part in (
             self._lane.text(), state, KIND_WORDS[notice.feedback] + ': ' + notice.message if notice else '',
             self._secondary_band.accessibleDescription(), view.document.value.replace("_", " ")) if part))
-        self._provisional.setText(f"⋯ {view.provisional_text}" if view.provisional_text else "")
+        self._provisional.setText(f"â‹¯ {view.provisional_text}" if view.provisional_text else "")
         self._badge.setText("Tap Insert text to send.")
         previous_content = (previous_text, previous.provisional_text)
         if previous_content != (view.text, view.provisional_text) and any(previous_content) and not self._follow_latest:
@@ -819,7 +819,7 @@ class LiveSurfaceWidget(QWidget):
         if self._view.provisional_text:
             if self._view.text:
                 parts.append("<br/>")
-            parts.append(f'<span style="color: {theme.TEXT_SECONDARY}; font-style: italic;">⋯ '
+            parts.append(f'<span style="color: {theme.TEXT_SECONDARY}; font-style: italic;">â‹¯ '
                          + escape(self._view.provisional_text) + '</span>')
         self._transcript.setHtml(
             f"<style>body,a {{ color: {theme.TEXT_PRIMARY}; text-decoration: none; }}</style><p>"
@@ -1240,7 +1240,7 @@ class LiveSurfaceWidget(QWidget):
 
     def _lane_text(self, view: SurfaceView) -> str:
         text = self._base_lane_text(view)
-        return text + ' · Game mode' if getattr(self, '_game_mode', False) and view.lane is not Lane.AVA else text
+        return text + ' Â· Game mode' if getattr(self, '_game_mode', False) and view.lane is not Lane.AVA else text
 
     def set_game_mode(self, active):
         self._game_mode = bool(active)
@@ -1249,9 +1249,10 @@ class LiveSurfaceWidget(QWidget):
     def _base_lane_text(self, view: SurfaceView) -> str:
         if self._parked_idle(view):
             return "Kept draft"  # PLACEHOLDER COPY (492)
-        labels = {"hold": "Hold", "toggle": "Toggle", "hands_free_dictate": "Hands-free",
+        # PLACEHOLDER COPY (1127): name the feature that owns this listening state.
+        labels = {"hold": "Hold to talk", "toggle": "Toggle", "hands_free_dictate": "Hands-free",
                   "continuous": "Continuous", "command": "Command", "ava": "Ava"}
-        return labels.get(view.lane.value, "") if view.lane is not None else ("Hold" if view.form is not VisibleForm.MARK else "")
+        return labels.get(view.lane.value, "") if view.lane is not None else ("Hold to talk" if view.form is not VisibleForm.MARK else "")
 
     def _state_text(self, view: SurfaceView) -> str:
         if view.capture is CaptureState.UNAVAILABLE: return "microphone unavailable"
@@ -1271,7 +1272,7 @@ class LiveSurfaceWidget(QWidget):
     def _announce_transition(self, previous: SurfaceView, current: SurfaceView) -> None:
         if previous.lane is not current.lane or previous.capture is not current.capture or previous.snoozed != current.snoozed:
             self._announce(("state", current.lane, current.capture, current.snoozed),
-                           " — ".join(p for p in (self._lane_text(current), self._state_text(current)) if p))
+                           " â€” ".join(p for p in (self._lane_text(current), self._state_text(current)) if p))
         if current.feedback_revision != previous.feedback_revision and current.feedback_event and current.feedback_event.message:
             notice = current.feedback_event
             self._announce(("feedback", current.feedback_revision), KIND_WORDS[notice.feedback] + ": " + notice.message)

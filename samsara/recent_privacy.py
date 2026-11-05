@@ -132,7 +132,10 @@ def before_delivery(app, text):
     redact an existing row cancels injection rather than leaving a password in
     persisted History. The caller still owns its draft and delivery decision.
     """
-    target = focused_target()
+    # No History store needs redaction; keep later writes concealed without
+    # starting a native UIA probe merely to deliver text (1127).
+    target = (focused_target() if getattr(app, "history_db", None) is not None
+              or isinstance(getattr(app, "history", None), list) else TargetPrivacy())
     app._recent_delivery_privacy = (time.monotonic(), target)
     if target.sensitive:
         manager = getattr(app, "history_db", None)

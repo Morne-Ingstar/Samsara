@@ -125,8 +125,8 @@ _PROGRAMMING_ERRORS = (
 #: message go in the evidence line, which is checkable without being the
 #: headline a user has to parse.
 FATAL_REASONS = {
-    FATAL_TRANSIENT: "Hands-free stopped: the microphone stopped feeding it.",
-    FATAL_PERMANENT: "Hands-free stopped after an internal error.",
+    FATAL_TRANSIENT: "Wake word stopped: the microphone stopped feeding it.",
+    FATAL_PERMANENT: "Wake word stopped after an internal error.",
 }
 
 

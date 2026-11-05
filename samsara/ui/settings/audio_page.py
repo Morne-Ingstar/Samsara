@@ -76,6 +76,7 @@ BASE = [
         "accessibility.ava_mute_audio"
     ]
 ]
+# PLACEHOLDER COPY (1127): canonical feature names.
 ADVANCED = [
     [
         "Speech during feedback",
@@ -102,8 +103,8 @@ ADVANCED = [
         "ducking.level"
     ],
     [
-        "Hands-free audio",
-        "Reduce other apps during hands-free listening.",
+        "Wake word and hands-free audio",
+        "Reduce other apps while listening for the wake word or capturing hands-free speech.",
         "adv_hands_free_ducking_enabled",
         "ducking.hands_free_enabled"
     ],
@@ -114,8 +115,8 @@ ADVANCED = [
         "ducking.hands_free_level"
     ],
     [
-        "Hands-free idle volume",
-        "Remaining other-app volume while listening.",
+        "Wake word idle volume",
+        "Remaining other-app volume while listening for the wake word.",
         "adv_hands_free_idle_level",
         "ducking.hands_free_idle_level"
     ],

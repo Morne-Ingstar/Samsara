@@ -166,6 +166,8 @@ def set_state(app, lost, *, notify=False):
     changed = getattr(app, '_no_microphone', None) != bool(lost)
     deferred = _boot_grace(app, lost, notify)
     app._no_microphone = bool(lost)
+    if changed and not lost:
+        changes_for(app).request_wake()
     # Start alongside boot grace, not after it; runtime endpoint flaps get the
     # same policy. Only tray balloons wait; availability/chips stay immediate.
     condition = ('missing' if lost else
@@ -401,6 +403,8 @@ def refresh(app):
                     app._wake_consumer.start()
                 if getattr(app, 'continuous_active', False):
                     app._continuous_consumer.start()
+    if not getattr(app, '_no_microphone', False):
+        changes_for(app).request_wake()
     return app.available_mics
 
 
@@ -418,6 +422,22 @@ def capture_endpoints():
     from pycaw.pycaw import AudioUtilities
     devices = AudioUtilities.GetAllDevices(data_flow=1, device_state=1)
     return frozenset((d.id, d.FriendlyName) for d in devices)
+
+
+def default_capture_id():
+    """Read Windows' live default, independent of PortAudio's cached table."""
+    from pycaw.pycaw import AudioUtilities
+    try:
+        return AudioUtilities.GetMicrophone().GetId()
+    except OSError:
+        return None  # No default capture endpoint while every input is absent.
+
+
+def follows_default(app):
+    cfg = getattr(app, 'config', {})
+    return (getattr(app, '_using_default_mic', False)
+            or cfg.get('microphone_name') in ('System default', 'Default')
+            or (not cfg.get('microphone_name') and cfg.get('microphone') is None))
 
 
 def restart_outputs(app):
@@ -446,9 +466,15 @@ def matching_capture_endpoints(endpoints, name):
 
 class DeviceChanges:
     def __init__(self, app, *, clock=time.monotonic, endpoints=capture_endpoints,
-                 render_id=lambda: None):
+                 render_id=lambda: None, input_id=lambda: None):
         self.app, self.clock = app, clock
         self.endpoints, self.render_id = endpoints, render_id
+        self.input_id = input_id
+        self._input_default = None
+        self._input_attempts = 0
+        self._wake_pending = False
+        self._wake_attempts = 0
+        self._wake_retry_at = 0.0
         self._lock = threading.Lock()
         self._pending = None
         self._input_pending = self._output_pending = False
@@ -468,15 +494,81 @@ class DeviceChanges:
     def prime(self):
         self._render = self.render_id()
         self._capture = self.endpoints()
+        self._input_default = self.input_id()
 
     def notify(self, *_args):
         with self._lock:
             self._pending = self.clock()
 
     def request_input(self):
+        if not self._input_pending:
+            self._input_attempts = 0
         self._input_pending = True
         if self._waiting_since is None:
             self._waiting_since = self.clock()
+
+    def request_wake(self):
+        if not self._wake_pending:
+            self._wake_attempts = 0
+            self._wake_retry_at = 0.0
+        self._wake_pending = True
+
+    def _restore_wake(self, now):
+        app = self.app
+        if not self._wake_pending or now < self._wake_retry_at:
+            return
+        if (not getattr(app, 'config', {}).get('wake_word_enabled', False)
+                or getattr(app, 'snoozed', False)):
+            self._wake_pending = False
+            return
+        if getattr(app, '_no_microphone', False):
+            return  # Arrival/recovery will retry; never start on a missing mic.
+        if (getattr(app, 'loading_model', False)
+                or getattr(app, '_wake_models_state', None) == 'loading'):
+            return  # Model loading must not spend the device restart budget.
+        if (hasattr(app, '_wake_consumer_reasons')
+                and not app._wake_consumer_reasons
+                and not getattr(app, 'wake_word_active', False)
+                and getattr(app, '_hands_free_fault', None) is None
+                and not getattr(app, '_wake_start_pending', False)):
+            self._wake_pending = False  # Preserve a deliberate runtime switch-off.
+            return
+        consumer = getattr(app, '_wake_consumer', None)
+        if (getattr(consumer, 'running', False)
+                and getattr(app, 'wake_word_active', False)
+                and getattr(app, '_hands_free_fault', None) is None):
+            self._wake_pending = False  # The existing epoch path already resumed.
+            return
+        from samsara.audio_engine.wake_consumer import (
+            FATAL_PERMANENT, FATAL_RETRY_DELAYS_S, fault_from)
+        fault = getattr(app, '_hands_free_fault', None)
+        if getattr(fault, 'classification', None) == FATAL_PERMANENT:
+            self._wake_pending = False
+            return  # A device event cannot repair a programming error.
+        self._wake_attempts += 1
+        try:
+            restart = getattr(app, 'restart_hands_free', None)
+            if callable(restart):
+                restart(source='device-change')
+        except Exception:
+            log.warning('[WAKE] Device restart failed', exc_info=True)
+        consumer = getattr(app, '_wake_consumer', None)
+        running = (bool(getattr(consumer, 'running', False))
+                   and bool(getattr(app, 'wake_word_active', False)))
+        cap = len(FATAL_RETRY_DELAYS_S)
+        log.info('[WAKE] Device restart attempt %d/%d: running=%d',
+                 self._wake_attempts, cap, running)
+        self._wake_pending = not running and self._wake_attempts < cap
+        if self._wake_pending:
+            self._wake_retry_at = now + FATAL_RETRY_DELAYS_S[self._wake_attempts - 1]
+        elif not running:
+            # PLACEHOLDER COPY (1127): Home supplies the working restart action.
+            app._hands_free_fault = fault_from(
+                OSError('Microphone changed'), at=time.time(),
+                attempts=self._wake_attempts, retrying=False)
+            publish = getattr(app, '_publish_hands_free_fault', None)
+            if callable(publish):
+                publish()
 
     def observe_output(self):
         render = self.render_id()
@@ -487,6 +579,10 @@ class DeviceChanges:
 
     def _observe(self):
         self.observe_output()
+        default = self.input_id()
+        old_default, self._input_default = self._input_default, default
+        if default != old_default and follows_default(self.app):
+            self.request_input()
         current = self.endpoints()
         before, self._capture = self._capture, current
         if before is None:
@@ -508,7 +604,10 @@ class DeviceChanges:
             removed = False
         else:
             removed = bool(previous) and previous != present
-        if lost or removed or getattr(self.app, '_using_default_mic', False):
+        configured = getattr(self.app, 'config', {}).get('microphone_name')
+        returned = (matching_capture_endpoints(current, configured)
+                    != matching_capture_endpoints(before, configured))
+        if lost or removed or follows_default(self.app) or returned:
             if removed and ace is not None:
                 ace.mark_device_lost()
             self.request_input()
@@ -529,7 +628,7 @@ class DeviceChanges:
             pending = self._pending
             due = pending is not None and now - pending >= 0.75
         poll = (not self.notifications and now >= self._next_probe
-                and (self.app._no_microphone or getattr(self.app, '_using_default_mic', False)))
+                and (self.app._no_microphone or follows_default(self.app)))
         if due or poll:
             try:
                 self._observe()
@@ -542,11 +641,13 @@ class DeviceChanges:
             self._next_probe = now + 5.0
         if now < self._retry_at:
             return
+        self._restore_wake(now)
         try:
             if self._input_pending:
                 refresh(self.app)
                 self._input_pending = False
                 self._output_pending = False  # Rescan already restored outputs.
+                self._restore_wake(now)
             elif self._output_pending:
                 restart_outputs(self.app)
                 self._output_pending = False
@@ -559,7 +660,14 @@ class DeviceChanges:
             self._retry_at = now + (5.0 if now - self._waiting_since >= 30 else 0.5)
         except Exception:
             self._retry_at = now + 5.0
-            log.warning('[MIC] Device refresh deferred', exc_info=True)
+            if self._input_pending:
+                self._input_attempts += 1
+                if self._input_attempts >= 3:
+                    self._input_pending = False
+                log.warning('[MIC] Device refresh attempt %d/3 failed',
+                            self._input_attempts, exc_info=True)
+            else:
+                log.warning('[MIC] Device refresh deferred', exc_info=True)
 
 
 def changes_for(app):
@@ -590,6 +698,7 @@ def watch(app, get_render_id):
         return
     changes = changes_for(app)
     changes.render_id = get_render_id
+    changes.input_id = default_capture_id
     close = None
     com_owned = False
     changes.notifications = False

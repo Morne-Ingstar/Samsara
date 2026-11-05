@@ -293,7 +293,7 @@ class AdvancedPage:
         layout.addLayout(self._setting_row(
             "While I’m recording, other audio",
             "Duck lowers it; Pause stops media and resumes only sessions Samsara paused. "
-            "Hands-free idle listening keeps its own ducking settings; capture follows this choice.",
+            "Wake word idle listening keeps its own ducking settings; capture follows this choice.",
             recording_mode,
         ))
 
@@ -318,9 +318,10 @@ class AdvancedPage:
         layout.addWidget(ducking_level_row)
         layout.addSpacing(12)
 
+        # PLACEHOLDER COPY (1127): name the feature that owns this listening state.
         hands_free_ducking_cb = _add_checkbox_row(
             'adv_hands_free_ducking_enabled',
-            "Reduce other apps while hands-free is listening",
+            "Reduce other apps during wake word and hands-free listening",
             bool(ducking_cfg.get('hands_free_enabled', True)),
         )
 
@@ -347,8 +348,8 @@ class AdvancedPage:
         )
         self._widgets['adv_hands_free_idle_level'] = hands_free_idle_spin
         layout.addLayout(self._setting_row(
-            "Other apps' volume while hands-free is on",
-            "Other apps stay at this volume for as long as hands-free is on. "
+            "Other apps' volume while wake word is on",
+            "Other apps stay at this volume while the wake word is on. "
             "1 = no reduction.",
             hands_free_idle_spin,
         ))
@@ -507,7 +508,7 @@ class AdvancedPage:
         sc_modes_cfg = sc_cfg.get('modes', {}) or {}
 
         sc_mode_hotkey_cb = _add_checkbox_row(
-            'sc_mode_hotkey', "Hold-to-dictate", bool(sc_modes_cfg.get('hotkey', True)),
+            'sc_mode_hotkey', "Hold to talk", bool(sc_modes_cfg.get('hotkey', True)),
         )
 
         sc_mode_wake_cb = _add_checkbox_row(

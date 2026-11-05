@@ -14,13 +14,14 @@ class HelpTerm:
 
 
 # PLACEHOLDER COPY (932): approved design copy, not owner-authored final copy.
+# PLACEHOLDER COPY (1127): canonical feature names.
 TERMS = {
     'command-reference': HelpTerm('command-reference', 'Command Reference',
         'The list of commands you can use in Samsara. Search for an action, then open a command to see its wording and details. Opening the list does not run a command.', 'commands/'),
     'wake-word': HelpTerm('wake-word', 'Wake word',
         'A phrase that tells Samsara to listen for a command without holding a key. {phrase} is the wake word offered in this build. Turn on Wake activation and complete its calibration first.', 'hands-free/#wake'),
     'hands-free': HelpTerm('hands-free', 'Hands-free',
-        'A session for dictation and commands. Toggle starts it with one press and keeps it open; Hold keeps it open while you hold the button. How text is inserted follows your Hands-free sends setting.', 'hands-free/#sessions'),
+        'An open session for dictation and commands without holding a key. Start it with the wake word or a toggle button. Hold to talk records only while you hold your recording button. How text is inserted follows your Hands-free sends setting.', 'hands-free/#sessions'),
     'listening-display': HelpTerm('listening-display', 'Listening display',
         'The on-screen display that shows what Samsara is doing while you speak. Compact is the small status display; Full is the larger dictation display. Choose your display in Settings.', 'settings/#ui.listening_display'),
     'command-packs': HelpTerm('command-packs', 'Command packs',

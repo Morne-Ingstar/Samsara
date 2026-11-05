@@ -123,7 +123,7 @@ Consider using longer, distinct wake phrases to avoid false triggers.
 ### For Noisy Environments
 - Use a directional or noise-canceling microphone
 - Increase model size for better accuracy (small → medium)
-- Use push-to-talk (hold mode) instead of wake word
+- Use Hold to talk (hold mode) instead of the wake word
 
 ---
 

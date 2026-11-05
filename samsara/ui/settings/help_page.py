@@ -67,6 +67,16 @@ ADVANCED = [
 def build(owner):
     owner._widgets["communityActions"] = community_actions()
     page = owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)
+    # PLACEHOLDER COPY (1127): one name per way of speaking.
+    words = QLabel(
+        '<b>Words Samsara uses</b><br>'
+        '<b>Wake word</b> listens for your wake phrase so you can start by voice.<br>'
+        '<b>Hands-free</b> is an open session for dictation and commands without holding a key.<br>'
+        '<b>Hold to talk</b> records while you hold Mouse 5 or your recording shortcut.'
+    )
+    words.setObjectName('featureWords')
+    words.setWordWrap(True)
+    page.column.insertWidget(3, words)
     heading = QLabel('Diagnostics')
     heading.setProperty('role', 'label')
     page.advanced.rows.insertWidget(0, heading)

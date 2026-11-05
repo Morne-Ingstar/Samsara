@@ -17,7 +17,7 @@ application.
 ### Relevant facts
 
 - Transcription uses faster-whisper and supports CPU or optional NVIDIA CUDA.
-- Samsara has hold-to-dictate, Continuous, persistent HANDS FREE, wake-word,
+- Samsara has Hold to talk, Continuous, Hands-free, Wake word,
   command, and Ava entry points.
 - Per-user settings and logs are normally under
   `%USERPROFILE%\.samsara\` for both source and packaged execution.

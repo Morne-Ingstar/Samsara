@@ -1,3 +1,4 @@
+# 1127: assertions follow the accepted Wake word / Hands-free / Hold to talk names.
 """Owner reported preview regressions, exercised with synthetic documents only."""
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
@@ -151,7 +152,7 @@ def test_clock_driven_mark_rotation_colour_reversal_and_reduced_motion(qapp):
     model.consume(SurfaceEvent(EventKind.CAPTURE_CHANGED, capture=CaptureState.RECORDING))
     widget.refresh()
     assert widget._mark.color == recording
-    assert widget._lane.text() == "Hold" and widget._state.text() == "recording"
+    assert widget._lane.text() == "Hold to talk" and widget._state.text() == "recording"
     model.consume(SurfaceEvent(EventKind.DOCUMENT_UPDATED, document_id="synthetic-motion",
                                revision=2, text="Synthetic visible draft."))
     model.consume(SurfaceEvent(EventKind.DOCUMENT_PARKED, document_id="synthetic-motion",

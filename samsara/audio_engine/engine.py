@@ -354,10 +354,11 @@ class AudioCaptureEngine:
             with guard() if guard else nullcontext():
                 self.update_config(config, capture_rate=capture_rate)
                 self._running = True
+                already_recovering = self._recovering
                 self._recovering = True
                 if self._try_reopen_locked(phase='device change', rescan=True):
                     return True
-                self._recovering = False
+                self._recovering = already_recovering
                 self._on_stream_finished()
                 return False
 

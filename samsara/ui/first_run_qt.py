@@ -71,9 +71,10 @@ CLOSE_JOIN_S = 1.0
 
 #: What each component enables, in one line, for the wizard page. Unknown
 #: ids fall back to the manifest description.
+# PLACEHOLDER COPY (1127): canonical feature names.
 COMPONENT_BENEFITS = {
     "cuda-pack": "Faster transcription on an NVIDIA GPU.",
-    "wake-word-models": "Hands-free control: say the wake word instead of pressing a key.",
+    "wake-word-models": "Wake word: listen for your wake phrase so you can start without pressing a key.",
     "command-model": "A local model for the hands-free command lane.",
     "gesture-control": "Webcam hand poses for hands-free commands.",
 }

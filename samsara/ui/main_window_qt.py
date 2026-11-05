@@ -98,10 +98,11 @@ _CAPTURE_WORDS = {
     "recording": "recording",
     "ava": "Ava",
 }
+# PLACEHOLDER COPY (1127): canonical feature names.
 _EYE_WORDS = {
-    "off": "hands-free off",
-    "asleep": "hands-free asleep",
-    "armed": "hands-free armed",
+    "off": "wake word off",
+    "asleep": "wake word paused",
+    "armed": "wake word ready",
     "heard": "wake phrase heard",
 }
 
