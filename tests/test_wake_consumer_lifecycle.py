@@ -36,6 +36,7 @@ from samsara.audio_engine import wake_consumer as wake_module
 from samsara.audio_engine.frame import FRAME_SIZE
 from samsara.audio_engine.ring import EMPTY, FrameBus
 from samsara.session_modes import SessionMode
+from samsara.vocabulary_decode import log_vocabulary
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -53,6 +54,8 @@ def load_app_policy_methods(names):
         wake_session_policy=wake_module.wake_session_policy,
         flight_recorder=wake_module.flight_recorder, np=np,
         WakeWordDetector=Mock(), resample_audio=lambda audio, *args: audio,
+        # 006cd684 (1009): command-mode entry now calls this module-level name, so the AST harness must supply it.
+        log_vocabulary=log_vocabulary,
     )
     constants = [node for node in tree.body if isinstance(node, ast.Assign)
                  and any(isinstance(target, ast.Name) and target.id in {

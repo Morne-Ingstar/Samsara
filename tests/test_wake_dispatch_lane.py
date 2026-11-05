@@ -19,6 +19,7 @@ from samsara.stage_timing import (
     StageTiming, set_current_stage_timing, reset_current_stage_timing,
 )
 from samsara.session_modes import is_self_hear_capture
+from samsara.vocabulary_decode import transcribe_with_vocabulary
 from samsara.audio_engine import wake_dispatch
 from samsara.audio_engine.ring import FrameBus
 from samsara.audio_engine.wake_consumer import WakeConsumer
@@ -85,6 +86,8 @@ def rig(monkeypatch):
         StageTiming=StageTiming, set_current_stage_timing=set_current_stage_timing,
         reset_current_stage_timing=reset_current_stage_timing,
         is_self_hear_capture=is_self_hear_capture,
+        # 006cd684 (1009): the wake decode now calls this module-level name, so the AST harness must supply it.
+        transcribe_with_vocabulary=transcribe_with_vocabulary,
         _get_foreground_hwnd=lambda: 123,
         _cancel_window_module=lambda: execution_policy,
         _WAKE_SESSION_CHUNK_GAP_S=1.0, _WAKE_SESSION_SEND_WORDS=('send',),

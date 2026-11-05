@@ -57,7 +57,9 @@ def test_every_application_decode_seam_delivers_vocabulary(tmp_path, filename, c
                audio_faded=object(), concatenated_audio=object(), params=params,
                transcribe_params=params, initial_prompt=None,
                resolve_transcribe_language=lambda _: 'en',
-               transcribe_with_vocabulary=vd.transcribe_with_vocabulary)
+               transcribe_with_vocabulary=vd.transcribe_with_vocabulary,
+               # 0e880d79 (1052d): one final decoder passes pcm/**effective; partials decode audio[origin:].
+               pcm=object(), effective=params, origin=0)
     app._app = app  # Wake-word debug window's app reference.
     def value(node):
         if isinstance(node, ast.Name):
@@ -68,6 +70,11 @@ def test_every_application_decode_seam_delivers_vocabulary(tmp_path, filename, c
             return getattr(value(node.value), node.attr)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == 'resolve_transcribe_language':
             return env[node.func.id](*(value(arg) for arg in node.args))
+        # 0e880d79 (1052d): an open-ended slice of the buffer is still that buffer for this wiring check.
+        if (isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Slice)
+                and node.slice.upper is None and node.slice.step is None):
+            value(node.slice.lower)
+            return value(node.value)
         pytest.fail(f'Unrecognized decode argument: {ast.dump(node)}')
     kwargs = {}
     for kw in call.keywords:

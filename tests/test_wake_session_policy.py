@@ -20,6 +20,7 @@ from samsara.audio_engine.wake_consumer import WakeConsumer, wake_session_policy
 from samsara.audio_engine.wake_dispatch import TranscriptionOwners, WakeDispatchQueue
 from samsara.session_modes import SessionMode
 from samsara import config_defaults, execution_policy
+from samsara.vocabulary_decode import log_vocabulary, transcribe_with_vocabulary
 from samsara.stage_timing import (
     StageTiming, set_current_stage_timing, reset_current_stage_timing,
 )
@@ -54,6 +55,8 @@ def load_app_policy_methods():
         # top-level `from samsara import config_defaults`, so any
         # extracted method's globals must be supplied here by hand.
         config_defaults=config_defaults,
+        # 006cd684 (1009): decode and session entry now call these module-level names, so the AST harness must supply them.
+        log_vocabulary=log_vocabulary, transcribe_with_vocabulary=transcribe_with_vocabulary,
         StageTiming=StageTiming, set_current_stage_timing=set_current_stage_timing,
         reset_current_stage_timing=reset_current_stage_timing,
         _get_foreground_hwnd=lambda: 123,

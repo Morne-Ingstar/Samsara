@@ -26,6 +26,7 @@ import pytest
 from samsara import config_defaults
 from samsara.dictionary_store import get_dictionary_store
 from samsara.stage_timing import StageTiming
+from samsara.vocabulary_decode import transcribe_with_vocabulary
 from samsara.audio_engine.wake_dispatch import TranscriptionOwners
 from samsara.constants import ADAPTIVE_SPEECH_FLOOR_RATIO, DEFAULT_SPEECH_THRESHOLD
 
@@ -64,6 +65,8 @@ def _load_dictation_methods():
         "config_defaults": config_defaults,
         "get_dictionary_store": get_dictionary_store,
         "StageTiming": StageTiming,
+        # 006cd684 (1009): the wake decode now calls this module-level name, so the AST harness must supply it.
+        "transcribe_with_vocabulary": transcribe_with_vocabulary,
         "ADAPTIVE_SPEECH_FLOOR_RATIO": ADAPTIVE_SPEECH_FLOOR_RATIO,
         "DEFAULT_SPEECH_THRESHOLD": DEFAULT_SPEECH_THRESHOLD,
         "resample_audio": lambda audio, src, dst: audio,
