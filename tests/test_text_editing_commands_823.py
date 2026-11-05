@@ -223,7 +223,7 @@ def test_previous_words_executes_bounded_count(global_executor, monkeypatch, app
 
 @pytest.mark.parametrize("verified", [True, False])
 @pytest.mark.parametrize("typed", [True, False])
-def test_typed_and_clipboard_delivery_retain_only_readback_proof(monkeypatch, typed, verified):
+def test_typed_and_clipboard_delivery_retain_only_readback_proof(monkeypatch, typed, verified, fake_delivery_target):
     from samsara import paste
     text = "Synthetic."
     before = ((101, (4, 9), b"", 0, 0, 7), False)

@@ -84,7 +84,7 @@ def log_seam(file, event, namespace):
 
 
 @pytest.mark.parametrize("ok", [True, False], ids=["ordinary-hold", "failed-paste"])
-def test_hold_delivery(ok, monkeypatch, caplog):
+def test_hold_delivery(ok, monkeypatch, caplog, fake_delivery_target):
     from samsara import paste
     app = SimpleNamespace(
         config={}, _foreground_wants_typed_injection=Mock(return_value=False),

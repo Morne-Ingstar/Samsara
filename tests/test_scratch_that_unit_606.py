@@ -65,7 +65,7 @@ class Editor:
 
 
 @pytest.fixture
-def editor(monkeypatch):
+def editor(monkeypatch, fake_delivery_target):
     editor = Editor()
     monkeypatch.setattr(paste, '_editor_snapshot', editor.snapshot)
     monkeypatch.setattr(clipboard, '_user32', editor)

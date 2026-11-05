@@ -8,7 +8,7 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def _no_real_sendinput(monkeypatch):
+def _no_real_sendinput(monkeypatch, fake_delivery_target):
     """type_text_unicode now genuinely injects keystrokes (25bc7ee fixed the
     INPUT struct), so every test here must stub it: (a) so pytest never types
     into the developer's desktop, (b) so these tests keep exercising the

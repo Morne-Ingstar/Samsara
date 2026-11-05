@@ -560,6 +560,17 @@ def fake_clipboard(_no_real_clipboard_1148):
         pytest.fail('1148: blocked real clipboard/desktop calls: ' + names)
 
 
+@pytest.fixture
+def fake_delivery_target(monkeypatch, fake_clipboard):
+    """1156: synthetic delivery must not start a desktop UIA/COM probe."""
+    from samsara import delivery_verify, recent_privacy
+    target = recent_privacy.TargetPrivacy()
+    monkeypatch.setattr(recent_privacy, 'focused_target', lambda: target)
+    # Keep native readback through a test's editor; there is no UIA provider.
+    monkeypatch.setattr(delivery_verify, '_uia_snapshot', lambda: None)
+    return target
+
+
 # BEGIN SILENT AUDIO 446
 def _install_silent_audio_446():
     import ctypes

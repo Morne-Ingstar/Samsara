@@ -833,7 +833,7 @@ def test_delivery_queued_past_ui_timeout_cannot_paste_later(rig, monkeypatch):
 
 
 @pytest.mark.parametrize('case', ['typed_allowlist', 'incomplete_snapshot', 'clipboard_timeout', 'clipboard_copy_failed'])
-def test_real_clipboard_path_has_no_unicode_injection_or_fallback(rig, monkeypatch, case):
+def test_real_clipboard_path_has_no_unicode_injection_or_fallback(rig, monkeypatch, case, fake_delivery_target):
     from samsara import clipboard, injection_safety
     copied, keys, restored, typed = [], [], [], []
     snapshot = clipboard.ClipboardSnapshot()

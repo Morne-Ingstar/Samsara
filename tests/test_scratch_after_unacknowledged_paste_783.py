@@ -56,7 +56,7 @@ class RichEditor(Editor):
 
 
 @pytest.fixture
-def rig(monkeypatch):
+def rig(monkeypatch, fake_delivery_target):
     editor = RichEditor()
     monkeypatch.setattr(clipboard, '_user32', editor)
     monkeypatch.setattr(paste, '_editor_snapshot', lambda: None)  # not classic Edit
