@@ -392,19 +392,9 @@ def is_scratch_again(raw_text: str) -> bool:
     SCRATCH_AGAIN_TTL_S and _scratch_again_armed."""
     return normalize_utterance(raw_text) == SCRATCH_AGAIN_PHRASE
 
-
-# Queue 80: discard the WHOLE staged draft ("scratch that" pops one chunk, and
-# the undo stack holds only five). Whole utterance only, like "scratch that".
-# The "scratch" family is the owner's own word for taking dictation back, so
-# these extend a habit instead of adding a new verb. Checked against
-# commands_catalog.json (2026-09-15): no command phrase starts with "scratch"
-# except builtin.scratch_that; "clear ..."/"delete ..."/"cancel ..." phrases
-# already belong to reminders, tasks, health log, Ava memory and the printer,
-# and "cancel"/"abort" are session aborts matched anywhere, so none of those
-# words are used. A dictated sentence that merely contains "scratch
-# everything" never matches: the normalised utterance must equal a phrase.
-# Canonical catalog id: builtin.scratch_everything (commands.json).
-CLEAR_DRAFT_PHRASES = ("scratch everything", "scratch all of that", "scratch all that")
+# 1150: whole-utterance aliases; catalogue id stays builtin.scratch_everything.
+CLEAR_DRAFT_PHRASES = ("scratch everything", "scratch all of that", "scratch all that",
+                      "clear draft", "clear the draft", "clear my draft")
 CLEAR_DRAFT_CONFIRM_TTL_S = 30.0  # Compatibility name; now the voice take-back window.
 from .result_messages import CLEAR_RESTORE_PHRASES
 CLEAR_DRAFT_RESTORE_PHRASE = CLEAR_RESTORE_PHRASES[0]
@@ -1388,6 +1378,8 @@ class SessionModeManager(UtteranceUndoMixin):
         self._on_scratch_result = on_scratch_result
         self._on_abort = on_abort
         self._on_switch_dispatch_error = on_switch_dispatch_error
+        from samsara.button_voice import prepare_visible_actions
+        prepare_visible_actions()
         self._commit_redecode_fn = commit_redecode_fn
         self._buffer_dictate_until_commit = buffer_dictate_until_commit
         self._hands_free_command_probe_fn = hands_free_command_probe_fn
@@ -1839,6 +1831,14 @@ class SessionModeManager(UtteranceUndoMixin):
         # aside BEFORE on_abort ends the session (whose reset() would
         # otherwise discard it) -- sleep stops capture, it never discards.
         normalized = normalize_utterance(text)
+
+        # 1150: gated, visible whole-utterance controls; literal text stays text.
+        if (match_literal_payload(text) is None
+                and not (self.mode is SessionMode.DICTATE and is_clear_draft(text))
+                and passes_switch_anti_hallucination_gate(signals)):
+            from samsara.button_voice import dispatch_visible_action
+            if dispatch_visible_action(text):
+                return DispatchOutcome(kind="surface_review_action")
 
         active_capture = (None if self._interact_controller is not None
                           and self._interact_controller.state.phase != "OFF"

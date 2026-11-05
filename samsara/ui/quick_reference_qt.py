@@ -376,6 +376,22 @@ def _resolve_formatting_tokens(app) -> dict:
     return {"enabled": enabled, "tokens": rows}
 
 
+def _resolve_button_voice_prefix(app):
+    """Use the same live-registry/JSON catalogue as Command Reference (1150)."""
+    from samsara import command_catalog
+    matcher = getattr(getattr(app, "command_executor", None), "_matcher", None)
+    rows = None
+    if matcher is not None:
+        try:
+            rows = matcher.list_commands()
+        except Exception as exc:
+            logger.debug("Visible-control guidance registry unavailable: %s", exc)
+    for record in command_catalog.guidance_catalog(rows) or []:
+        if record["canonical_id"] == "show_numbers.click":
+            return command_catalog.canonical_phrase(record)
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Public wrapper (thread-safe)
 # ---------------------------------------------------------------------------
@@ -481,6 +497,7 @@ class _QuickReferenceWindow(QMainWindow):
         self._body_layout.addWidget(self._build_hands_free_session_section())
         self._body_layout.addWidget(self._build_session_section())
         self._body_layout.addWidget(self._build_modes_section())
+        self._body_layout.addWidget(self._build_button_voice_section())
         ft_state = _resolve_formatting_tokens(self.app)
         self._body_layout.addWidget(self._build_formatting_section(ft_state))
         self._body_layout.addStretch()
@@ -533,6 +550,32 @@ class _QuickReferenceWindow(QMainWindow):
         card, lay = self._section_card("Dictation Hotkeys")
         for row in _resolve_hotkeys(self.app):
             self._row(lay, row["label"], row["value"], row["enabled"])
+        return card
+
+    def _build_button_voice_section(self) -> QFrame:
+        from samsara.button_voice import CAPTION_DISMISS_LABEL, phrases_for_label, source_phrases
+        from samsara.button_voice_reference import CONTROL_LABELS
+        prefix = _resolve_button_voice_prefix(self.app)
+        prefix_hint = (
+            f"Short words and ordinary phrases use '{prefix}' to keep them distinct from dictation. "
+            if prefix else "Command catalogue unavailable; explicit control guidance is unavailable. ")
+        # PLACEHOLDER COPY (1150): separate from 1137's delivery explanation.
+        card, lay = self._section_card("Say a visible control's name")
+        help_text = QLabel(
+            "In hands-free, say the phrase on its own while the control is visible and enabled. "
+            + prefix_hint +
+            "Tray items work while their menu is open. Settings switches use their row name. "
+            "While Ava is waiting for an answer, use the answer phrases shown first.")
+        help_text.setWordWrap(True)
+        lay.addWidget(help_text)
+        for label in CONTROL_LABELS:
+            self._row(lay, label, phrases_for_label(label)[0])
+        self._row(lay, "Undo Clear draft", f"{session_modes.CLEAR_DRAFT_RESTORE_PHRASE} "
+                  f"(within {session_modes.CLEAR_DRAFT_CONFIRM_TTL_S:g} seconds of a voice clear)")
+        self._row(lay, "Ava caption box", CAPTION_DISMISS_LABEL[0].lower() + CAPTION_DISMISS_LABEL[1:])
+        self._row(lay, "Web answer source", f"{source_phrases(1)[-1]} (or its number)")
+        self._row(lay, "Word choice / microphone",
+                  f"{prefix} followed by the visible label" if prefix else "unavailable", bool(prefix))
         return card
 
     def _build_hands_free_session_section(self) -> QFrame:

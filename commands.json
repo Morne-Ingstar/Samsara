@@ -3119,7 +3119,8 @@
     "scratch everything": {
       "type": "method",
       "method": "clear_dictation_draft",
-      "description": "Throws away the whole hands-free draft, asking you first.",
+      "aliases": ["scratch all of that", "scratch all that", "clear draft", "clear the draft", "clear my draft"],
+      "description": "Clears the hands-free draft. Say bring it back to undo a voice clear.",
       "pack": "core"
     },
     "transcribe file": {

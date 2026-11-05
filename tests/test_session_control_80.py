@@ -183,7 +183,8 @@ def test_catalog_row_is_destructive_whole_utterance_with_a_stable_id():
     row = next(r for r in rows if r["canonical_id"] == "builtin.scratch_everything")
     assert row["risk"] == "destructive"
     assert row["whole_utterance"] is True
-    assert row["aliases"] == ["scratch everything"]
+    # 1150: retain the canonical phrase when the runner regenerates new aliases.
+    assert "scratch everything" in row["aliases"]
     cmd = json.loads((ROOT / "commands.json").read_text(encoding="utf-8"))["commands"]["scratch everything"]
     assert execution_policy.classify_builtin(cmd) == execution_policy.RISK_DESTRUCTIVE
 

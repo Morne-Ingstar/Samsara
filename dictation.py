@@ -5949,8 +5949,8 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             if _cancel_windows is not None:
                 _cancel_windows.note_utterance_start()
             stage_timing.mark("dispatch_start", words=len(text.split()))
-            from samsara.ava_pending import consume
-            if consume(self, text, capture_path='toggle_command'): return
+            from samsara.button_voice import consume_before_pending
+            if consume_before_pending(self, text, signals, self_hear=_self_hear, capture_path='toggle_command'): return
             outcome = manager.dispatch_utterance(text, signals, onset_context=onset_context)
             from samsara.handsfree_wake_prefix import command_text, preview_text
             _preview_text = preview_text(outcome, text)
