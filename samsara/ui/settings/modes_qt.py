@@ -469,24 +469,10 @@ class ModesPage:
         )
         layout.addWidget(hands_free_card)
 
-        pace_combo = QComboBox()
-        pace_options = {
-            "standard": "Standard — keeps your current pause timings.",
-            "relaxed": "Relaxed — gives pauses between phrases more room.",
-            "unhurried": "Unhurried — allows long pauses before finishing speech.",
-            "custom": "Custom — uses the advanced timing values you choose.",
-        }
-        for key, explanation in pace_options.items():
-            pace_combo.addItem(explanation.split(' — ', 1)[0], key)
-            index = pace_combo.count() - 1
-            pace_combo.setItemData(index, explanation, Qt.ItemDataRole.ToolTipRole)
-            pace_combo.setItemData(index, explanation, Qt.ItemDataRole.AccessibleDescriptionRole)
-        accessibility = cfg.get('accessibility', {}) or {}
-        selected_pace = str(accessibility.get('speech_pace', 'standard'))
-        pace_combo.setCurrentIndex(max(0, pace_combo.findData(selected_pace)))
-        self._widgets['speech_pace'] = pace_combo
-        _add_row(hands_free_layout, "Speech pace", "Choose how much room Samsara gives pauses in speech.",
-                 pace_combo, width=340)
+        from samsara.ui.tutorial_try_steps import PaceSlider
+        self._widgets['speech_pace'] = PaceSlider(cfg)
+        _add_row(hands_free_layout, "How long you can pause", "Choose a pause in seconds.",
+                 self._widgets['speech_pace'], width=390)
 
         cmd_enabled_cb = QCheckBox()
         cmd_enabled_cb.setChecked(bool(cmd_cfg.get('enabled', False)))
@@ -1079,10 +1065,6 @@ class ModesPage:
                     'continuous' if getattr(mode, '_preserve_legacy_continuous', False)
                     else mode.currentText()
                 )
-            if 'speech_pace' in self._widgets:
-                accessibility = dict(_acc.get('accessibility', self.app.config.get('accessibility', {})) or {})
-                accessibility['speech_pace'] = self._widgets['speech_pace'].currentData()
-                updates['accessibility'] = accessibility
             if 'wake_word_enabled' in self._widgets:
                 updates['wake_word_enabled'] = self._widgets['wake_word_enabled'].isChecked()
 
@@ -1145,6 +1127,26 @@ class ModesPage:
                 session_cfg['model'] = self._widgets['ava_cmd_model'].text().strip()
                 session_cfg['keep_warm'] = self._widgets['ava_cmd_keep_warm'].isChecked()
                 updates['ava_command_session'] = session_cfg
+
+            # 1040 FINISH IT 3: direct Modes saves must include the slider,
+            # not the stale hidden timing controls. Advanced's final save also
+            # writes the two top-level derived keys after its legacy controls.
+            from samsara.speech_pace import with_pause
+            pace = self._widgets['speech_pace']
+            migrated = with_pause(self.app.config, pace.seconds(),
+                                  preserve_legacy=not pace.changed)
+            accessibility = dict(_acc.get('accessibility',
+                                          self.app.config.get('accessibility', {})) or {})
+            accessibility.pop('speech_pause_anchor', None)
+            accessibility.update({key: value for key, value in migrated['accessibility'].items()
+                                  if key.startswith('speech_pa')})
+            updates['accessibility'] = accessibility
+            updates['command_mode']['dictate_utterance_silence_s'] = (
+                migrated['command_mode']['dictate_utterance_silence_s'])
+            updates['wake_word_config']['quick_silence_timeout'] = (
+                migrated['wake_word_config']['quick_silence_timeout'])
+            updates['wake_word_config']['audio']['wake_command_timeout'] = (
+                migrated['wake_word_config']['audio']['wake_command_timeout'])
 
             staged_consent = getattr(self, "_ava_consent_staged", None)
             if staged_consent is not None:

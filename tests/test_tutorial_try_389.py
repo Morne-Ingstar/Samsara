@@ -106,6 +106,13 @@ def build(qapp, monkeypatch):
 
 
 def select(box, value):
+    # 1040: Your pace uses the shared seconds slider, not a choice list.
+    from samsara.ui.tutorial_try_steps import PaceSlider
+    if isinstance(box, PaceSlider):
+        from samsara.speech_pace import STOPS
+        box.setSeconds(STOPS[value])
+        return
+
     # Explicit sample tests set a voice without also triggering the automatic sample.
     quiet = box.accessibleName() == 'Voice'
     if quiet:
@@ -224,7 +231,12 @@ def test_pace_keep_uses_named_config_setter_and_preserves_other_keys(build):
     before = deepcopy(app.config)
     select(page.pace, 'unhurried')
     page.keep('pace')
-    app.update_config_and_save.assert_called_once_with({'accessibility': {'speech_pace': 'unhurried', 'other': 'preserved'}})
+    # 1040 persists the seconds key and all five derived timings together.
+    app.update_config_and_save.assert_called_once_with({
+        'accessibility': {'speech_pace': 'unhurried', 'speech_pause_s': 8., 'other': 'preserved'},
+        'command_mode': {'dictate_utterance_silence_s': .65},
+        'wake_word_config': {'quick_silence_timeout': 4., 'audio': {'wake_command_timeout': 15.}},
+        'silence_threshold': 8., 'min_speech_duration': .1})
     assert app.config['tts'] == before['tts']
     app.save_config.assert_not_called()
 
@@ -371,10 +383,11 @@ def test_unavailable_ring_only_offers_manual_pace(build):
 def test_pace_seconds_follow_real_profile_and_current_baseline(build):
     _, page, _ = build(config={'silence_threshold': 3})
     select(page.pace, 'relaxed')
-    assert page.pace_description.text() == ('Continuous dictation waits 7.5 seconds after speech.'
+    # 1040: explicitly moving selects the shared curve; the old 3 s baseline is archived.
+    assert page.pace_description.text() == ('Continuous dictation waits 5 seconds after speech.'
                                             ' Commands need a clear gap of 1 second.')
     select(page.pace, 'unhurried')
-    assert page.pace_description.text() == ('Continuous dictation waits 12 seconds after speech.'
+    assert page.pace_description.text() == ('Continuous dictation waits 8 seconds after speech.'
                                             ' Commands need a clear gap of 1 second.')
 
 
@@ -562,7 +575,7 @@ def test_calm_rows_share_surfaces_heights_and_columns(build, qapp, scale):
 
     window, page, _ = build()
     page.show_stage(1)
-    for slider in (page.speed, page.volume):
+    for slider in (page.speed, page.volume, page.pace.slider):
         assert slider.styleSheet() == keyboard_stylesheet(stylesheet())
     if scale != 1:
         for widget in [window, *window.findChildren(QWidget)]:
@@ -580,9 +593,11 @@ def test_calm_rows_share_surfaces_heights_and_columns(build, qapp, scale):
         assert labels[column].x() == labels[column + 2].x()
         assert controls[column].x() == controls[column + 2].mapTo(page.cards['voice'], QPoint()).x()
         assert labels[column].y() < labels[column + 2].y()
-    for key, choice in (('level', page.level), ('pace', page.pace)):
-        assert all(button.height() == theme.HIT_TARGET_MIN for button in choice.buttons)
+    # 1040 FINISH IT 2: Your pace uses the shared slider, retaining calm row metrics.
+    assert all(button.height() == theme.HIT_TARGET_MIN for button in page.level.buttons)
+    for key in ('level', 'pace'):
         assert page.keeps[key].height() == theme.HIT_TARGET_MIN
+    assert page.pace.slider.height() == theme.HIT_TARGET_MIN
     assert page.voice.height() == page.voice_id.height() == page.actions['voice'].height() == page.keeps['voice'].height()
     page.show_stage(1)
     card = page.cards['voice'].grab().toImage()
@@ -590,6 +605,18 @@ def test_calm_rows_share_surfaces_heights_and_columns(build, qapp, scale):
         pixel = card.pixelColor(slider.x() + 4, slider.y() + 4)
         assert pixel == card.pixelColor(4, slider.y() + 4)
         assert pixel.name() != '#000000'
+    # 1040 FINISH IT 2: the shared slider and stops keep the Your pace card surface.
+    page.show_stage(2)
+    for _ in range(8):
+        qapp.processEvents()
+    frame = page.cards['pace']
+    card = frame.grab().toImage()
+    for control in (page.pace.slider, page.pace.marks):
+        corner = control.mapTo(frame, QPoint(4, 2))
+        pixel = card.pixelColor(corner)
+        assert pixel == card.pixelColor(4, corner.y())
+        assert pixel.name() != '#000000'
+    assert page.pace.readout.x() == page.pace.slider.x() == page.pace.marks.x()
 
 
 @pytest.mark.parametrize('display', ['Full', 'Compact'])

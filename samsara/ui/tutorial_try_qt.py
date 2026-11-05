@@ -148,10 +148,10 @@ class _TryPage(QScrollArea):
         self.enable(action, not pace_busy)
         action.setText('Samsara is busy' if pace_busy else ('Finish measuring' if self.reader is not None else 'Start reading'))
         action.setAccessibleName(action.text())
-        self.visible(self.pace, self._pace_ready and self.reader is None)
-        self.pace_description.setVisible(self._pace_ready and self.reader is None)
-        self.pace_instruction.setVisible(not self._pace_ready or self.reader is not None)
-        self.pace_sentence.setVisible(not self._pace_ready or self.reader is not None)
+        self.visible(self.pace, self.reader is None)
+        self.pace_description.setVisible(self.reader is None)
+        self.pace_instruction.setVisible(True)
+        self.pace_sentence.setVisible(True)
         self.enable(self.keeps['pace'], self._pace_ready and self.reader is None and not pace_busy)
         if self._described_pace != self.pace.currentData():
             self.describe_pace()
@@ -175,7 +175,8 @@ class _TryPage(QScrollArea):
         with getattr(self.app, '_config_lock', None) or nullcontext():
             cfg = deepcopy(self.app.config)
         self._described_pace = self.pace.currentData()
-        cfg.setdefault('accessibility', {})['speech_pace'] = self.pace.currentData()
+        from samsara.speech_pace import with_pause
+        cfg = with_pause(cfg, self.pace.seconds(), preserve_legacy=not self.pace.changed)
         silence = effective_value(cfg, 'silence_threshold', DEFAULT_SILENCE_TIMEOUT)
         gap = clear_gap_s(cfg)
         self.pace_description.setText(
@@ -360,7 +361,13 @@ class _TryPage(QScrollArea):
                 self.app.save_config()
             summary = f'Voice kept: {self.voice.currentText()}, {self.speed.value()/100:g}\u00d7, {self.volume.value()}%'
         else:
-            self.app.update_config_and_save({'accessibility': dict(self.app.config.get('accessibility', {}) or {}, speech_pace=self.pace.currentData())})
+            from samsara.speech_pace import with_pause
+            chosen = with_pause(self.app.config, self.pace.seconds(), preserve_legacy=not self.pace.changed)
+            self.app.update_config_and_save({key: chosen[key] for key in (
+                'accessibility', 'command_mode', 'wake_word_config', 'silence_threshold', 'min_speech_duration')})
+            callback = getattr(self, 'pace_kept', None)
+            if callback is not None:
+                callback(self.pace.seconds())
             summary = 'Pace kept: ' + self.pace.currentText()
         self.kept[key] = summary
         self.result.setText(summary)
@@ -427,8 +434,8 @@ class _TryPage(QScrollArea):
                 self.levels.append(block_rms(frame.pcm.astype('float32') / 32767))
             from samsara.audio_engine.frame import FRAME_MS
             voiced = next((i for i, value in enumerate(reversed(self.levels)) if value >= .02), None)
-            # A four-second ending pause includes the slowest profile's interword gaps.
-            if (voiced is not None and voiced * FRAME_MS >= 4000) or time.monotonic() >= self.deadline:
+            # Respect the current slider when measuring a longer reading.
+            if (voiced is not None and voiced * FRAME_MS >= max(4000, self.pace.seconds() * 1000)) or time.monotonic() >= self.deadline:
                 self.finish_measure()
         except Exception:
             self.finish_measure(cancel=True)
@@ -458,7 +465,8 @@ class _TryPage(QScrollArea):
     def suggest(self, pauses):
         from samsara.speech_pace import recommend_profile, pace_recommendation
         self._pace_ready = True
-        self.pace.setCurrentIndex(self.pace.findData(recommend_profile(pauses)))
+        from samsara.speech_pace import STOPS
+        self.pace.setSeconds(STOPS[recommend_profile(pauses)])
         self.result.setText(pace_recommendation(pauses))
         self.describe_pace()
         self.refresh()
@@ -496,3 +504,22 @@ class _TryPage(QScrollArea):
         self.finish_measure(cancel=True)
         self.stop_preview(dispose=True)
         super().hideEvent(event)
+
+
+def open_pace_trial(app, control, *, parent=None):
+    """Open the existing read-aloud trial at the current unsaved Settings value."""
+    from samsara.ui.tutorial_qt import TutorialWindow
+    window = TutorialWindow(app)
+    if parent is not None:
+        window.setParent(parent, window.windowFlags())
+    window._open_optional('try')
+    page = window._try_page
+    page.pace.setSeconds(control.seconds())
+    page.pace.changed = control.changed
+    page.pace_kept = control.setSeconds
+    page.show_stage(2)
+    # The slider is available immediately; reading is an optional calibration.
+    page._pace_ready = True
+    page.refresh()
+    window.show()
+    return window

@@ -4,7 +4,7 @@ import copy
 from functools import wraps
 from samsara.config_schema import SETTINGS_SCHEMA
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QCheckBox, QGridLayout, QLabel, QLineEdit, QWidget, QSizePolicy
+from PySide6.QtWidgets import QCheckBox, QGridLayout, QLabel, QLineEdit, QWidget, QSizePolicy, QPushButton
 from .presentation import SettingRow, CleanComboBox
 from .audio_page import open_mic_setup_guide as open_microphone_guide
 
@@ -33,10 +33,10 @@ BASE = [
         "wake_word_config.phrase"
     ],
     [
-        "Speech pace",
-        "Allow time for pauses in your speech.",
+        "How long you can pause",
+        "Choose a pause in seconds.",
         "speech_pace",
-        "accessibility.speech_pace"
+        "accessibility.speech_pause_s"
     ],
     [
         "Cleanup mode",
@@ -110,28 +110,10 @@ ADVANCED = [
         "format_numbers"
     ],
     [
-        "Timeout after wake",
-        "Wait for speech after wake activation.",
-        "wake_cmd_timeout",
-        "wake_word_config.audio.wake_command_timeout"
-    ],
-    [
         "Command pause",
         "Wait before completing a command phrase.",
         "cmd_utterance_silence",
         "command_mode.utterance_silence_s"
-    ],
-    [
-        "Dictation pause",
-        "Wait before completing a dictation phrase.",
-        "cmd_dictate_utterance_silence",
-        "command_mode.dictate_utterance_silence_s"
-    ],
-    [
-        "Quick silence timeout",
-        "Adjust recognition silence timing.",
-        "quick_silence",
-        "wake_word_config.quick_silence_timeout"
     ],
     [
         "Wake threshold",
@@ -144,18 +126,6 @@ ADVANCED = [
         "Keep the existing continuous insertion trigger.",
         "continuous_commit_trigger",
         "continuous_commit_trigger"
-    ],
-    [
-        "Continuous silence",
-        "Silence before a continuous phrase completes.",
-        "adv_silence",
-        "silence_threshold"
-    ],
-    [
-        "Minimum speech",
-        "Ignore speech shorter than this duration.",
-        "adv_min_speech",
-        "min_speech_duration"
     ],
     [
         "Microphone calibration",
@@ -226,7 +196,7 @@ GROUPS = {
     'model_combo': 'Speech model',
     'adv_device': 'Hardware acceleration',
     'trailing_space': 'Text behavior',
-    'wake_cmd_timeout': 'Timing and sensitivity',
+    'cmd_utterance_silence': 'Timing and sensitivity',
     'continuous_commit_trigger': 'Continuous dictation',
     'adv_threshold_mode': 'Microphone calibration',
     'cmd_stop_phrases': 'Session controls',
@@ -302,24 +272,60 @@ def build(owner):
         'Microphone setup',
         lambda: open_microphone_guide(owner.app))
     pace = owner._widgets['speech_pace']
+    # _take_control resets source widths; restore the shared slider's extent.
+    pace.setFixedWidth(390)
+    pace.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
     pace_row = owner._rows_by_widget['speech_pace']
-    explanation = QLabel(pace_row)
+    # PLACEHOLDER COPY (1040): scope line remains visible for every value.
+    scope = "Affects hands-free, wake word and commands. Held dictation isn't split by pauses — stray full stops there come from the recognizer; use 'clean up' or the Dictation accuracy check."
+    explanation = QLabel(scope, pace_row)
     explanation.setObjectName('speechPaceExplanation')
     explanation.setProperty('role', 'description')
-    explanation.setTextFormat(Qt.TextFormat.PlainText)
     explanation.setWordWrap(True)
-    explanation.setMinimumWidth(0)
-    explanation.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
     pace_row.detail.hide()
     pace_row.grid.addWidget(explanation, 2, 0, 1, 3)
+    try_button = QPushButton('Try it')
+    try_button.setFixedHeight(32)
+    try_button.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+    pace_row.values.insertWidget(1, try_button)
+    owner._widgets['speech_pace_try'] = try_button
 
-    def explain_pace(index):
-        text = pace.itemData(index, Qt.ItemDataRole.AccessibleDescriptionRole) or ''
-        explanation.setText(text)
-        pace.setAccessibleDescription(text)
+    def open_pace_trial():
+        from samsara.ui.tutorial_try_qt import open_pace_trial
+        owner._pace_trial = open_pace_trial(owner.app, pace, parent=owner)
 
-    pace.currentIndexChanged.connect(explain_pace)
-    explain_pace(pace.currentIndex())
+    try_button.clicked.connect(open_pace_trial)
+    # Advanced includes Game mode's save before its legacy timing controls.
+    # Derive after the final save so no hidden control can overwrite the pace.
+    from samsara.speech_pace import with_pause
+    save_advanced = owner._source_saves['advanced'][-1]
+
+    @wraps(save_advanced)
+    def save_pace(acc):
+        updates = save_advanced(acc)
+        merged = copy.deepcopy(owner.app.config)
+        merged.update(acc)
+        merged.update(updates)
+        # Use original endpoint values, not the hidden spin boxes' rounded values.
+        migrated = with_pause(owner.app.config, pace.seconds(), preserve_legacy=not pace.changed)
+        for group in ('accessibility', 'command_mode', 'wake_word_config'):
+            target = copy.deepcopy(merged.get(group, {}) or {})
+            source = migrated[group]
+            if group == 'accessibility':
+                target.pop('speech_pause_anchor', None)
+                target.update({key: value for key, value in source.items()
+                               if key.startswith('speech_pa')})
+            elif group == 'command_mode':
+                target['dictate_utterance_silence_s'] = source['dictate_utterance_silence_s']
+            else:
+                target['quick_silence_timeout'] = source['quick_silence_timeout']
+                target.setdefault('audio', {})['wake_command_timeout'] = source['audio']['wake_command_timeout']
+            updates[group] = target
+        for key in ('silence_threshold', 'min_speech_duration'):
+            updates[key] = migrated[key]
+        return updates
+
+    owner._source_saves['advanced'][-1] = save_pace
     profiles = copy.deepcopy(owner.app.config.get("wake_profiles", []))
     if "wake_profiles" not in owner.app.config:
         profiles = copy.deepcopy(SETTINGS_SCHEMA["wake_profiles"]["default"])

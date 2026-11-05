@@ -438,6 +438,8 @@ SETTINGS_SCHEMA = {
         "default": 5.0,
         "tab": "hotkeys",
         "depends_on": "wake_word_enabled",
+        "settings_ui": False,
+        "ui_less_reason": "Derived from How long you can pause; expert config edits remain supported.",
     },
     "wake_word_config.quick_silence_timeout": {
         "type": "float",
@@ -447,6 +449,8 @@ SETTINGS_SCHEMA = {
         "default": 1.0,
         "tab": "hotkeys",
         "depends_on": "wake_word_enabled",
+        "settings_ui": False,
+        "ui_less_reason": "Derived from How long you can pause; expert config edits remain supported.",
     },
     "wake_word_config.opens_session": {
         # True: a wake-word hit opens the latched hands-free session (the
@@ -607,6 +611,8 @@ SETTINGS_SCHEMA = {
         "default": 0.65,
         "tab": "commands",
         "help": {"why": "This pause tells Samsara when a spoken phrase is complete in a session. Increase it if you need room to think between words; decrease it for faster delivery. Short values can split a sentence before you finish it.", "docs": "https://morneis.com/samsara/docs/settings/#command_mode.dictate_utterance_silence_s"},
+        "settings_ui": False,
+        "ui_less_reason": "Derived from How long you can pause; expert config edits remain supported.",
     },
     "command_mode.miss_limit": {
         "type": "int",
@@ -869,6 +875,8 @@ SETTINGS_SCHEMA = {
         "step": 0.5,
         "default": 2.0,
         "tab": "advanced",
+        "settings_ui": False,
+        "ui_less_reason": "Derived from How long you can pause; expert config edits remain supported.",
     },
     "min_speech_duration": {
         "type": "float",
@@ -877,6 +885,14 @@ SETTINGS_SCHEMA = {
         "step": 0.1,
         "default": 0.3,
         "tab": "advanced",
+        "settings_ui": False,
+        "ui_less_reason": "Derived from How long you can pause; expert config edits remain supported.",
+    },
+    "accessibility.speech_pause_s": {
+        "type": "float", "min": 0.5, "max": 8.0, "step": 0.05,
+        # No eager default: absence identifies an unmigrated legacy profile.
+        "tab": "accessibility", "settings_ui": False,
+        "ui_less_reason": "Shared pause slider on the Dictation page and tutorial.",
     },
     "accessibility.speech_pace": {
         "type": "enum", "options": ["standard", "relaxed", "unhurried", "custom"],

@@ -59,19 +59,24 @@ def test_config_only_list_is_empty_and_note_is_gone(qapp):
     assert 'modes_config_only_note' not in win._widgets
     from samsara.ui.settings_qt import _TAB_NAMES
     assert 'Modes' not in _TAB_NAMES
-    for key in ('cmd_utterance_silence', 'cmd_dictate_utterance_silence',
+    # 1040 FINISH IT 2: the five pace keys are DERIVED; the slider owns their UI.
+    for key in ('cmd_utterance_silence', 'speech_pace',
                 'cmd_matching_enabled', 'cmd_abort_phrases'):
         row = win._rows_by_widget[key]
         assert row.page_name == 'Dictation'
         assert row.isAncestorOf(win._widgets[key])
     assert win._rows_by_widget['cmd_exit_earcon'].page_name == 'Audio'
+    for key in ('cmd_dictate_utterance_silence', 'adv_silence', 'quick_silence',
+                'wake_cmd_timeout', 'adv_min_speech'):
+        assert key not in win._rows_by_widget
 
 
 # -- round trips ------------------------------------------------------------
 def test_every_new_control_round_trips_through_apply_and_reload(qapp, monkeypatch):
     app, win, _save = _win({"command_mode": {}})
     win._widgets['cmd_utterance_silence'].setValue(1.35)
-    win._widgets['cmd_dictate_utterance_silence'].setValue(0.9)
+    # 1040 FINISH IT 2: raw pace timings are DERIVED, written on slider change.
+    win._widgets['speech_pace'].setSeconds(3.75)
     win._widgets['cmd_exit_earcon'].setChecked(False)
     win._widgets['cmd_matching_enabled'].setChecked(True)
     win._widgets['cmd_abort_phrases'].setPlainText("that's all folks\n\n  done for now \nthat's all folks")
@@ -82,7 +87,13 @@ def test_every_new_control_round_trips_through_apply_and_reload(qapp, monkeypatc
 
     cm = app.config['command_mode']
     assert cm['utterance_silence_s'] == 1.35
-    assert cm['dictate_utterance_silence_s'] == 0.9
+    assert cm['dictate_utterance_silence_s'] == pytest.approx(.65)
+    assert app.config['accessibility']['speech_pause_s'] == 3.75
+    assert app.config['accessibility']['speech_pace'] == 'custom'
+    assert app.config['silence_threshold'] == pytest.approx(3.75)
+    assert app.config['wake_word_config']['quick_silence_timeout'] == pytest.approx(1.875)
+    assert app.config['wake_word_config']['audio']['wake_command_timeout'] == pytest.approx(95 / 12)
+    assert app.config['min_speech_duration'] == pytest.approx(29 / 120)
     assert cm['exit_earcon'] is False
     assert cm['command_matching_enabled'] is True
     assert cm['abort_phrases'] == ["that's all folks", "done for now"]
@@ -90,7 +101,9 @@ def test_every_new_control_round_trips_through_apply_and_reload(qapp, monkeypatc
 
     win2, _ = _reload(app)
     assert win2._widgets['cmd_utterance_silence'].value() == pytest.approx(1.35)
-    assert win2._widgets['cmd_dictate_utterance_silence'].value() == pytest.approx(0.9)
+    assert win2._widgets['speech_pace'].seconds() == 3.75
+    assert win2._widgets['speech_pace'].currentData() == 'custom'
+    assert win2._collect_destination_updates({})['command_mode']['dictate_utterance_silence_s'] == pytest.approx(.65)
     assert win2._widgets['cmd_exit_earcon'].isChecked() is False
     assert win2._widgets['cmd_matching_enabled'].isChecked() is True
     assert win2._widgets['cmd_abort_phrases'].toPlainText() == "that's all folks\ndone for now"
@@ -218,14 +231,20 @@ def test_descriptions_state_the_edges(qapp):
     _app, win, _save = _win({})
     # LookupMap materializes lazy Settings destinations on indexed lookup.
     keys = ('cmd_matching_enabled', 'cmd_exit_earcon', 'cmd_utterance_silence',
-            'cmd_dictate_utterance_silence', 'cmd_abort_phrases')
+            'speech_pace', 'cmd_abort_phrases')
     explanations = {key: win._rows_by_widget[key].full_help for key in keys}
     assert mq._CMD_MATCHING_DESC in explanations['cmd_matching_enabled']
     assert "typed as text" in explanations['cmd_matching_enabled']
     assert mq._CMD_EXIT_EARCON_DESC in explanations['cmd_exit_earcon']
     assert "no sound" in explanations['cmd_exit_earcon']
     assert mq._CMD_SILENCE_DESC in explanations['cmd_utterance_silence']
-    assert mq._DICTATE_SILENCE_DESC in explanations['cmd_dictate_utterance_silence']
+    # 1040 FINISH IT 2 replaces the raw timing row with the shared pause slider.
+    assert 'Choose a pause in seconds.' in explanations['speech_pace']
+    from PySide6.QtWidgets import QLabel
+    scope = win._rows_by_widget['speech_pace'].findChild(QLabel, 'speechPaceExplanation').text()
+    assert 'hands-free, wake word and commands' in scope
+    assert "Held dictation isn't split by pauses" in scope
+    assert 'recognizer' in scope and 'Dictation accuracy check' in scope
     abort_desc = mq._ABORT_PHRASES_DESC.format(sleep=sm.SESSION_SLEEP_PHRASES[0])
     assert abort_desc in explanations['cmd_abort_phrases']
     assert "Empty means" in abort_desc and "next time Samsara starts" in abort_desc

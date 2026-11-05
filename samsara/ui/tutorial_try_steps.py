@@ -1,6 +1,6 @@
 """Small, keyboard-reachable trial steps inside the existing tutorial."""
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QComboBox, QGridLayout, QHBoxLayout, QLabel, QPushButton, QSlider, QWidget
+from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtWidgets import QComboBox, QGridLayout, QHBoxLayout, QLabel, QPushButton, QSlider, QWidget, QVBoxLayout, QSizePolicy
 
 from samsara.ui import theme
 from samsara.ui.settings.calm_layout import stylesheet
@@ -23,6 +23,97 @@ class TrySlider(QSlider):
                 Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down,
                 Qt.Key.Key_Home, Qt.Key.Key_End, Qt.Key.Key_PageUp, Qt.Key.Key_PageDown):
             self.sliderReleased.emit()
+
+
+class PaceSlider(QWidget):
+    """The same seconds control in Settings and the Your pace trial."""
+    currentIndexChanged = Signal()
+
+    def __init__(self, config):
+        super().__init__()
+        from samsara.speech_pace import pause_seconds, STOPS, with_pause, profile
+        self._starting_seconds = pause_seconds(config)
+        self._starting_profile = profile(with_pause(config, self._starting_seconds))
+        self.changed = False
+        self.setAccessibleName('How long you can pause')  # PLACEHOLDER COPY (1040)
+        self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        self.setFixedWidth(390)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+        self.readout = label('')
+        layout.addWidget(self.readout)
+        self.slider = TrySlider(Qt.Orientation.Horizontal)
+        self.slider.setAccessibleName(self.accessibleName())
+        self.slider.setRange(50, 800)
+        self.slider.setSingleStep(5)
+        self.slider.setPageStep(50)
+        self.slider.setFixedHeight(theme.HIT_TARGET_MIN)
+        self.slider.setStyleSheet(stylesheet())
+        self.slider.setValue(round(pause_seconds(config) * 100))
+        layout.addWidget(self.slider)
+        marks = self.marks = QWidget()
+        # 1040 FINISH IT 2: inherit the host card surface, including stop labels.
+        marks.setStyleSheet('QWidget { background: transparent; }')
+        marks.setFixedHeight(24)
+        self.stop_labels = []
+        for name, seconds in STOPS.items():
+            mark = QLabel(name.capitalize(), marks)
+            mark.setProperty('role', 'description')
+            mark.adjustSize()
+            x = round(8 + (seconds - .5) / 7.5 * (390 - 16))
+            mark.move(max(0, min(390 - mark.width(), x - mark.width() // 2)), 0)
+            self.stop_labels.append(mark)
+        layout.addWidget(marks)
+        self.setFocusProxy(self.slider)
+        self.slider.valueChanged.connect(self._changed)
+        self._changed()
+
+    def seconds(self):
+        return self.slider.value() / 100
+
+    def setSeconds(self, seconds):
+        self.changed = True
+        tick = round(float(seconds) * 100)
+        if tick == self.slider.value():
+            self._changed()
+        else:
+            self.slider.setValue(tick)
+
+    def currentData(self):
+        from samsara.speech_pace import STOPS
+        if not self.changed and self.seconds() == self._starting_seconds and self._starting_profile == 'custom':
+            return 'custom'
+        return next((name for name, stop in STOPS.items() if self.seconds() == stop), 'custom')
+
+    def currentText(self):
+        return f'{self.seconds():g} s · {self.currentData().capitalize()}'
+
+    def _changed(self, *_args):
+        if _args:
+            self.changed = True
+        self.readout.setText(self.currentText())
+        self.slider.setAccessibleDescription(self.currentText() + '. Standard 2 s; Relaxed 5 s; Unhurried 8 s.')
+        self.currentIndexChanged.emit()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        QTimer.singleShot(0, self, self._layout_stops)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._layout_stops()
+
+    def _layout_stops(self):
+        from samsara.speech_pace import STOPS
+        if not hasattr(self, 'stop_labels'):
+            return
+        for mark, seconds in zip(self.stop_labels, STOPS.values()):
+            mark.ensurePolished()
+            mark.adjustSize()
+            x = round(8 + (seconds - .5) / 7.5 * (self.marks.width() - 16))
+            mark.move(max(0, min(self.marks.width() - mark.width(), x - mark.width() // 2)), 0)
+        self.marks.setFixedHeight(max(mark.sizeHint().height() for mark in self.stop_labels) + 2)
 
 
 def label(text):
@@ -106,8 +197,7 @@ def build_steps(page, layout):
     layout.addLayout(position_row)
     page.level = PlainChoices('How much Samsara talks', [('Silent', 'silent'), ('Brief', 'brief'), ('Full', 'full')], cfg.get('feedback_level', 'brief'))
     page.voice = choices(next(row[0] for row in BASE if row[2] == 'tts_engine'), [('Local', 'winrt'), ('Network', 'edge')], cfg.get('engine', 'winrt'))
-    from samsara.speech_pace import profile
-    page.pace = PlainChoices('Your pace', [('Standard', 'standard'), ('Relaxed', 'relaxed'), ('Unhurried', 'unhurried')], profile(page.app.config))
+    page.pace = PaceSlider(page.app.config)
     descriptions = (
         'Choose Silent, Brief or Full to try what happens after a command.',
         'Listen, then choose another voice or adjust its speed and volume.',
