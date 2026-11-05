@@ -84,6 +84,14 @@ CF_METAFILEPICT = 3
 CF_PALETTE = 9
 CF_ENHMETAFILE = 14
 
+# 1146: all transport writes publish these before any text, in one open.
+# Exclusion is presence-based; the other two formats contain a DWORD FALSE.
+PRIVATE_CLIPBOARD_FORMATS = (
+    "ExcludeClipboardContentFromMonitorProcessing",
+    "CanIncludeInClipboardHistory",
+    "CanUploadToCloudClipboard",
+)
+
 _FORMAT_NAMES = {
     1: "CF_TEXT", 2: "CF_BITMAP", 3: "CF_METAFILEPICT", 4: "CF_SYLK", 5: "CF_DIF",
     6: "CF_TIFF", 7: "CF_OEMTEXT", 8: "CF_DIB", 9: "CF_PALETTE", 10: "CF_PENDATA",
@@ -251,6 +259,9 @@ def _setup_win32_api():
     # SetClipboardData
     user32.SetClipboardData.argtypes = [UINT, HANDLE]
     user32.SetClipboardData.restype = HANDLE
+
+    user32.RegisterClipboardFormatW.argtypes = [ctypes.c_wchar_p]
+    user32.RegisterClipboardFormatW.restype = UINT
 
     # GlobalSize
     kernel32.GlobalSize.argtypes = [HANDLE]
@@ -1054,27 +1065,36 @@ def wait_for_clipboard_ready(expected_seq, settle) -> str:
         time.sleep(min(pause, deadline - now))
 
 
-def _copy_with_image_consent(text, receipt):
-    """Check consent under OpenClipboard, before the destructive operation."""
-    if not receipt.sequence or sys.platform != 'win32':
-        recovery.fail("Clipboard version unavailable. Copy a word, then say finish again.")
-        return False
-    raw = (text + '\0').encode('utf-16-le')
-    handle = _kernel32.GlobalAlloc(0x0002, len(raw))
-    if not handle:
-        recovery.fail("Couldn't prepare clipboard text. Draft kept.")
-        return False
+def _copy_private_text_windows(text, receipt=None):
+    """Publish markers and text atomically; never fall back to an unsafe copy.
+
+    Prepare everything before EmptyClipboard. A failed marker is a failed
+    delivery: text is only published after all three protections are set.
+    The optional image-loss receipt retains its check under OpenClipboard.
+    """
+    handles = {}
     opened = False
     window = None
     try:
-        ptr = _kernel32.GlobalLock(handle)
-        if not ptr:
-            recovery.fail("Couldn't prepare clipboard text. Draft kept.")
-            return False
-        try:
-            ctypes.memmove(ptr, raw, len(raw))
-        finally:
-            _kernel32.GlobalUnlock(handle)
+        payloads = []
+        for name in PRIVATE_CLIPBOARD_FORMATS:
+            fmt = _user32.RegisterClipboardFormatW(name)
+            if not fmt:
+                return False
+            payloads.append((fmt, b'\0' * 4))
+        payloads.append((CF_UNICODETEXT, (text + '\0').encode('utf-16-le')))
+        for fmt, raw in payloads:
+            handle = _kernel32.GlobalAlloc(0x0002, len(raw))
+            if not handle:
+                return False
+            handles[fmt] = handle
+            ptr = _kernel32.GlobalLock(handle)
+            if not ptr:
+                return False
+            try:
+                ctypes.memmove(ptr, raw, len(raw))
+            finally:
+                _kernel32.GlobalUnlock(handle)
         # EmptyClipboard needs a window owned by this process: opening with
         # NULL would leave a NULL owner and can make SetClipboardData fail.
         window = _user32.CreateWindowExW(0, 'STATIC', None, 0, 0, 0, 0, 0,
@@ -1086,24 +1106,52 @@ def _copy_with_image_consent(text, receipt):
         if not opened:
             recovery.fail(recovery.clipboard_failure_message())
             return False
-        if get_clipboard_sequence_number() != receipt.sequence:
+        if receipt is not None and get_clipboard_sequence_number() != receipt.sequence:
             recovery.fail("Clipboard changed. Say finish again. Draft kept.")
             return False
         if not _user32.EmptyClipboard():
             recovery.fail("Clipboard couldn't be replaced. Draft kept.")
             return False
-        receipt.replaced = True
-        if not _user32.SetClipboardData(CF_UNICODETEXT, handle):
-            return False
-        handle = None  # ownership transferred to Windows
+        if receipt is not None:
+            receipt.replaced = True
+        for fmt, _raw in payloads:
+            if not _user32.SetClipboardData(fmt, handles[fmt]):
+                return False
+            del handles[fmt]  # ownership transferred to Windows
         return True
+    except Exception:
+        _log_error("Protected clipboard write failed")
+        return False
     finally:
         if opened:
             _user32.CloseClipboard()
         if window:
             _user32.DestroyWindow(window)
-        if handle:
+        for handle in handles.values():
             _kernel32.GlobalFree(handle)
+
+
+def copy_private_text(text: str) -> None:
+    """Copy delivery/temporary text, raising a content-free error on failure.
+
+    Windows history and cloud sync must be excluded before text is exposed.
+    Explicit user Copy actions use copy_text; snapshot restore keeps the
+    original formats. Non-Windows platforms retain their existing transport.
+    """
+    if sys.platform != 'win32':
+        if not HAS_PYPERCLIP:
+            raise RuntimeError("Clipboard transport unavailable")
+        pyperclip.copy(text)
+    elif not _copy_private_text_windows(text):
+        raise RuntimeError("Protected clipboard write failed")
+
+
+def _copy_with_image_consent(text, receipt):
+    """Check consent under OpenClipboard, before the destructive operation."""
+    if not receipt.sequence or sys.platform != 'win32':
+        recovery.fail("Clipboard version unavailable. Copy a word, then say finish again.")
+        return False
+    return _copy_private_text_windows(text, receipt)
 
 
 def paste_with_preservation(
@@ -1185,7 +1233,7 @@ def paste_with_preservation(
                 if not _copy_with_image_consent(text, receipt):
                     return False
             else:
-                pyperclip.copy(text)
+                copy_private_text(text)
 
             # Capture the clipboard sequence number right after our own
             # copy -- if it's different by the time restore_clipboard()
@@ -1380,7 +1428,7 @@ def test_clipboard_preservation() -> bool:
     paste_text = "PASTE_TEXT_" + str(time.time())
 
     # Set original content
-    pyperclip.copy(original)
+    copy_private_text(original)
     time.sleep(0.1)
 
     # Save
@@ -1390,7 +1438,7 @@ def test_clipboard_preservation() -> bool:
         return False
 
     # Overwrite
-    pyperclip.copy(paste_text)
+    copy_private_text(paste_text)
     time.sleep(0.1)
 
     # Verify overwrite

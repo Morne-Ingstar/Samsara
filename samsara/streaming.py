@@ -2228,7 +2228,7 @@ class StreamingSession:
             logger.exception(f"[STREAM] Paste retry failed: {e}")
             if pyperclip is not None and tutorial_capture.final_current(self, allow_done=True):
                 try:
-                    pyperclip.copy(text)
+                    from samsara.clipboard import copy_private_text; copy_private_text(text)
                     logger.info("[STREAM] Text copied to clipboard -- paste manually")
                 except Exception as e:
                     logger.exception(f"[STREAM] Clipboard copy fallback failed: {e}")
@@ -2330,7 +2330,7 @@ class StreamingSession:
                 # the user can paste it manually.
                 if pyperclip is not None and tutorial_capture.final_current(self, allow_done=True):
                     try:
-                        pyperclip.copy(sanitized)
+                        from samsara.clipboard import copy_private_text; copy_private_text(sanitized)
                         logger.info("[STREAM] Text copied to clipboard "
                                     "-- paste manually")
                     except Exception as e:

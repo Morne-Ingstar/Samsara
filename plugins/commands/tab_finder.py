@@ -10,7 +10,7 @@ import time
 import sys
 from types import ModuleType
 
-import pyperclip
+from samsara.clipboard import copy_private_text
 
 _WINDOWS_AVAILABLE = sys.platform == "win32"
 _UNAVAILABLE_REASON = "Browser tab controls are unavailable on this platform."  # PLACEHOLDER COPY (850a)
@@ -108,13 +108,13 @@ def find_tab(app, remainder):
     # Clipboard paste is faster than typewrite and Unicode-safe. We deliberately
     # do NOT use _paste_preserving_clipboard -- this paste lands in the browser's
     # own search UI, not the user's document, so clipboard clobber is fine.
-    pyperclip.copy(search_term)
+    copy_private_text(search_term)
     pyautogui.hotkey('ctrl', 'v')
 
     time.sleep(0.3)
     pyautogui.press('enter')
 
-    print(f"[TABS] Searched for: {search_term}")
+    print("[TABS] Tab search sent")
     return True
 
 

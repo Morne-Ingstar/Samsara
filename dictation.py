@@ -3114,9 +3114,9 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             self.config = merged
             self._config_last_disk_snapshot = copy.deepcopy(new_disk_config)
 
-        for key, (old_v, new_v) in changed.items():
-            logger.info(f"[CONFIG] External edit detected: {key} changed "
-                  f"{old_v!r} -> {new_v!r}")
+        from samsara.config_change_log import log_external_config_changes
+        # 1146: neither config values nor arbitrary key text belong in logs.
+        log_external_config_changes(logger, changed)
 
         # Fire the same side-effects as update_config
         if 'mode' in changed:

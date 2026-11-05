@@ -30,6 +30,16 @@ class FakeClipboard:
         self.before_open = None        # callable run just before a successful OpenClipboard
         self.empties = 0
         self.allocated = set()         # GlobalAlloc handles not yet freed or handed to SetClipboardData
+        self.registered = {}          # 1146: protected writes register privacy formats.
+
+    def RegisterClipboardFormatW(self, name):
+        return self.registered.setdefault(name, 0xD000 + len(self.registered))
+
+    def CreateWindowExW(self, *_args):
+        return 777
+
+    def DestroyWindow(self, _window):
+        return True
 
     # -- user32 ---------------------------------------------------------
     def OpenClipboard(self, _hwnd):

@@ -160,8 +160,8 @@ class ToolDispatcher:
 
         # Layer 3: Clipboard
         try:
-            import pyperclip
-            pyperclip.copy(text)
+            from samsara.clipboard import copy_private_text
+            copy_private_text(text)
             _play_earcon(self.app, EARCON_ERROR, smart_cfg)
             logger.warning("[FALLBACK] Copied to clipboard (%s)", reason)
             return "saved_to_clipboard"
@@ -505,9 +505,9 @@ class ToolDispatcher:
             from samsara.composition_policy import tool_effect_allowed
             if not tool_effect_allowed(self, 'paste_text', args):
                 return {'success': False, 'result': 'Paste target changed or unapproved'}
-            import pyperclip
+            from samsara.clipboard import copy_private_text
             import pyautogui
-            pyperclip.copy(text)
+            copy_private_text(text)
             if not tool_effect_allowed(self, 'paste_text', args):
                 return {'success': False, 'result': 'Paste target changed'}
             pyautogui.hotkey('ctrl', 'v')

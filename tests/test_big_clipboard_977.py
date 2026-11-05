@@ -184,7 +184,8 @@ def test_restore_allocation_failure_is_visible_after_text_sent(session, standalo
     s = session
     s.fake.formats = {cb.CF_UNICODETEXT: b'original\0\0'}
     s.fake.size_override = {}
-    s.fake.alloc_fail_on = 1
+    # 1146: protected delivery allocates too; fail the first RESTORE allocation.
+    s.target.after_paste.append(lambda: setattr(s.fake, 'alloc_fail_on', s.fake.alloc_calls + 1))
     s.app._show_outcome_chip = Mock()
     if standalone:
         assert paste.paste_preserving_clipboard(s.app, 'Synthetic sent text.',
@@ -194,7 +195,8 @@ def test_restore_allocation_failure_is_visible_after_text_sent(session, standalo
         result = s.manager.commit_pending_dictation()
         assert result.kind == 'dictate_committed'
         assert sm.outcome_chip(result.kind, result.detail) == (recovery.RESTORE_MESSAGE, 'warning')
-    assert len(s.target.pasted) == 1 and s.fake.empties == 0
+    # 1146: one native delivery replace; failed restore must not clear it again.
+    assert len(s.target.pasted) == 1 and s.fake.empties == 1
 
 
 def test_failed_typed_first_attempt_is_not_typed_again(session):

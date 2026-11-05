@@ -106,8 +106,8 @@ class SessionTextDelivery:
         formatted = getattr(manager, '_sentence_prefix', '') + formatted
         clipboard_only = getattr(manager, '_sentence_clipboard', False)
         if clipboard_only:
-            import pyperclip
-            pyperclip.copy(formatted)
+            from samsara.clipboard import copy_private_text
+            copy_private_text(formatted)
             paste_ok, confirmed = True, False
         else:
             paste_ok, confirmed = app._paste_preserving_clipboard(

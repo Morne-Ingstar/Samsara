@@ -241,7 +241,8 @@ def test_paste_binds_editable_control_and_rechecks_before_injection(tools, monke
     def copied(text):
         target[1] += 1
 
-    monkeypatch.setitem(sys.modules, "pyperclip", SimpleNamespace(copy=copied))
+    # 1146: move the simulated target change to the protected copy boundary.
+    monkeypatch.setattr("samsara.clipboard.copy_private_text", copied)
     monkeypatch.setitem(sys.modules, "pyautogui", SimpleNamespace(hotkey=pasted))
     assert not dispatcher.dispatch({"tool": "paste_text", "args": {"text": "hello"}})["success"]
     pasted.assert_not_called()

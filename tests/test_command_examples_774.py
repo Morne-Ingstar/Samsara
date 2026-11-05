@@ -321,7 +321,8 @@ def _isolated_effects(monkeypatch, executor, app, phrase, tmp_path):
     elif stem == 'tab_finder':
         for name in ('hotkey', 'press', 'write'):
             monkeypatch.setattr(module.pyautogui, name, effect(name))
-        monkeypatch.setattr(module.pyperclip, 'copy', effect('clipboard'))
+        # 1146: the tab command imports the protected transport directly.
+        monkeypatch.setattr(module, 'copy_private_text', effect('clipboard'))
         monkeypatch.setattr(module.time, 'sleep', lambda _seconds: None)
         stub('_focus_browser')
     elif stem == 'tasks':

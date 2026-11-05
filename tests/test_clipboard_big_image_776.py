@@ -108,7 +108,11 @@ def test_paste_anyway_is_explicit_single_use_and_reports_image_loss(session):
     result = recovery.answer(session.manager, 'paste anyway')
     assert result.kind == 'dictate_committed'
     assert session.target.pasted == [text]
-    assert session.fake.formats == {cb.CF_UNICODETEXT: (text+'\0').encode('utf-16-le')}
+    # 1146: consent replaces the image with text plus all three privacy markers.
+    assert session.fake.formats == {
+        cb.CF_UNICODETEXT: (text+'\0').encode('utf-16-le'),
+        **{session.fake.registered[name]: b'\0' * 4 for name in cb.PRIVATE_CLIPBOARD_FORMATS},
+    }
     assert not session.manager.dictate_pending_buffer
     label, severity = sm.outcome_chip(result.kind, result.detail)
     assert recovery.LOSS_MESSAGE in label

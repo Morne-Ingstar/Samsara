@@ -55,6 +55,8 @@ def rig(monkeypatch):
     monkeypatch.setitem(sys.modules, "pyperclip", clip)
     monkeypatch.setitem(sys.modules, "pyautogui", keys)
     monkeypatch.setattr(cb, "pyperclip", clip)
+    # 1146: selection delivery uses the protected copy boundary.
+    monkeypatch.setattr(cb, "copy_private_text", copy)
     monkeypatch.setattr(cb, "HAS_PYPERCLIP", True)
     monkeypatch.setattr(cb, "save_clipboard", save)
     monkeypatch.setattr(cb, "restore_clipboard", restore)

@@ -37,6 +37,7 @@ import os
 import re
 import tempfile
 import time
+import uuid
 from typing import Optional
 
 from samsara.correction_capture import extract_corrections
@@ -398,8 +399,8 @@ def save_audio(samples, wrong: str, *, sample_rate: int = AUDIO_SAMPLE_RATE,
         pcm = (array * 32767.0).astype(np.int16)
         directory = audio_dir(home_dir)
         os.makedirs(directory, exist_ok=True)
-        safe = "".join(ch for ch in _norm(wrong) if ch.isalnum())[:24] or "word"
-        name = f"{int(time.time() * 1000)}-{safe}.wav"
+        # 1146: the existing private queue holds the word; filenames never do.
+        name = f"{uuid.uuid4().hex}.wav"
         path = os.path.join(directory, name)
         with wave.open(path, "wb") as fh:
             fh.setnchannels(1)
@@ -409,7 +410,7 @@ def save_audio(samples, wrong: str, *, sample_rate: int = AUDIO_SAMPLE_RATE,
         _prune_audio(directory)
         return path
     except Exception as exc:
-        logger.warning("[CORRECTIONS] could not save the correction audio: %s", exc)
+        logger.warning("[CORRECTIONS] could not save the correction audio (%s)", type(exc).__name__)
         return None
 
 
@@ -421,7 +422,7 @@ def _prune_audio(directory: str) -> None:
         for path in clips[:-MAX_AUDIO_CLIPS]:
             os.remove(path)
     except OSError as exc:
-        logger.debug("[CORRECTIONS] audio prune skipped: %s", exc)
+        logger.debug("[CORRECTIONS] audio prune skipped (%s)", type(exc).__name__)
 
 
 _QUEUE: Optional[CorrectionQueue] = None

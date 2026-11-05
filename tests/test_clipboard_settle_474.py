@@ -84,6 +84,8 @@ def transport(monkeypatch):
     monkeypatch.setattr(cb, 'restore_clipboard', restore)
     copy = Mock()
     monkeypatch.setattr(cb, 'pyperclip', SimpleNamespace(copy=copy))
+    # 1146: delivery now uses the protected writer; keep this settle-only fake.
+    monkeypatch.setattr(cb, 'copy_private_text', copy)
     monkeypatch.setattr(cb, 'HAS_PYPERCLIP', True)
     hotkey = Mock()
     monkeypatch.setitem(__import__('sys').modules, 'pyautogui', SimpleNamespace(hotkey=hotkey))

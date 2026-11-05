@@ -51,7 +51,8 @@ def fake(monkeypatch):
         "OpenClipboard", "CloseClipboard", "EmptyClipboard", "EnumClipboardFormats", "GetClipboardData",
         "SetClipboardData", "GetClipboardSequenceNumber", "GetClipboardOwner", "IsHungAppWindow",
         "SendMessageTimeoutW", "CountClipboardFormats", "GetClipboardFormatNameW",
-        "GetOpenClipboardWindow", "IsClipboardFormatAvailable")})
+        "GetOpenClipboardWindow", "IsClipboardFormatAvailable",
+        "RegisterClipboardFormatW", "CreateWindowExW", "DestroyWindow")})
     kernel32 = types.SimpleNamespace(**{name: getattr(clip, name) for name in (
         "GlobalAlloc", "GlobalSize", "GlobalLock", "GlobalUnlock", "GlobalFree")})
     monkeypatch.setattr(cb, "_user32", user32)
@@ -200,7 +201,8 @@ def test_user_copy_during_the_paste_window_aborts_restore_and_is_kept(fake, targ
     paste_with_preservation("dictated", paste_delay=0, restore_delay=0)
 
     assert fake.text() == "https://the-url-i-just-copied"
-    assert fake.empties == 0, "the clipboard must never be emptied once the user has copied"
+    # 1146: one atomic transport write; never empty again after the user copy.
+    assert fake.empties == 1, "the clipboard must never be emptied once the user has copied"
 
 
 def test_user_copy_while_the_restore_is_being_prepared_is_kept(fake, target):
@@ -214,7 +216,7 @@ def test_user_copy_while_the_restore_is_being_prepared_is_kept(fake, target):
     paste_with_preservation("dictated", paste_delay=0, restore_delay=0)
 
     assert fake.text() == "copied during prepare"
-    assert fake.empties == 0
+    assert fake.empties == 1  # 1146: transport emptied once; restore must not.
     assert fake.allocated == set(), "prepared handles must be freed on abort"
 
 
