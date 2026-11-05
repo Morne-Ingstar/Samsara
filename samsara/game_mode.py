@@ -2,14 +2,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections import deque
 import logging
 import threading
+import time
 
 from samsara.config_defaults import cfg_get
 
 log = logging.getLogger(__name__)
 # PLACEHOLDER COPY (1058)
 NOTICE = "Game mode: dictation on CPU, a little slower"
+EXIT_GRACE_SECONDS = 45.0
+SWITCH_WINDOW_SECONDS = 60.0
+MAX_SWITCHES_PER_WINDOW = 4
 
 
 @dataclass(frozen=True)
@@ -17,6 +22,10 @@ class Sample:
     fullscreen: bool = False
     gpu_busy: bool = False
     pid: int = 0
+    hwnd: int = 0
+    # True: the previously detected game is still open and not minimized.
+    # None: window inspection failed; do not treat uncertainty as an exit.
+    game_present: bool | None = False
 
 
 def partials_enabled(app, session=None):
@@ -35,21 +44,50 @@ def _busy(app):
 
 
 class GameMode:
-    def __init__(self, app, factory, *, probe=None, notify=None):
+    def __init__(self, app, factory, *, probe=None, notify=None, clock=None):
         self.app, self.factory = app, factory
-        self.probe = probe or windows_sample
+        self.probe = probe or WindowsGameDetector()
         self.notify = notify or publish
+        self.clock = clock or time.monotonic
         self.manual = None
         self.auto_requested = False
-        self.sample = Sample()
+        self._sample = Sample()
+        self._auto_active = False
+        self._absent_since = None
         self.active = False
         self.resident = None
         self.resident_name = None
         self._original = None
+        self._primary_name = app.config.get('model_size', 'unknown model')
+        self._active_name = None
         self._announced = False
         self._load_failed = None
+        self._loading_name = None
+        self._retired = []
+        self._switches = deque()
         self._lock = threading.RLock()
         self.stop = threading.Event()
+
+    @property
+    def sample(self):
+        return self._sample
+
+    @sample.setter
+    def sample(self, value):
+        """Only fresh detector observations advance the exit debounce."""
+        with self._lock:
+            self._sample = value
+            if value.fullscreen and value.gpu_busy:
+                self._auto_active = True
+                self._absent_since = None
+            elif value.game_present is not False:
+                self._absent_since = None
+            elif self._auto_active:
+                now = self.clock()
+                if self._absent_since is None:
+                    self._absent_since = now
+                if now - self._absent_since >= EXIT_GRACE_SECONDS:
+                    self._auto_active = False
 
     @property
     def wanted(self):
@@ -57,7 +95,7 @@ class GameMode:
             return False
         if self.manual is not None:
             return self.manual
-        return self.automatic and self.sample.fullscreen and self.sample.gpu_busy
+        return self.automatic and self._auto_active
 
     @property
     def automatic(self):
@@ -73,34 +111,70 @@ class GameMode:
         self.reconcile()
 
     def prepare(self):
-        """Only the monitor loads. Failed loads retain the working model."""
-        name = cfg_get(self.app.config, 'game_mode.cpu_model')
-        if not self.wanted or (self.resident is not None and self.resident_name == name):
-            return
-        if self._load_failed == name:
-            return
+        """Single background load, admitted at idle; capture never waits for it."""
+        with self._lock:
+            name = cfg_get(self.app.config, 'game_mode.cpu_model')
+            if (not self.wanted or _busy(self.app) or self._loading_name is not None
+                    or (self.resident is not None and self.resident_name == name)
+                    or self._load_failed == name):
+                return False
+            if not self.app.model_lock.acquire(blocking=False):
+                return False
+            self.app.model_lock.release()
+            self._loading_name = name
+        # No capture, policy or decoder lock spans the native constructor.
         try:
             model = self.factory(name, device='cpu', compute_type='int8',
                                  cpu_threads=4, num_workers=2)
         except Exception:
-            self._load_failed = name
+            with self._lock:
+                self._load_failed = name
+                self._loading_name = None
             log.warning('[GAME-MODE] CPU model unavailable', exc_info=True)
-            self.notify(self.app, False, 'Game mode could not load its CPU model; dictation kept its current model')
-            return
+            self.notify(self.app, self.active, 'Game mode could not load its CPU model; dictation kept its current model')
+            return False
         with self._lock:
-            self.resident, self.resident_name = model, name
+            self._loading_name = None
+            if name == cfg_get(self.app.config, 'game_mode.cpu_model'):
+                # Only the monitor may retire old native instances. A later
+                # before_capture swap must not invoke a native destructor.
+                if self.resident is not None:
+                    self._retired.append((self.resident, self.clock()))
+                self.resident, self.resident_name = model, name
+        return True
+
+    def _release_retired(self):
+        """Monitor-only cleanup of explicitly replaced CPU model choices."""
+        with self._lock:
+            if _busy(self.app):
+                return
+            previous = self._retired
+            self._retired = [(model, at) for model, at in previous
+                             if model is self.app.model or self.clock() - at < SWITCH_WINDOW_SECONDS]
+        # 'previous' and its native objects are released outside all locks.
 
     def reconcile(self, *, primary=False):
         """Never wait behind a capture or decoder; retry at the next idle."""
         lifecycle = getattr(self.app, '_hold_capture_lifecycle_lock', None)
         if lifecycle is not None and not lifecycle.acquire(blocking=False):
             return False
+        changed = False
+        notice = None
         try:
-            with self._lock:
+            if not self._lock.acquire(blocking=False):
+                return False
+            try:
                 if _busy(self.app):
                     return False
                 target = self.wanted and self.resident is not None and not primary
                 if target == self.active and (not target or self.app.model is self.resident):
+                    return False
+                now = self.clock()
+                while self._switches and now - self._switches[0] >= SWITCH_WINDOW_SECONDS:
+                    self._switches.popleft()
+                # Ava/command routing must always retain its primary model.
+                # Policy changes (including manual flips) are rate limited.
+                if not primary and len(self._switches) >= MAX_SWITCHES_PER_WINDOW:
                     return False
                 if not self.app.model_lock.acquire(blocking=False):
                     return False
@@ -112,6 +186,7 @@ class GameMode:
                             self._original = (self.app.model, self.app.device_type, self.app.compute_type)
                         self.app.model = self.resident
                         self.app.device_type, self.app.compute_type = 'cpu', 'int8'
+                        self._active_name = self.resident_name
                     else:
                         self.app.model, self.app.device_type, self.app.compute_type = self._original
                         # Ava may have recovered the primary CUDA model while
@@ -121,15 +196,36 @@ class GameMode:
                             self.app.device_type, self.app.compute_type = 'cpu', 'int8'
                         self._original = None
                     self.active = target
+                    if not primary:
+                        self._switches.append(now)
                 finally:
                     self.app.model_lock.release()
                 notice = NOTICE if target and not self._announced else None
                 self._announced |= target
-                self.notify(self.app, target, notice)
-                return True
+                changed = True
+            finally:
+                self._lock.release()
         finally:
             if lifecycle is not None:
                 lifecycle.release()
+        if changed:
+            self.notify(self.app, target, notice)
+        return changed
+
+    def runtime_text(self):
+        """Describe the selected instance, never an unapplied saved choice."""
+        with self._lock:
+            name = self._active_name if self.active else self._primary_name
+            device = _model_device(self.app.model, self.app.device_type)
+            # PLACEHOLDER COPY (1152)
+            text = f'Right now: {name} on {device.upper()}'
+            if self.active:
+                text += ' (game mode)'
+            if self._loading_name:
+                text += f'. Preparing {self._loading_name}; dictation keeps this model.'
+            elif self.wanted != self.active:
+                text += '. Game mode change waiting until ready and idle.'
+            return text
 
     def original_model(self):
         with self._lock:
@@ -138,12 +234,18 @@ class GameMode:
     def run(self):
         while not self.stop.is_set() and getattr(self.app, '_running', True):
             try:
+                self._release_retired()
                 if (cfg_get(self.app.config, 'game_mode.enabled')
                         and self.automatic):
                     self.sample = self.probe()
-                self.prepare()
+                loaded = self.prepare()
+                if loaded and self.automatic:
+                    # A constructor may take seconds; never act on its stale
+                    # pre-load foreground sample.
+                    self.sample = self.probe()
                 self.reconcile()
             except Exception:
+                self.sample = Sample(game_present=None)
                 log.warning('[GAME-MODE] Policy sample unavailable', exc_info=True)
             self.stop.wait(2.0)
 
@@ -155,8 +257,9 @@ def install(app, factory):
         # A deliberate primary-model reload supersedes the old restore point.
         with existing._lock:
             existing.active, existing._original = False, None
+            existing._primary_name = app.config.get('model_size', 'unknown model')
             existing.factory = factory
-            existing.notify(app, False)
+        existing.notify(app, False)
         return
     from samsara.runtime import thread_registry
     app._game_mode = GameMode(app, factory)
@@ -185,14 +288,30 @@ def publish(app, active, notice=None):
     from samsara.ui import qt_runtime
 
     def show():
+        # Posts from different callers can arrive out of order. Read what is
+        # actually selected when Qt paints, not the old detection request.
+        current = getattr(getattr(app, '_game_mode', None), 'active', active)
         indicator = getattr(app, 'listening_indicator', None)
         setter = getattr(indicator, 'set_game_mode', None)
         if setter is not None:
-            setter(active)
-        if notice and indicator is not None:
+            setter(current)
+        if notice and indicator is not None and active == current:
             indicator.show_outcome(notice, 'accent' if active else 'error', 8000)
 
     qt_runtime.post(show)
+
+
+def _model_device(model, fallback):
+    from samsara.gpu_fallback import ResilientSpeechModel
+    return model._device if isinstance(model, ResilientSpeechModel) else fallback
+
+
+def runtime_text(app):
+    policy = getattr(app, '_game_mode', None)
+    if policy is not None:
+        return policy.runtime_text()
+    # PLACEHOLDER COPY (1152): saved settings are not evidence of a loaded model.
+    return 'Right now: speech model loading' if getattr(app, 'loading_model', False) else 'Right now: speech model not ready'
 
 
 def set_manual(app, value):
@@ -210,6 +329,41 @@ def add_tray(tray, menu):
                   checked=policy.wanted)
         tray._add(menu, 'Game mode: automatic', lambda checked: set_manual(tray._app, None),
                   checked=policy.automatic)
+
+
+class WindowsGameDetector:
+    """Track a detected game's window separately from foreground focus."""
+    def __init__(self, foreground=None, present=None):
+        self.foreground = foreground or windows_sample
+        self.present = present or game_window_present
+        self.tracked = None
+
+    def __call__(self):
+        from dataclasses import replace
+        sample = self.foreground()
+        if sample.fullscreen and sample.gpu_busy:
+            self.tracked = sample
+            return sample
+        present = self.present(self.tracked) if self.tracked is not None else False
+        return replace(sample, game_present=present)
+
+
+def game_window_present(sample):
+    """A background game still counts; a closed/minimized window does not."""
+    import ctypes as c
+    from ctypes import wintypes as w
+    if not sample.hwnd:
+        return False
+    user = c.WinDLL('user32', use_last_error=True)
+    user.IsWindow.argtypes = (w.HWND,)
+    user.IsIconic.argtypes = (w.HWND,)
+    user.GetWindowThreadProcessId.argtypes = (w.HWND, c.POINTER(w.DWORD))
+    if not user.IsWindow(sample.hwnd):
+        return False
+    pid = w.DWORD()
+    if not user.GetWindowThreadProcessId(sample.hwnd, c.byref(pid)):
+        return None
+    return pid.value == sample.pid and not user.IsIconic(sample.hwnd)
 
 
 def windows_sample():
@@ -245,7 +399,7 @@ def windows_sample():
     user.GetWindowThreadProcessId(hwnd, c.byref(pid))
     full = all(abs(getattr(rect, edge) - getattr(monitor.monitor, edge)) <= 2
                for edge in ('left', 'top', 'right', 'bottom'))
-    return Sample(full, full and gpu_busy(pid.value), pid.value)
+    return Sample(full, full and gpu_busy(pid.value), pid.value, int(hwnd))
 
 
 def gpu_busy(pid):

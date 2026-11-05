@@ -72,12 +72,12 @@ BASE = [
 ADVANCED = [
     [
         "Compute device",
-        "Choose the hardware used for recognition.",
+        "Saved preference. Apply, then restart to change the usual device.",  # PLACEHOLDER COPY (1152)
         "adv_device",
         "device"
     ],
     ["Game mode", "Use a resident CPU model with live words off while gaming; switch only when idle.", "game_enabled", "game_mode.enabled"],
-    ["Game detection", "Automatic fullscreen and GPU detection, or manual tray/voice control.", "game_detect", "game_mode.detect"],
+    ["Game detection", "Auto stays on across alt-tabs; it leaves after the game is closed or minimized for 45 seconds. Manual uses the tray or voice controls.", "game_detect", "game_mode.detect"],  # PLACEHOLDER COPY (1152)
     ["Game CPU model", "A second model, loaded on first use and kept in memory.", "game_model", "game_mode.cpu_model"],
     [
         "Precision metadata",
@@ -267,6 +267,8 @@ def build(owner):
 
     owner._source_saves['general'][0] = save_sends
     page = owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)
+    from .game_mode import build_runtime
+    build_runtime(owner)
     # PLACEHOLDER COPY (1015): microphone guide stays available in the header.
     owner._widgets['dictation_mic_setup_guide_button'] = page.add_guide(
         'Microphone setup',

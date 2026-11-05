@@ -31,6 +31,7 @@ def test_never_swaps_during_capture_or_finalization(rig, busy):
     assert not policy.reconcile()
     assert app.model is original
     setattr(app, busy, False)
+    policy.prepare()  # 1152: new loads, as well as swaps, are admitted at idle.
     assert policy.reconcile()
     assert app.model is factory.return_value
 
@@ -95,7 +96,7 @@ def test_manual_override_beats_auto_in_both_directions(rig):
     policy.set_manual(True)
     assert policy.wanted
     policy.set_manual(None)
-    assert not policy.wanted
+    assert policy.wanted  # 1152: returning to auto retains the 45-second exit grace.
     app.config['game_mode']['detect'] = 'manual'
     policy.sample = Sample(True, True, 42)
     assert policy.wanted  # Explicit auto also overrides the saved manual setting.
@@ -198,6 +199,7 @@ def test_changed_cpu_model_swaps_only_at_idle_and_restores_original(rig):
     policy.prepare()
     assert not policy.reconcile()
     app.recording = False
+    policy.prepare()  # 1152: a changed CPU model is loaded only after capture.
     assert policy.reconcile()
     assert app.model is factory.return_value
     policy.set_manual(False)
@@ -275,6 +277,10 @@ def test_auto_exit_restores_primary_and_next_entry_reuses_cpu(rig):
     policy.sample = Sample(True, True, 42)
     policy.prepare()
     policy.reconcile()
+    policy.sample = Sample()
+    assert not policy.reconcile()  # 1152: exit needs 45 seconds of observed absence.
+    exit_at = policy._absent_since + 45
+    policy.clock = lambda: exit_at
     policy.sample = Sample()
     assert policy.reconcile()
     assert app.model is original
