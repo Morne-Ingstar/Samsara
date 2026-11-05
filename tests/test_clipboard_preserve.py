@@ -1,39 +1,4 @@
-"""Tests for samsara.clipboard: the clipboard save/restore round-trip that
-must preserve images (screenshots), not just text.
-
-Background (see tools/clipboard_probe.py for the full empirical
-investigation): the bug was that save_clipboard()'s format allowlist only
-ever covered text formats -- CF_DIB (the standard, GlobalAlloc-memory-safe
-image interchange format) was excluded alongside CF_BITMAP (a GDI handle,
-genuinely unsafe to GlobalLock). This meant image data was silently dropped
-at the very first enumeration pass, before any handle-type/synthesis
-concern even applied -- the debug line's "N formats saved" was truthful
-about what it captured, but what it captured never included the image.
-
-There is no separate "convert CF_BITMAP to CF_DIB" function to test: the
-fix relies on Windows' own format synthesis (confirmed empirically -- when
-only CF_DIB is placed on the clipboard, Windows' own EnumClipboardFormats
-already reports CF_BITMAP/CF_DIBV5 as available too, and the reverse holds).
-save_clipboard() simply requests CF_DIB directly; Windows renders it from
-whatever image format the source app actually provided. So
-is_snapshot_eligible_format(CF_BITMAP) being False is the whole "conversion
-policy" -- there's nothing else to convert.
-
-Pure-logic tests need no clipboard. The one real round-trip test is
-skipped when clipboard access isn't available (CI-safety).
-
-Clipboard-safety net: TestRealClipboardRoundTrip's tests deliberately
-clobber the live Windows clipboard as part of exercising save/restore --
-without the `preserve_real_clipboard` fixture below, whatever the user
-actually had copied gets overwritten and left as one of this file's fixture
-strings (this really happened -- "original clipboard text" ended up pasted
-into real documents). The fixture snapshots the clipboard via RAW
-win32clipboard calls -- independent of samsara.clipboard.save_clipboard(),
-the code under test -- before each such test and restores it after,
-regardless of pass/fail. These tests are also tagged @pytest.mark.clipboard
-so a clipboard-safe run is available via `-m "not clipboard"` even though
-the fixture already makes the default (unfiltered) run harmless.
-"""
+"""Clipboard format policy and byte-exact image/text round trips in memory (1148)."""
 
 import logging
 import sys
@@ -358,148 +323,16 @@ class TestHungOwnerGuard:
 
 
 # ============================================================================
-# Real clipboard round-trip -- skipped if clipboard access is unavailable
+# In-memory Win32 round-trip -- keeps the existing test node IDs (1148)
 # ============================================================================
-
-def _clipboard_available() -> bool:
-    if sys.platform != 'win32':
-        return False
-    try:
-        import win32clipboard  # noqa: F401
-        from PIL import Image  # noqa: F401
-    except ImportError:
-        return False
-    try:
-        import ctypes
-        opened = ctypes.windll.user32.OpenClipboard(None)
-        if opened:
-            ctypes.windll.user32.CloseClipboard()
-        return bool(opened)
-    except Exception:
-        return False
-
-
-# ============================================================================
-# Real-clipboard safety net -- snapshot/restore around every live test
-# ============================================================================
-
-# Minimum formats required by the task; both are what the round-trip tests
-# themselves clobber, so restoring just these two puts the user's clipboard
-# back exactly as they'd observe it (text, or an image via CF_DIB). These
-# are just the standard Windows format-ID constants (already imported above
-# for the pure-logic tests) -- reusing them isn't reusing any save/restore
-# LOGIC from the code under test, so the snapshot/restore below stays
-# independent of samsara.clipboard as required.
-_SNAPSHOT_FORMATS = (CF_UNICODETEXT, CF_DIB)
-
-
-def _snapshot_real_clipboard() -> dict:
-    """Raw win32clipboard snapshot of whatever's really on the clipboard
-    right now. Deliberately does NOT go through
-    samsara.clipboard.save_clipboard() (the code under test) -- this safety
-    net must work independently of it, or a bug in save_clipboard() could
-    silently disable its own regression protection."""
-    import win32clipboard
-
-    snapshot = {}
-    win32clipboard.OpenClipboard()
-    try:
-        for fmt in _SNAPSHOT_FORMATS:
-            try:
-                if not win32clipboard.IsClipboardFormatAvailable(fmt):
-                    continue
-                data = win32clipboard.GetClipboardData(fmt)
-                if fmt == CF_DIB:
-                    data = bytes(data)
-                snapshot[fmt] = data
-            except Exception:
-                continue
-    finally:
-        win32clipboard.CloseClipboard()
-    return snapshot
-
-
-#: Formats Windows re-creates from the two the safety net restores, so their
-#: presence does not mean anything would be lost.
-_RESYNTHESIZED_BY_WINDOWS = {CF_TEXT, CF_OEMTEXT, CF_LOCALE, CF_BITMAP, CF_DIBV5, 9}  # 9 = CF_PALETTE
-
-
-def _unrestorable_real_formats() -> set:
-    """Formats on the REAL clipboard that _restore_real_clipboard() could not
-    put back. Read-only (enumeration). Any failure is treated as 'cannot
-    tell', which also means the tests must not run."""
-    import win32clipboard
-
-    try:
-        win32clipboard.OpenClipboard()
-    except Exception:
-        return {-1}
-    try:
-        present, fmt = set(), 0
-        while True:
-            fmt = win32clipboard.EnumClipboardFormats(fmt)
-            if not fmt:
-                break
-            present.add(fmt)
-    except Exception:
-        return {-1}
-    finally:
-        win32clipboard.CloseClipboard()
-    return present - set(_SNAPSHOT_FORMATS) - _RESYNTHESIZED_BY_WINDOWS
-
-
-def _restore_real_clipboard(snapshot: dict) -> None:
-    """Restore a snapshot taken by _snapshot_real_clipboard(), or just
-    empty the clipboard if the snapshot was empty (the user's clipboard
-    genuinely had nothing in the snapshotted formats)."""
-    import win32clipboard
-
-    win32clipboard.OpenClipboard()
-    try:
-        win32clipboard.EmptyClipboard()
-        for fmt, data in snapshot.items():
-            win32clipboard.SetClipboardData(fmt, data)
-    finally:
-        win32clipboard.CloseClipboard()
-
 
 @pytest.fixture
-def preserve_real_clipboard():
-    """Snapshot the user's REAL clipboard before a live-clipboard test,
-    restore it after -- no matter what the test does or whether it fails.
-
-    Function-scoped, not module/session-scoped: each test in
-    TestRealClipboardRoundTrip clobbers the clipboard multiple times as
-    part of its own body (that's the thing under test), so only a
-    snapshot/restore around EACH test guarantees no test leaks clobbered
-    state into the next one, and that the user's real clipboard is
-    correctly restored even if one test in the class fails while another
-    passes. The snapshot/restore calls themselves are a handful of Win32
-    API calls -- negligible cost per test.
-    """
-    # ARC audit6 (49): this safety net can only put back CF_UNICODETEXT and
-    # CF_DIB (plus what Windows re-creates from them). If the user's real
-    # clipboard holds anything else -- copied files, Office data, custom
-    # formats -- running the test would destroy it. Skip instead.
-    unrestorable = _unrestorable_real_formats()
-    if unrestorable:
-        pytest.skip("real clipboard holds content this safety net cannot restore "
-                    f"(formats {sorted(unrestorable)}); not touching it")
-    snapshot = _snapshot_real_clipboard()
-    yield
-    try:
-        _restore_real_clipboard(snapshot)
-    except Exception:
-        logging.getLogger("Samsara").error(
-            "[CLIPBOARD-TEST] Failed to restore the user's real clipboard "
-            "after a clipboard test -- their clipboard may now contain "
-            "test fixture data instead of what they actually had copied.",
-            exc_info=True,
-        )
-
+def preserve_real_clipboard(fake_clipboard):
+    """1148: historical fixture name; only the shared in-memory clipboard exists."""
+    return fake_clipboard
 
 @pytest.mark.clipboard
-@pytest.mark.skipif(not _clipboard_available(), reason="clipboard not available in this environment")
+@pytest.mark.skipif(sys.platform != "win32", reason="Win32 adapter contract")
 class TestRealClipboardRoundTrip:
     def test_text_and_dib_survive_save_clobber_restore(self, preserve_real_clipboard):
         import io

@@ -1,10 +1,4 @@
-"""Manual, real-Windows clipboard preservation checks.
-
-These tests are deliberately marked ``clipboard`` because they operate on the
-real clipboard.  The autouse fixture takes the central multi-format snapshot
-before each case and restores it in ``finally``; an incomplete snapshot skips
-the test rather than replacing content it cannot put back.
-"""
+"""Clipboard preservation against the shared memory backend; no desktop I/O (1148)."""
 
 import ctypes
 import sys
@@ -21,28 +15,6 @@ from samsara.clipboard import (
 
 
 pytestmark = pytest.mark.clipboard
-
-
-@pytest.fixture(autouse=True)
-def preserve_real_clipboard():
-    """Restore every format the central snapshot can safely preserve."""
-    snapshot = save_clipboard()
-    if not getattr(snapshot, "complete", True):
-        pytest.skip("clipboard has content that cannot be safely restored")
-    was_empty = not snapshot
-    try:
-        yield
-    finally:
-        if was_empty:
-            if not ctypes.windll.user32.OpenClipboard(None):
-                pytest.fail("could not open clipboard to restore its empty state")
-            try:
-                if not ctypes.windll.user32.EmptyClipboard():
-                    pytest.fail("could not restore the clipboard's empty state")
-            finally:
-                ctypes.windll.user32.CloseClipboard()
-        elif not restore_clipboard(snapshot):
-            pytest.fail("could not restore the clipboard captured before this test")
 
 
 def test_basic_preservation():
@@ -65,12 +37,12 @@ def test_basic_preservation():
     assert pyperclip.paste() == original_content
 
 
-def test_empty_clipboard():
-    assert ctypes.windll.user32.OpenClipboard(None)
+def test_empty_clipboard(fake_clipboard):
+    assert fake_clipboard.OpenClipboard(None)
     try:
-        assert ctypes.windll.user32.EmptyClipboard()
+        assert fake_clipboard.EmptyClipboard()
     finally:
-        ctypes.windll.user32.CloseClipboard()
+        fake_clipboard.CloseClipboard()
     assert not save_clipboard()
 
 

@@ -11,6 +11,15 @@ from samsara import clipboard as cb, paste
 _REAL_MESSAGE_PASTE = cb.message_paste_to_focused_control
 
 
+@pytest.fixture(autouse=True)
+def _fake_privacy_target_1148(monkeypatch):
+    # Delivery receipts use a synthetic editor; never probe the owner's UIA
+    # target (its COM setup also registers native clipboard formats).
+    from samsara import recent_privacy
+    monkeypatch.setattr(recent_privacy, 'focused_target',
+                        lambda: recent_privacy.TargetPrivacy())
+
+
 class Clock:
     def __init__(self):
         self.now = 0.0

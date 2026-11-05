@@ -102,6 +102,13 @@ def pytest_sessionfinish(session, exitstatus):
         if outcome.excinfo is None:
             _worker_exit_guard_714(session.config, exitstatus, stream=diagnostics)
     finally:
+        # Catch violations from session-fixture teardown/background workers too.
+        if _clipboard_guard_1148.violations:
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
+            reporter = session.config.pluginmanager.getplugin('terminalreporter')
+            if reporter is not None:
+                reporter.write_line('1148: blocked late clipboard/desktop calls: ' +
+                                    ', '.join(_clipboard_guard_1148.violations), red=True)
         if diagnostics is not None:
             diagnostics.close()
 
@@ -530,6 +537,28 @@ def apply_fake_app_defaults(app):
 _SAMSARA_TEST_HOME = tempfile.mkdtemp(prefix="samsara_test_home_")
 os.environ["SAMSARA_HOME_DIR"] = _SAMSARA_TEST_HOME
 
+# 1148: install before collection imports product code or captures API aliases.
+# Keep installed through session teardown and atexit; a fixture alone is too late.
+from tests.clipboard_guard import install as _install_clipboard_guard_1148
+_clipboard_guard_1148 = _install_clipboard_guard_1148()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _no_real_clipboard_1148():
+    return _clipboard_guard_1148
+
+
+@pytest.fixture(autouse=True)
+def fake_clipboard(_no_real_clipboard_1148):
+    """Fresh shared memory per test; local fake backends may still override it."""
+    guard = _no_real_clipboard_1148
+    guard.reset()
+    yield guard.clipboard
+    if guard.violations:
+        names = ', '.join(guard.violations)
+        guard.violations.clear()
+        pytest.fail('1148: blocked real clipboard/desktop calls: ' + names)
+
 
 # BEGIN SILENT AUDIO 446
 def _install_silent_audio_446():
@@ -774,6 +803,7 @@ def _install_silent_audio_446():
 # Install before test collection can bind output aliases. The one autouse
 # fixture below provides the per-test recorder and explicit hardware policy.
 _silent_audio_446 = _install_silent_audio_446()
+_clipboard_guard_1148.protect_children(_silent_audio_446.guard_dir, Path(__file__).resolve().parent.parent)
 
 
 def pytest_configure(config):
