@@ -22,6 +22,17 @@ from samsara import hold_backstop
 logger = logging.getLogger("Samsara")
 
 _MOUSE_HOTKEY_BUTTONS = ('mouse4', 'mouse5')
+
+
+def _clear_mouse_hotkey_warning(app):
+    """Remove the mouse-hotkey warning chip, only if it is still the one
+    showing (the clear is owner-scoped; a newer different message stays)."""
+    try:
+        from samsara.live_surface.feedback import MOUSE_HOTKEY_OWNER, schedule_owner_clear
+        schedule_owner_clear(app, MOUSE_HOTKEY_OWNER)
+    except Exception as e:
+        logger.debug(f"[MOUSE] clearing the warning chip failed: {e}")
+
 _OTHER_HOTKEY_KEYS = (
     ('continuous_hotkey', 'ctrl+alt+d'), ('wake_word_hotkey', 'ctrl+alt+w'),
     ('command_hotkey', 'ctrl+alt+c'), ('memo_hotkey', 'ctrl+alt+m'),
@@ -884,6 +895,7 @@ class HotkeyCluster:
                     self._main_hotkey_override = None
                     self._mouse_hotkey_disabled_reason = None
                     self._mouse_hook_released_bindings = None
+                    _clear_mouse_hotkey_warning(self)
 
             self._mouse_hook = MouseHook(
                 on_button_event=self._on_mouse_button,
@@ -944,6 +956,7 @@ class HotkeyCluster:
         # Whatever happens next, the old fallback / release no longer applies.
         # (Plain attributes, not a helper: partial app stand-ins bind this method.)
         if released is not None or not buttons:
+            _clear_mouse_hotkey_warning(self)
             self._mouse_hook_released_bindings = None
             self._main_hotkey_override = None
             self._mouse_hotkey_disabled_reason = None
@@ -1030,9 +1043,11 @@ class HotkeyCluster:
         def show_warning():
             try:
                 # PLACEHOLDER COPY (867)
-                label = ("mouse hotkey interrupted - retrying automatically" if recovering
-                         else f"mouse hotkey off - using {fallback}")
-                self._show_outcome_chip(label, "warning")
+                button = hotkey.replace('mouse', 'Mouse ') if hotkey in _MOUSE_HOTKEY_BUTTONS else 'Mouse hotkey'
+                keys = fallback.title()
+                label = (f"{button} stopped responding - {keys} works meanwhile; fixing itself" if recovering
+                         else f"{button} is off - using {keys}")
+                self._show_outcome_chip(label, "warning", source="mouse_hotkey_warning")
             except Exception as e:
                 logger.debug(f"[MOUSE] fallback chip failed: {e}")
             notify = getattr(getattr(self, 'tray_icon', None), 'notify_warning', None)

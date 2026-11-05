@@ -61,6 +61,9 @@ class Feedback:
     dismiss: Callable[[], bool] | None = field(default=None, compare=False, repr=False)
 
 
+MOUSE_HOTKEY_OWNER = "mouse_hotkey"
+
+
 def feedback_for(kind: str, *, source: str = "", detail: dict | None = None) -> Feedback:
     """Explicit dispatch vocabulary; legacy pending is a question, never guessed."""
     detail = detail or {}
@@ -68,6 +71,8 @@ def feedback_for(kind: str, *, source: str = "", detail: dict | None = None) -> 
         return Feedback(FeedbackKind(kind), owner=source)
     if source == "tutorial_sample":
         return Feedback(FeedbackKind(kind), owner="tutorial_sample")
+    if source == "mouse_hotkey_warning":
+        return Feedback(FeedbackKind.WARNING, owner=MOUSE_HOTKEY_OWNER)
     if source == "hold_pending":
         return Feedback(FeedbackKind.RUNNING, FeedbackPurpose.RUNNING, "hold")
     if source in ("dictate_staged", "dictation_staged_chunk", "draft_parked"):
@@ -203,6 +208,13 @@ def alias_handoff(app, detail):
             del _HANDOFF_CONTEXT.value
         else:
             _HANDOFF_CONTEXT.value = previous
+
+
+def schedule_owner_clear(app, owner):
+    """Clear the notice owned by ``owner`` only; a newer different notice stays."""
+    indicator = getattr(app, "listening_indicator", None)
+    if callable(getattr(type(indicator), "clear_feedback", None)):
+        app._schedule_ui(indicator.clear_feedback, owner)
 
 
 def schedule_hold_clear(app):

@@ -61,7 +61,7 @@ class _App:
     def toggle_continuous_mode(self):
         self.calls.append(('continuous',))
 
-    def _show_outcome_chip(self, label, kind, ttl_ms="default"):
+    def _show_outcome_chip(self, label, kind, ttl_ms="default", **kw):
         self.calls.append(('chip', label, kind))
 
     def enter_command_mode(self):
@@ -321,7 +321,7 @@ class TestPanicRelease:
         assert [r[0] if isinstance(r, tuple) else r for r in hook.released] == ['release']
         # 35: the user's choice is never rewritten; the keyboard fallback is a runtime override.
         assert app.config['hotkey'] == 'mouse4' and app._main_hotkey_override == 'ctrl+shift'
-        assert any(c[0] == 'chip' and 'mouse hotkey off' in c[1] and c[2] == 'warning' for c in app.calls)
+        assert any(c[0] == 'chip' and 'is off' in c[1] and c[2] == 'warning' for c in app.calls)
 
     def test_release_stays_released_until_bindings_change(self, releasable, spawned):
         app = _App(hotkey='mouse5', command_mode={'enabled': True, 'button': 'mouse4'})
@@ -364,7 +364,7 @@ class TestPanicRelease:
         assert app._main_hotkey_override == 'ctrl+shift'
         assert 'hands-free mouse control disabled' in app._mouse_hotkey_disabled_reason
         chips = [c for c in app.calls if c[0] == 'chip']
-        assert chips and 'mouse hotkey off' in chips[-1][1] and chips[-1][2] == 'warning'
+        assert chips and 'is off' in chips[-1][1] and chips[-1][2] == 'warning'
         app.refresh_mouse_hook(rearm=False)
         assert len(releasable.created) == 1                      # not silently re-armed
 

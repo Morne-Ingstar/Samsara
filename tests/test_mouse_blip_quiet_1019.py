@@ -72,7 +72,7 @@ class App(hotkeys.HotkeyCluster):
         self.recording = False
         self.stops = []
 
-    def _show_outcome_chip(self, *args):
+    def _show_outcome_chip(self, *args, **kw):
         self.chips.append(args)
 
     def _schedule_ui(self, callback, *args):
