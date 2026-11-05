@@ -31,6 +31,27 @@ TERMS = {
 }
 _GUIDES = frozenset(term.guide for term in TERMS.values())
 
+# PLACEHOLDER COPY (1024): local page help never supplies a browser destination.
+PAGE_HELP = {
+    'Home': 'Use the listening control to pause or resume. Open Commands to browse commands, or Help for offline explanations, Quick Reference and recovery tools.',
+    'General': 'Choose your microphone, listening display, interface size and theme. Apply saves changes; Cancel leaves them unsaved.',
+    'Dictation': 'Choose how dictation and hands-free sessions work. Check the current controls in Quick Reference. Apply saves changes.',
+    'Audio': 'Choose sounds and spoken feedback. Apply saves changes.',
+    'Ava': 'Choose and set up your assistant. Availability depends on your configured provider and permissions. Apply saves changes.',
+    'Shortcuts': 'Choose keyboard shortcuts for dictation and commands. Apply saves changes.',
+    'Help': 'Open an offline explanation or Quick Reference without a microphone or Internet connection. Setup guides, support and diagnostics remain below. Web links open only when you select them.',
+    'History': 'Review earlier dictation here. Opening history does not dictate or run a command.',
+    'Dictionary': 'Add words and preferred spellings to improve recognition.',
+    'Memos': 'Review saved memos here.',
+    'Snippets': 'Manage reusable text here.',
+    'Voice help': 'Review voice troubleshooting and microphone guidance here. You can use these controls while the microphone is off.',
+}
+
+
+def page_explanation(name):
+    return HelpTerm('page', name + ' help', PAGE_HELP.get(name,
+        'Review the controls on this page. Open Settings > Help for offline explanations, Quick Reference and recovery tools.'), None)
+
 
 def guide_url(term_id):
     """Only packaged destinations, never caller text or config in a URL."""

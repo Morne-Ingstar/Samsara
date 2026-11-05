@@ -173,6 +173,8 @@ class PageAssembly:
 
     def _add_beta_notice(self, page):
         """One insertion point for preferences and tools, only when built."""
+        from samsara.ui.context_help_qt import install_settings_help
+        install_settings_help(self, page)
         from samsara.ui.widgets.beta_notice import BetaNotice, _Session
         host = self.centralWidget()  # Replaced on each Settings open, not Apply.
         if not hasattr(host, '_beta_notice_session'):

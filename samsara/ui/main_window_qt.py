@@ -340,6 +340,8 @@ class _MainWindow(QMainWindow):
         self.setStyleSheet(_ss())
         self.setMinimumSize(MIN_WIDTH, MIN_HEIGHT)
         self._build_ui()
+        from samsara.ui.context_help_qt import install_hub_help
+        install_hub_help(self)
         self._activate("Home")
         self._restore_geometry()
         self._refresh_status()

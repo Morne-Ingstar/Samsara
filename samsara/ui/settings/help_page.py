@@ -77,6 +77,8 @@ def build(owner):
     words.setObjectName('featureWords')
     words.setWordWrap(True)
     page.column.insertWidget(3, words)
+    from samsara.ui.context_help_qt import settings_help
+    settings_help(owner, page)
     heading = QLabel('Diagnostics')
     heading.setProperty('role', 'label')
     page.advanced.rows.insertWidget(0, heading)

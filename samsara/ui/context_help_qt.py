@@ -2,14 +2,14 @@
 import weakref
 
 from PySide6.QtCore import QEvent, QObject, Qt, QTimer, QUrl
-from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QDesktopServices
+from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QFrame, QLabel, QPushButton, QScrollArea, QSizePolicy,
     QVBoxLayout, QWidget,
 )
 from shiboken6 import isValid
 
-from samsara.help_terms import explanation
+from samsara.help_terms import HelpTerm, TERMS, explanation, page_explanation
 from samsara.ui import theme
 
 
@@ -144,15 +144,17 @@ class HelpController(QObject):
         self.layout_change = lambda: None
         self.reflowing = False
 
-    def toggle(self, term_id, origin, card, *, page=None, region=None, session_detail=None):
-        same = self.active is card and self._origin is not None and self._origin() is origin
+    def toggle(self, term_id, origin, card, *, page=None, region=None, session_detail=None, term=None):
+        same = (self.active is card and self._origin is not None and self._origin() is origin
+                and card.term.id == (term.id if term else term_id))
         self.dismiss(False)
         if same:
             origin.setFocus(Qt.FocusReason.ShortcutFocusReason)
             return
         self.active, self._origin, self._page, self._region = card, weakref.ref(origin), page, region
-        card.set_term(explanation(term_id, self.config(), session_detail=session_detail))
-        origin.setChecked(True)
+        card.set_term(term or explanation(term_id, self.config(), session_detail=session_detail))
+        if origin.property('contextHelpControl') and hasattr(origin, 'setChecked'):
+            origin.setChecked(True)
         if region is not None:
             self.layout_change()
             region.show()
@@ -198,7 +200,8 @@ class HelpController(QObject):
         if region is not None and isValid(region):
             self.layout_change()
             region.hide()
-        if origin is not None and isValid(origin):
+        if (origin is not None and isValid(origin) and origin.property('contextHelpControl')
+                and hasattr(origin, 'setChecked')):
             origin.setChecked(False)
         if restore_focus and self.host.isVisible():
             target = origin if origin is not None and isValid(origin) and origin.isVisible() else self.fallback()
@@ -306,6 +309,8 @@ def reference_help(window):
     ava.clicked.connect(lambda: controller.toggle('ava', ava, card, page=window, region=region))
     ava.hide()
     window._apply_width_floor()
+    if not window._embedded:
+        install_local_help(window, lambda: ('Commands', window))
 
 
 def _reference_reflow(window):
@@ -345,3 +350,133 @@ def reference_command_help(window, command):
         first = detail.enable_button if detail.enable_button.isVisible() else detail.run_button
         QWidget.setTabOrder(first, window._help_ava)
         QWidget.setTabOrder(window._help_ava, detail.close_button)
+
+
+def open_help(app):
+    """Shared recovery entry: select Help directly, including a cold window."""
+    from samsara.ui.settings_qt import SettingsQt
+    controller = getattr(app, '_settings_qt', None)
+    if controller is None:
+        controller = app._settings_qt = SettingsQt(app)
+    controller.show_page('Help')
+    return True
+
+
+def settings_help(owner, page):
+    """Extend Choose guide without changing the Help page's existing layout."""
+    controller = HelpController(owner, lambda: owner.app.config)
+    origin = owner._widgets['setupGuides']
+    menu = origin.menu()
+    menu.addSeparator()
+    # PLACEHOLDER COPY (1024)
+    quick = menu.addAction('Quick Reference')
+    quick.setObjectName('helpQuickReference')
+    quick.triggered.connect(lambda: getattr(owner.app, 'open_quick_reference', lambda: None)())
+    explanations = menu.addMenu('Offline explanations')
+    card = ExplanationCard(controller)
+    actions = {}
+    for term_id in TERMS:
+        action = explanations.addAction(explanation(term_id).title)
+        action.triggered.connect(lambda _=False, t=term_id:
+            controller.toggle(t, origin, card, page=page))
+        actions[term_id] = action
+    page.column.insertWidget(page.column.indexOf(page.subtitle) + 1, card)
+    page._offline_help, page._help_actions, page._help_card = controller, actions, card
+
+
+class LocalPageHelp(QObject):
+    """Window-local F1; keep the page, its values and the focus return target."""
+    def __init__(self, host, current_page):
+        super().__init__(host)
+        self.host, self.current_page = host, current_page
+        self.controller = HelpController(host, lambda: {})
+        self.card = ExplanationCard(self.controller, host)
+        self.shortcut = QShortcut(QKeySequence('F1'), host)
+        self.shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+        self.shortcut.setAutoRepeat(False)
+        self.shortcut.activated.connect(self.open)
+
+    def open(self, origin=None):
+        name, page = self.current_page()
+        if page is None:
+            return
+        # Reference already has a local card and a reflow policy that retains
+        # its expanded command, filter, selection and scroll position.
+        if hasattr(page, '_help_command_reference'):
+            controller, card = page._context_help, page._help_card
+            if controller.active is not None:
+                card.close_button.setFocus()
+                return
+            origin = origin or QApplication.focusWidget() or page._filter
+            controller.toggle('command-reference', origin, card, page=page, region=page._help_region)
+            return
+        if self.controller.active is not None:
+            self.card.close_button.setFocus()
+            return
+        origin = origin or QApplication.focusWidget() or self.host
+        term = page_explanation(name)
+        # Prefer the focused Settings row's existing local explanation.
+        ancestor = origin
+        while ancestor is not None and ancestor is not self.host:
+            if hasattr(ancestor, 'full_help') and hasattr(ancestor, 'title'):
+                term = HelpTerm('page', ancestor.title, ancestor.full_help, None)
+                break
+            ancestor = ancestor.parentWidget()
+        # An inline card reserves its own space: page text and title stay intact.
+        # Settings replaces pages between visits, so recreate a deleted card.
+        if not isValid(self.card):
+            self.card = ExplanationCard(self.controller, self.host)
+        content = page.widget() if isinstance(page, QScrollArea) else getattr(page, '_content', page)
+        layout = content.layout()
+        anchor = getattr(page, 'guide_header', None) or getattr(page, 'subtitle', None)
+        index = layout.indexOf(anchor) + 1 if anchor is not None else 1
+        self.card.setParent(content)
+        self.card.setMaximumWidth(560)
+        self.card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        self.card.layout().setAlignment(Qt.AlignmentFlag.AlignTop)
+        layout.insertWidget(index, self.card)
+        self.controller.toggle('page', origin, self.card, page=page, term=term)
+        QTimer.singleShot(0, self, self.reveal_header)
+
+    def reveal_header(self):
+        """Keep the title in view when it and the new card fit together."""
+        page = self.controller._page
+        if self.controller.active is None or not isinstance(page, QScrollArea):
+            return
+        page.widget().layout().activate()
+        bottom = self.card.mapTo(page.widget(), self.card.rect().bottomLeft()).y()
+        if bottom < page.viewport().height():
+            page.verticalScrollBar().setValue(0)
+
+
+def install_local_help(host, current_page):
+    if not hasattr(host, '_local_page_help'):
+        host._local_page_help = LocalPageHelp(host, current_page)
+
+
+def install_settings_help(owner, page):
+    install_local_help(owner, lambda: (
+        getattr(owner._stack.currentWidget(), 'title', None) or owner._tool_name or 'Settings',
+        owner._stack.currentWidget()))
+    # n08 asks for a disclosure on General; other pages keep their current design.
+    if getattr(page, 'title', None) == 'General':
+        from html import escape
+        link = page.subtitle
+        # PLACEHOLDER COPY (1024): explicit disclosure; never opens on page entry.
+        link.setText(escape(link.text()) + '  <a href="page-help" style="color:'
+            + theme.ACCENT + ';text-decoration:none;font-weight:600">More info</a>')
+        link.setOpenExternalLinks(False)
+        link.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse
+            | Qt.TextInteractionFlag.LinksAccessibleByKeyboard)
+        link.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        link.linkActivated.connect(lambda _: owner._local_page_help.open(link))
+        keyboard = QShortcut(link)
+        keyboard.setKeys([QKeySequence('Return'), QKeySequence('Enter')])
+        keyboard.setContext(Qt.ShortcutContext.WidgetShortcut)
+        keyboard.activated.connect(lambda: owner._local_page_help.open(link))
+
+
+def install_hub_help(host):
+    install_local_help(host, lambda: (
+        next((name for name, page in host._panel_cache.items() if page is host._stack.currentWidget()), 'Home'),
+        host._stack.currentWidget()))

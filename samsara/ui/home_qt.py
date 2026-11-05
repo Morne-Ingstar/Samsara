@@ -59,7 +59,7 @@ from PySide6.QtWidgets import (
 from samsara import __version__, command_catalog, config_defaults, outcome_ring as outcome_ring_schema
 from samsara.log import get_logger
 from samsara.session_modes import CHIP_CHECK, CHIP_CROSS
-from samsara.ui import home_signals, theme
+from samsara.ui import context_help_qt, home_signals, theme
 from samsara.ui.command_cheatsheet_qt import UNAVAILABLE_TEXT
 # One wrapping row layout, shared with the History view that introduced it
 # (queue 79): controls wrap to the next line instead of clipping.
@@ -1158,10 +1158,10 @@ def open_settings_tab(app, tab: str) -> bool:
     """Open Settings ON `tab`. The tab id is asserted against the page
     registry at call time (a missing id is logged loudly and nothing
     opens), and the page is selected in a callback posted AFTER the
-    window's own init post, reading the window when it runs. Before (40),
-    the window was read at call time: None on the first open, so Settings
-    landed on page one -- the owner's "Ask Ava opens Settings at the top".
+    window's own init post, so cold opens reach the requested page.
     """
+    if tab in ('Help', 'Help & Support'):
+        return context_help_qt.open_help(app)
     try:
         from samsara.ui.settings_qt import _ALIASES  # noqa: PLC0415
         resolved_tab = _ALIASES.get(tab, tab)
