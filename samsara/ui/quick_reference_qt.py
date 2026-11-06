@@ -376,8 +376,8 @@ def _resolve_formatting_tokens(app) -> dict:
     return {"enabled": enabled, "tokens": rows}
 
 
-def _resolve_button_voice_prefix(app):
-    """Use the same live-registry/JSON catalogue as Command Reference (1150)."""
+def _resolve_command_catalog(app):
+    """Read one fresh catalogue snapshot for all guidance in this refresh."""
     from samsara import command_catalog
     matcher = getattr(getattr(app, "command_executor", None), "_matcher", None)
     rows = None
@@ -386,10 +386,7 @@ def _resolve_button_voice_prefix(app):
             rows = matcher.list_commands()
         except Exception as exc:
             logger.debug("Visible-control guidance registry unavailable: %s", exc)
-    for record in command_catalog.guidance_catalog(rows) or []:
-        if record["canonical_id"] == "show_numbers.click":
-            return command_catalog.canonical_phrase(record)
-    return None
+    return command_catalog.guidance_catalog(rows)
 
 
 # ---------------------------------------------------------------------------
@@ -497,9 +494,11 @@ class _QuickReferenceWindow(QMainWindow):
         self._body_layout.addWidget(self._build_hands_free_session_section())
         self._body_layout.addWidget(self._build_session_section())
         self._body_layout.addWidget(self._build_modes_section())
-        self._body_layout.addWidget(self._build_button_voice_section())
+        records = _resolve_command_catalog(self.app)
+        self._body_layout.addWidget(self._build_button_voice_section(records))
         ft_state = _resolve_formatting_tokens(self.app)
         self._body_layout.addWidget(self._build_formatting_section(ft_state))
+        self._body_layout.addWidget(self._build_media_players_section(records))
         self._body_layout.addStretch()
 
     # ------------------------------------------------------------------
@@ -552,10 +551,12 @@ class _QuickReferenceWindow(QMainWindow):
             self._row(lay, row["label"], row["value"], row["enabled"])
         return card
 
-    def _build_button_voice_section(self) -> QFrame:
+    def _build_button_voice_section(self, records) -> QFrame:
+        from samsara import command_catalog
         from samsara.button_voice import CAPTION_DISMISS_LABEL, phrases_for_label, source_phrases
         from samsara.button_voice_reference import CONTROL_LABELS
-        prefix = _resolve_button_voice_prefix(self.app)
+        prefix = next((command_catalog.canonical_phrase(record) for record in records or []
+                       if record["canonical_id"] == "show_numbers.click"), None)
         prefix_hint = (
             f"Short words and ordinary phrases use '{prefix}' to keep them distinct from dictation. "
             if prefix else "Command catalogue unavailable; explicit control guidance is unavailable. ")
@@ -704,3 +705,21 @@ class _QuickReferenceWindow(QMainWindow):
     def closeEvent(self, e):
         e.ignore()
         self.hide()
+
+    def _build_media_players_section(self, records) -> QFrame:
+        # PLACEHOLDER COPY (1153): append independently of session-lane guidance.
+        from samsara.media_players import reference_examples
+        from samsara.command_packs import get_enabled_packs
+        enabled = get_enabled_packs(getattr(self.app, 'config', None) or {})
+        card, lay = self._section_card('Media players by name')
+        examples = reference_examples(records, enabled)
+        for label, phrase in examples:
+            self._row(lay, label, phrase)
+        if not examples:
+            lay.addWidget(QLabel('No enabled player examples are available.'))
+        note = QLabel('Use Command mode. Named controls work in the background. '
+                      'VLC subtitles off requires its Web interface. '
+                      'Enable packs in Settings > Commands > Command packs.')
+        note.setWordWrap(True)
+        lay.addWidget(note)
+        return card

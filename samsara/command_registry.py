@@ -348,6 +348,7 @@ class CommandMatcher:
         self._context_provider = None
         self._has_scoped = False
         self._needs_foreground = False
+        self._contextual_aliases = {}
 
     # -- scope (queue 68) -----------------------------------------------------
 
@@ -385,11 +386,14 @@ class CommandMatcher:
             return None
         clean_lower = ' '.join(norm for norm, _s, _e in view_tokens(text))
         entry = self._entries.get(clean_lower)
-        if entry is None or entry.scope is None or not self._pack_enabled(entry.pack):
+        scope = entry.scope if entry is not None else None
+        if entry is None and clean_lower in self._contextual_aliases:
+            entry, scope = self._contextual_aliases[clean_lower]
+        if entry is None or scope is None or not self._pack_enabled(entry.pack):
             return None
         if context is None:
             context = self.current_context()
-        live, why = _scope.scope_live(entry.scope, context)
+        live, why = _scope.scope_live(scope, context)
         return None if live else (entry, why)
 
     def live_phrase_count(self, context=None):
@@ -402,6 +406,10 @@ class CommandMatcher:
             total += 1
             if self.is_live(entry, context):
                 live += 1
+        for entry, scope in self._contextual_aliases.values():
+            if self._pack_enabled(entry.pack):
+                total += 1
+                live += bool(self.is_live(entry, context) and _scope.scope_live(scope, context)[0])
         return live, total
 
     def set_enabled_packs(self, pack_names):
@@ -549,9 +557,19 @@ class CommandMatcher:
         # Re-sort including aliases; a long alias still wins over short canonicals.
         self._match_table.sort(key=lambda x: len(x[0]), reverse=True)
 
-        scoped = [e for e in self._sorted if e.scope is not None]
+        # 1153: focused shortcuts belong to the named background command,
+        # rather than becoming duplicate canonical commands in the catalogue.
+        self._contextual_aliases = {}
+        for entry in self._sorted:
+            for alias, spec in getattr(entry.handler, 'contextual_aliases', {}).items():
+                alias = ' '.join(word for word, _, _ in view_tokens(alias))
+                if alias and alias not in self._entries:
+                    self._contextual_aliases.setdefault(alias, (
+                        entry, _resolve_scope(spec, entry.pack, alias)))
+        scoped = [e.scope for e in self._sorted if e.scope is not None]
+        scoped.extend(scope for _, scope in self._contextual_aliases.values() if scope is not None)
         self._has_scoped = bool(scoped)
-        self._needs_foreground = any(e.scope.needs_foreground for e in scoped)
+        self._needs_foreground = any(scope.needs_foreground for scope in scoped)
         self._amount_entries = [e for e in self._sorted
                                 if (getattr(e.handler, 'spoken_amount_prefixes', None)
                                     or getattr(e.handler, 'spoken_argument_prefixes', None))]
@@ -627,6 +645,13 @@ class CommandMatcher:
             # (queue 58 / 68). disabled_pack_for() / out_of_scope_for() say why.
             return None
 
+        if clean_lower in self._contextual_aliases:
+            entry, scope = self._contextual_aliases[clean_lower]
+            if (self._pack_enabled(entry.pack) and self.is_live(entry, context)
+                    and _scope.scope_live(scope, context)[0]):
+                return CommandMatch(entry, text_tokens, len(text), '', '')
+            return None  # A scoped or disabled alias never falls through.
+
         # 1104: whole-utterance grammars may place a saved name before the verb.
         for entry, parser in self._utterance_entries:
             if self._pack_enabled(entry.pack):
@@ -690,6 +715,8 @@ class CommandMatcher:
             return None
         clean_lower = ' '.join(norm for norm, _s, _e in view_tokens(text))
         entry = self._entries.get(clean_lower)
+        if entry is None and clean_lower in self._contextual_aliases:
+            entry, _ = self._contextual_aliases[clean_lower]
         if entry is None or self._pack_enabled(entry.pack):
             return None
         return entry.pack

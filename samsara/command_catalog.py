@@ -456,6 +456,9 @@ _COMMAND_HELP = {
     # 948: amounts are parsed by the player transport handlers.
     "skip forward": (["forward 30 seconds"], "Enable the Stremio pack and focus Stremio with a video playing."),
     "skip back": (["back a minute"], "Enable the Stremio pack and focus Stremio with a video playing."),
+    # PLACEHOLDER COPY (1153): named VLC examples belong to the shared catalogue.
+    "vlc skip forward": (["VLC skip forward 30 seconds"], "Enable the VLC pack and play a video in VLC."),
+    "vlc skip back": (["VLC skip back 30 seconds"], "Enable the VLC pack and play a video in VLC."),
     "add word": (["add the word Siobhan to my vocabulary spelled S I O B H A N",
                   "learn the word Siobhan spelled S-I-O-B-H-A-N",
                   "correct that to Siobhan spelled S I O B H A N"],
@@ -566,6 +569,8 @@ _COMMAND_HELP = {
 _NO_ARGUMENT_PHRASES = frozenset({
     "hands free", "move preview to this screen", "reset floating windows",
     "refresh cube", "refresh numbers",
+    # 1153: these inspect tails only to reject unsupported named-player commands.
+    "pause", "next", "previous music", "mute",
     "stop speaking",  # 1155: reads the tail only to reject it.
     # 820: these controls reject tails; the window number is in the phrase.
     "cancel", "confirm close", "keep it open",

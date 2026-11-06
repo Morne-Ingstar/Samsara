@@ -318,6 +318,12 @@ def _isolated_effects(monkeypatch, executor, app, phrase, tmp_path):
         stub('_grid_area', ((0, 0, 1920, 1080), 'sample screen'))
         import win32gui
         monkeypatch.setattr(win32gui, 'GetForegroundWindow', lambda: 42)
+    elif stem == 'vlc':
+        # 1153: run the real duration parser/planner, observe only player I/O.
+        monkeypatch.setattr(module, '_settings', lambda: {})
+        monkeypatch.setattr(module.control, 'unique_window', lambda *_a, **_kw: 42)
+        monkeypatch.setattr(module.control, 'vlc_hotkey', effect('vlc_native_action'))
+        monkeypatch.setattr(module, '_http', effect('vlc_web_command'))
     elif stem == 'stremio':
         monkeypatch.setattr(module.stremio_control, '_run_ahk', effect('stremio_keys'))
     elif stem == 'smart_actions':

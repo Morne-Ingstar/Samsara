@@ -183,6 +183,30 @@ PACKS = {
 }
 
 
+# 1153: detect only known installation entries once per registry construction.
+# Settings and dispatch read the same resolved boolean. No player is started,
+# queried for playback or brought to the foreground. Explicit user flags win.
+from samsara.media_players import PLAYERS as _MEDIA_PLAYERS
+from samsara.media_player_control import installed as _player_installed
+
+_MEDIA_DESCRIPTIONS = {  # PLACEHOLDER COPY (1153)
+    'vlc': 'VLC by name - pause, play, skip, subtitles, speed',
+    'itunes': 'iTunes by name - pause, play, tracks, its own volume',
+    'apple-music': 'Apple Music by name - pause, play, tracks, its own volume',
+    'windows-media-player': 'Media Player by name; legacy Windows Media Player volume and open/close',
+    'foobar2000': 'foobar2000 by name - pause, play, tracks, its own volume',
+    'musicbee': 'MusicBee by name - its own volume, mute, open and close',
+    'aimp': 'AIMP by name - pause, play, tracks, its own volume',
+}
+for _pack, _description in _MEDIA_DESCRIPTIONS.items():
+    _players = [p for p in _MEDIA_PLAYERS.values() if p.pack == _pack]
+    PACKS[_pack] = {
+        'label': 'Windows Media Player' if _pack == 'windows-media-player' else _players[0].display,
+        'description': _description, 'always_on': False,
+        'default_enabled': any(_player_installed(p) for p in _players),
+    }
+
+
 #: Focused applications whose command pack adds relevant commands to the
 #: universal cheat-sheet view.  This is deliberately an explicit, small map:
 #: pack membership is command metadata, while an executable is the reliable
@@ -205,12 +229,11 @@ EXE_TO_PACK = {
     "obs64.exe": "screen-capture",
     "ollama.exe": "ai",
     "sharex.exe": "screen-capture",
-    "spotify.exe": "media",
+    "spotify.exe": "spotify",
     "steam.exe": "gaming",
     "stremio.exe": "stremio",
-    "vlc.exe": "media",
-    "wmplayer.exe": "media",
 }
+EXE_TO_PACK.update({exe: player.pack for player in _MEDIA_PLAYERS.values() for exe in player.exes})
 
 
 def pack_for_exe(exe: str | None) -> str | None:

@@ -473,7 +473,7 @@ def test_named_catalog_rows():
     plugin_commands._reinstall_module_commands(music)
     specs = cc.build_catalog(build_executor())
     rows = [row for row in specs if row.pack == 'spotify']
-    assert len(rows) == 4
+    assert len(rows) == 11  # 1153: shared vocabulary; original open Spotify remains a built-in.
     assert all('Spotify' in row.description for row in rows)
 
 

@@ -23,6 +23,7 @@ from samsara.command_registry import DispatchResult, DispatchState
 from samsara.command_registry import view_tokens
 
 from samsara.plugin_commands import command
+from samsara.media_players import PLAYERS, PLAYER_PHRASES, PLAYER_DESCRIPTIONS, player_row, phrases_for
 
 from samsara.log import get_logger
 from samsara.runtime import thread_registry
@@ -44,16 +45,8 @@ async def _cached_session_manager(request_async, *, source=None, refresh=False):
     return _SESSION_MANAGER
 
 
-_NAMED_APPS = {
-    "spotify": ("spotify.exe", "spotify", "Spotify", "spotify", ("transport", "volume")),
-}
-
-_PLAYER_PHRASES = {
-    "pause": ("transport", "pause {app}", ("stop {app}",)),
-    "play": ("transport", "play {app}", ("resume {app}",)),
-    "volume_up": ("volume", "{app} volume up", ("{app} louder", "turn {app} up")),
-    "volume_down": ("volume", "{app} volume down", ("{app} quieter", "turn {app} down")),
-}
+_NAMED_APPS = PLAYERS
+_PLAYER_PHRASES = PLAYER_PHRASES
 
 
 def _media_transport(action, app_stem=None):
@@ -62,7 +55,8 @@ def _media_transport(action, app_stem=None):
     action: "play" | "pause" | "next"
     Acts on whatever session currently holds SMTC foreground — identical
     behavior to a hardware media key / Bluetooth earbud button. Not
-    Spotify-bound by design; works with browsers, VLC, Spotify, etc.
+    Spotify-bound by design; works with apps publishing an SMTC session.
+    Desktop VLC 3.x uses its own driver for named commands.
     Returns a completed or failed DispatchResult. A transport refusal is a
     claimed command failure, not a dictation fall-through.
     """
@@ -77,15 +71,17 @@ def _media_transport(action, app_stem=None):
                 mgr = await _cached_session_manager(
                     SessionManager.request_async, source=SessionManager)
                 manager_ms = (time.perf_counter() - manager_started) * 1000
-                display = next((row[2] for row in _NAMED_APPS.values()
-                                if row[1] == app_stem), app_stem)
+                stems = (app_stem,) if isinstance(app_stem, str) else (app_stem or ())
+                display = next((row.display for row in _NAMED_APPS.values()
+                                if any(stem in row.sources for stem in stems)),
+                               '/'.join(stems))
                 lookup_started = time.perf_counter()
                 def resolve_session(manager):
                     if app_stem is None:
                         return manager.get_current_session()
                     return next((item for item in manager.get_sessions()
-                                 if app_stem.casefold() in
-                                 item.source_app_user_model_id.casefold()), None)
+                                 if any(stem.casefold() in item.source_app_user_model_id.casefold()
+                                        for stem in stems)), None)
 
                 try:
                     session = resolve_session(mgr)
@@ -112,6 +108,8 @@ def _media_transport(action, app_stem=None):
                     ok = await session.try_skip_next_async()
                 elif action == "previous":
                     ok = await session.try_skip_previous_async()
+                elif action == "toggle":
+                    ok = await session.try_toggle_play_pause_async()
                 else:
                     logger.debug('[MEDIA] transport timing action=%s manager=%.1fms lookup=%.1fms pause=0ms',
                                  action, manager_ms, lookup_ms)
@@ -129,10 +127,12 @@ def _media_transport(action, app_stem=None):
                     )
                 print(f"[MEDIA] transport: {action}")
                 message = {"pause": "paused music", "play": "resumed music",
-                           "next": "next track", "previous": "previous track"}[action]
+                           "next": "next track", "previous": "previous track",
+                           "toggle": "toggled playback"}[action]
                 if app_stem is not None:
                     message = f"{display} " + {"pause": "paused", "play": "playing",
-                                               "next": "next track", "previous": "previous track"}[action]
+                                               "next": "next track", "previous": "previous track",
+                                               "toggle": "toggled playback"}[action]
                 return DispatchResult(DispatchState.COMPLETED, phrase=action,
                                       detail={"media_action": action, "message": message})
             except Exception as e:
@@ -205,6 +205,10 @@ def _audio_sessions(process_name):
                 self.ptr, 0 if muted.value else 1, None))
             return True
 
+        def set_mute(self, muted):
+            checked(vf(self.ptr, 5, HRESULT, c_void_p, ctypes.c_int, c_void_p)(
+                self.ptr, int(muted), None))
+
     ole32 = ctypes.windll.ole32
     ole32.CoInitialize.argtypes = [c_void_p]
     ole32.CoInitialize.restype = HRESULT
@@ -242,7 +246,8 @@ def _audio_sessions(process_name):
                     name = psutil.Process(pid.value).name().casefold()
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
-                if name != process_name.casefold():
+                names = (process_name,) if isinstance(process_name, str) else process_name
+                if name not in {item.casefold() for item in names}:
                     continue
                 checked(vf(ctrl2, 0, HRESULT, c_void_p, c_void_p, POINTER(c_void_p))(
                     ctrl2, guid('87CE5498-68D6-44E5-9215-6DA47EF883D8'), byref(volume)))
@@ -284,7 +289,7 @@ def _audio_sessions(process_name):
 def _spotify_mute_toggle():
     """Keep the existing first-session mute toggle and boolean return value."""
     try:
-        with _audio_sessions(next(iter(_NAMED_APPS.values()))[0]) as sessions:
+        with _audio_sessions('spotify.exe') as sessions:
             volume = next(sessions, None)
             return volume.toggle_mute() if volume is not None else False
     except Exception:
@@ -298,70 +303,120 @@ def _volume_step(current, direction):
 
 
 def _named_transport_handler(row, action):
+    row = player_row('', row)
     def handler(app, remainder):
-        result = _media_transport(action, row[1])
+        if row.driver == 'smtc':
+            stems = row.sources[0] if len(row.sources) == 1 else row.sources
+            result = _media_transport(action, stems)
+        else:
+            from samsara.media_player_control import native_transport
+            try:
+                native_transport(row, action)
+                result = DispatchResult(DispatchState.COMPLETED)
+            except Exception:
+                result = DispatchResult(DispatchState.FAILED, detail={
+                    'reason': f'{row.display} playback control unavailable'})
         message = result.detail.get('reason') if result.state is DispatchState.FAILED else (
-            f'{row[2]} ' + ('paused' if action == 'pause' else 'playing'))
+            f'{row.display} ' + {'pause': 'paused', 'play': 'playing', 'toggle': 'toggle requested',
+                                'next': 'next track requested', 'previous': 'previous track requested'}[action])
         _announce(app, message, state=result.state)
-        return _music_result(result.state, row[2], message, **{
+        return _music_result(result.state, row.display, message, **{
             key: value for key, value in result.detail.items() if key != 'message'})
-    handler.__doc__ = f'{"Pauses" if action == "pause" else "Resumes"} {row[2]}, whatever else is playing.'
+    handler.__doc__ = PLAYER_DESCRIPTIONS[action].format(app=row.display)
     return handler
 
 
-def _named_volume_handler(row, direction):
+def _named_volume_handler(row, action):
+    row = player_row('', row)
+    # Keep the original +/-1 factory contract used by existing integrations.
+    if action in (-1, 1):
+        action = 'volume_up' if action > 0 else 'volume_down'
     def handler(app, remainder):
         try:
-            with _audio_sessions(row[0]) as sessions:
+            exes = row.exes[0] if len(row.exes) == 1 else row.exes
+            with _audio_sessions(exes) as sessions:
                 volumes = list(sessions)
                 if not volumes:
-                    message = f"{row[2]} isn't playing anything"
+                    message = f"{row.display} isn't playing anything"
                     state = DispatchState.FAILED
                 else:
-                    current = volumes[0].get_volume()
-                    target = _volume_step(current, direction)
-                    for volume in volumes:
-                        volume.set_volume(target)
-                    message = f'{row[2]} volume {target}%' + (' (already)' if target == current else '')
+                    if action in ('mute', 'unmute'):
+                        for volume in volumes:
+                            volume.set_mute(action == 'mute')
+                        message = f'{row.display} ' + ('muted' if action == 'mute' else 'unmuted')
+                    else:
+                        current = volumes[0].get_volume()
+                        target = _volume_step(current, 1 if action == 'volume_up' else -1)
+                        for volume in volumes:
+                            volume.set_volume(target)
+                        message = f'{row.display} volume {target}%' + (' (already)' if target == current else '')
                     state = DispatchState.COMPLETED
         except Exception:
             logger.debug('[MEDIA] named volume unavailable', exc_info=True)
-            message = f'{row[2]} volume unavailable'
+            message = f'{row.display} volume unavailable'
             state = DispatchState.FAILED
         _announce(app, message, state=state)
-        return _music_result(state, row[2], message)
-    handler.__doc__ = f'{"Raises" if direction > 0 else "Lowers"} {row[2]}\'s own volume by ten points.'
+        return _music_result(state, row.display, message)
+    handler.__doc__ = PLAYER_DESCRIPTIONS[action].format(app=row.display)
     return handler
 
 
-def _make_pause_handler(row):
-    return _named_transport_handler(row, 'pause')
+def _named_launch_handler(row, action):
+    def handler(app, remainder):
+        from samsara import media_player_control
+        try:
+            getattr(media_player_control, 'launch' if action == 'open' else 'close')(row)
+            state = DispatchState.COMPLETED
+            message = f'{row.display} {action} requested'
+        except Exception:
+            state = DispatchState.FAILED
+            message = f'{row.display} {action} unavailable'
+        _announce(app, message, state=state)
+        return _music_result(state, row.display, message)
+    handler.__doc__ = PLAYER_DESCRIPTIONS[action].format(app=row.display)
+    return handler
 
 
-def _make_play_handler(row):
-    return _named_transport_handler(row, 'play')
+def _named_fallthrough(app, remainder, action):
+    """A rejected named utterance must not control the generic current player."""
+    words = [word for word, _, _ in view_tokens(remainder or '')]
+    for name, row in _NAMED_APPS.items():
+        if name == 'spotify':
+            continue  # Preserve the established Spotify/library grammar.
+        for spoken in row.names or (name,):
+            prefix = spoken.split()
+            if words[:len(prefix)] != prefix:
+                continue
+            message = (f'{row.display} has no supported {action} command' if
+                       action in ('play', 'pause', 'next', 'previous') and
+                       'transport' not in row.capabilities else
+                       f'Say a complete {row.display} command')
+            _announce(app, message, state=DispatchState.FAILED)
+            return _music_result(DispatchState.FAILED, row.display, message)
+    return None
 
 
-def _make_volume_up_handler(row):
-    return _named_volume_handler(row, 1)
-
-
-def _make_volume_down_handler(row):
-    return _named_volume_handler(row, -1)
+def _generic_transport(app, remainder, action):
+    rejected = _named_fallthrough(app, remainder, action)
+    return rejected if rejected is not None else _media_transport(action)
 
 
 def _register_named_commands(rows=None):
-    """Expand capability vocabulary for each app through the normal decorator."""
-    factories = {'pause': _make_pause_handler, 'play': _make_play_handler,
-                 'volume_up': _make_volume_up_handler, 'volume_down': _make_volume_down_handler}
-    for name, row in (rows if rows is not None else _NAMED_APPS).items():
-        for action, (capability, phrase, aliases) in _PLAYER_PHRASES.items():
-            if capability not in row[4]:
+    """Expand the same capability vocabulary for built-in or additional rows."""
+    factories = {'transport': _named_transport_handler, 'volume': _named_volume_handler,
+                 'launch': _named_launch_handler}
+    for name, source_row in (rows if rows is not None else _NAMED_APPS).items():
+        row = player_row(name, source_row)
+        for action, (capability, _, _) in _PLAYER_PHRASES.items():
+            phrases = phrases_for(name, row, action)
+            if not phrases:
                 continue
-            handler = factories[action](row)
+            handler = factories[capability](row, action)
             handler.__name__ = f'handle_named_{action}'
-            command(phrase.format(app=name), aliases=[alias.format(app=name) for alias in aliases],
-                    pack=row[3], risk_class='safe', ai_composable=True, side_effects=['audio'])(handler)
+            command(phrases[0], aliases=list(phrases[1:]), pack=row.pack,
+                    whole_utterance=True,
+                    risk_class='safe', ai_composable=True,
+                    side_effects=['launch' if capability == 'launch' else 'audio'])(handler)
 
 
 _register_named_commands()
@@ -717,6 +772,9 @@ def handle_music_search(app, remainder):
          param_schema={"name": {"type": "str", "required": False, "max_len": 120}})
 def handle_media_play(app, remainder):
     """Resumes whatever was playing."""
+    rejected = _named_fallthrough(app, remainder, 'play')
+    if rejected is not None:
+        return rejected
     if remainder and remainder.strip():
         return handle_play(app, remainder)
     return _media_transport("play")
@@ -772,26 +830,29 @@ def handle_import_spotify_playlists(app, remainder):
          risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_media_pause(app, remainder):
     """Pauses whatever is playing."""
-    return _media_transport("pause")
+    return _generic_transport(app, remainder, 'pause')
 
 
 @command("next", aliases=["skip", "skip track", "skip the track", "next track", "next song", "skip song"], pack="media",
          risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_media_next(app, remainder):
     """Skips to the next track."""
-    return _media_transport("next")
+    return _generic_transport(app, remainder, 'next')
 
 
 @command("previous music", aliases=["previous", "previous track", "previous song", "back a song"], pack="media",
          risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_media_previous(app, remainder):
     """Skips back in the current media session."""
-    return _media_transport("previous")
+    return _generic_transport(app, remainder, 'previous')
 
 
 @command("mute", aliases=["mute spotify", "mute the spotify"], pack="media",
          risk_class='safe', ai_composable=True, side_effects=['audio'])
 def handle_spotify_mute(app, remainder):
     """Mutes or unmutes Spotify without touching the system volume."""
+    rejected = _named_fallthrough(app, remainder, 'mute')
+    if rejected is not None:
+        return rejected
     return _spotify_mute_toggle()
 
