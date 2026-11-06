@@ -1764,7 +1764,7 @@ class StreamingWorker(threading.Thread):
                     t_corrections_ms=t_corrections_ms,
                     t_smart_ms=t_smart_ms,
                     t_total_ms=int((time.time() - t0) * 1000),
-                    text=cleaned,
+                    text=cleaned, outcome='low_confidence' if getattr(self._session, '_hold_low_confidence', False) else 'ok',
                     smart_changed=smart_changed,
                     language=_languages.describe_diagnostics_language(
                         app.config.get('language', 'en'), detected_lang,
@@ -1820,7 +1820,7 @@ class StreamingWorker(threading.Thread):
         params.update(temperature=temperature_ladder(app), condition_on_previous_text=False)
         return params
 
-    def _decoder_guard(self, segments, text, params, *, partial=False, duration_s=None):
+    def _decoder_guard(self, segments, text, params, *, partial=False, duration_s=None, audio=None):
         """Use decoder verdict first, then the batch path's exact backstop."""
         from samsara.hallucination_filter import (
             DECODER_LOGPROB_THRESHOLD, DECODER_NO_SPEECH_THRESHOLD,
@@ -1835,7 +1835,7 @@ class StreamingWorker(threading.Thread):
             no_speech_threshold=params.get('no_speech_threshold', DECODER_NO_SPEECH_THRESHOLD),
             top_temperature=top, partial=partial,
             speech_level=tail.get('speech_level'),
-            speech_floor=tail.get('speech_floor', DECODER_SPEECH_FLOOR),
+            speech_floor=tail.get('speech_floor', DECODER_SPEECH_FLOOR), audio=audio, rate=self._session.app.model_rate,
         )
         reason = reason or signoff_failure_reason(text, segments, duration_s, self._session.app.config, user_held_key=True)
         if not reason and not partial and _is_hallucinated_segments(segments, text):

@@ -65,7 +65,7 @@ def decoder_failure_reason(
     segments, *, log_prob_threshold=DECODER_LOGPROB_THRESHOLD,
     no_speech_threshold=DECODER_NO_SPEECH_THRESHOLD,
     top_temperature=DECODER_TOP_TEMPERATURE, partial=False,
-    speech_level=None, speech_floor=DECODER_SPEECH_FLOOR,
+    speech_level=None, speech_floor=DECODER_SPEECH_FLOOR, audio=None, rate=16000,
 ) -> str | None:
     """Reject a failed decode from its existing signals, never energy alone.
 
@@ -99,6 +99,11 @@ def decoder_failure_reason(
     if partial:
         return 'partial_logprob' if any(failed) else None
     if not all(failed):
+        return None
+
+    from samsara.borderline_confidence import supported
+    if supported(segments, threshold, no_speech_threshold, audio=audio, rate=rate,
+                 speech_level=speech_level, zero_temperature=True):
         return None
 
     top = number(top_temperature)

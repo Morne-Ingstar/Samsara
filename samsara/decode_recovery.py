@@ -420,6 +420,9 @@ def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None):
                         if not retry and _cpu(app):
                             # A resilient model may have switched devices during iteration.
                             effective['temperature'] = temperature_ladder(app)
+                        if not retry and not iteration_failed:
+                            from samsara.borderline_confidence import recover
+                            raw, result.info, effective = recover(app, pcm, effective, raw, result.info, check)
                         if (not raw and not retry and _can_retry_no_speech(
                                 evidence, app.model_rate, len(audio), chunk, effective, capture)):
                             # One additional decode of the same PCM, under the same
@@ -635,10 +638,10 @@ def stream_final(worker, audio, params):
     session._fallback_notice_rejected = False
     session._decode_audio, session._decode_params = audio, dict(params)
     session._hold_failed_ranges, session._hold_last_chunk_failed = (), False
-    session._hold_quality_warning, session._decode_failure = False, None
+    session._hold_quality_warning, session._decode_failure, session._hold_low_confidence = False, None, False
     deadline, cancel = _deadline(app, len(audio) / app.model_rate), session.cancel_event
     def guard(segments, text, effective, pcm):
-        return worker._decoder_guard(segments, text, effective, duration_s=len(pcm) / app.model_rate)
+        return worker._decoder_guard(segments, text, effective, duration_s=len(pcm) / app.model_rate, audio=pcm)
     try:
         decoded = _transcribe(app, audio, params, deadline, cancel, guard, getattr(worker, '_speech_presence_capture', None))
         _capture_omission(app, decoded, audio)
@@ -660,6 +663,8 @@ def stream_final(worker, audio, params):
                 session._decode_failure = UNCLEAR
         elif decoded.warning:
             retain(app, audio, params, 'repetition_loop')
+        from samsara.borderline_confidence import low_confidence
+        session._hold_low_confidence = low_confidence(decoded.segments, params)
         from samsara.hold_final_policy import preserve_preview_tail
         return decoded.segments, decoded.info, preserve_preview_tail(session, text)
     except Exception as exc:
