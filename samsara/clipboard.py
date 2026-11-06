@@ -57,6 +57,13 @@ from samsara.constants import (
 )
 from samsara.log import get_logger
 from samsara import clipboard_recovery as recovery
+# 1166s (T84 P1): paced one-pair-per-call typing and its receipt; the names
+# are re-exported here for existing callers.
+from samsara.typed_dispatch import (  # noqa: F401
+    TYPE_EVENTS_PER_CALL as _TYPE_EVENTS_PER_CALL, TYPE_MAX_PAIR_INTERVAL_S,
+    TYPE_MIN_PAIR_INTERVAL_S, TYPE_SETTLE_S as _TYPE_SETTLE_S, TypedDispatch,
+    dispatch_pairs as _dispatch_pairs, unicode_pair_interval,
+)
 
 logger = get_logger(__name__)
 
@@ -1332,13 +1339,26 @@ def build_unicode_key_events(text: str) -> list:
     return events
 
 
-def type_text_unicode(text: str, chunk: int = 64, *, key_interval: float = 0) -> bool:
+def type_text_unicode(text: str, chunk: int = _TYPE_EVENTS_PER_CALL, *,
+                      key_interval: float = TYPE_MIN_PAIR_INTERVAL_S) -> TypedDispatch:
     """Type `text` into the focused window via SendInput KEYEVENTF_UNICODE.
 
-    Returns True when every event batch was accepted. Never raises.
+    One down/up pair per SendInput call, at least TYPE_MIN_PAIR_INTERVAL_S
+    apart (a larger ``key_interval`` is kept, capped at the maximum). ``chunk``
+    is accepted for old callers and ignored: no caller may batch events or
+    split a key down from its key up. The focused window/control captured at
+    entry is rechecked after the settle and before every pair. Returns a
+    TypedDispatch (bool-compatible: True only when every event was accepted).
+    Never raises.
     """
+    try:
+        events = build_unicode_key_events(text)
+    except Exception as e:
+        _log_error("type_text_unicode got no text", e)
+        return TypedDispatch(0, 0, 'error')
+    total = len(events)
     if sys.platform != 'win32':
-        return False
+        return TypedDispatch(0, total, 'unsupported')
     try:
         import ctypes
         from ctypes import wintypes
@@ -1376,10 +1396,11 @@ def type_text_unicode(text: str, chunk: int = 64, *, key_interval: float = 0) ->
                 "[TYPE] INPUT struct sizeof=%d (expected %d); aborting typed injection",
                 ctypes.sizeof(INPUT), expected,
             )
-            return False
+            return TypedDispatch(0, total, 'abi')
+        if not events:
+            return TypedDispatch(0, 0)
 
         INPUT_KEYBOARD = 1
-        events = build_unicode_key_events(text)
         arr_all = []
         for vk, scan, flags in events:
             inp = INPUT()
@@ -1387,30 +1408,19 @@ def type_text_unicode(text: str, chunk: int = 64, *, key_interval: float = 0) ->
             inp.union.ki = KEYBDINPUT(vk, scan, flags, 0, 0)
             arr_all.append(inp)
 
-        # 30ms settle before the first batch: Chromium occasionally delivers
+        interval = unicode_pair_interval(key_interval)
+        target = _paste_target()
+        # 30ms settle before the first pair: Chromium occasionally delivers
         # the opening keystroke twice when injection begins mid focus
         # transition (live artifact 2026-08-02: single-N decode typed as NN).
-        time.sleep(0.03)
-        user32 = ctypes.windll.user32
-        if key_interval:
-            chunk = 2  # one down/up pair; debounce tools see repeated VK_PACKET
-        i = 0
-        while i < len(arr_all):
-            batch = arr_all[i:i + chunk]
-            ArrType = INPUT * len(batch)
-            sent = user32.SendInput(len(batch), ArrType(*batch), ctypes.sizeof(INPUT))
-            if sent != len(batch):
-                logger.warning(
-                    "[TYPE] SendInput accepted %d/%d events; aborting typed injection",
-                    sent, len(batch),
-                )
-                return False
-            i += chunk
-            time.sleep(max(0.001, key_interval))
-        return True
+        time.sleep(_TYPE_SETTLE_S)
+        return _dispatch_pairs(
+            ctypes.windll.user32.SendInput, arr_all, INPUT, ctypes.sizeof(INPUT),
+            interval=interval, target=target, target_matches=_paste_target_matches,
+            clock=time, logger=logger, log_error=_log_error)
     except Exception as e:
         _log_error("type_text_unicode failed", e)
-        return False
+        return TypedDispatch(0, total, 'error')
 
 # Convenience function for testing
 def test_clipboard_preservation() -> bool:

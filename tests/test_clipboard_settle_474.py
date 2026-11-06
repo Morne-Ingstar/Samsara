@@ -335,12 +335,16 @@ def test_typed_last_resort_spaces_packet_downs_without_slowing_bursts(monkeypatc
         calls.append((clock.now, n))
         return n
     monkeypatch.setattr(ctypes.windll.user32, 'SendInput', send)
+    monkeypatch.setattr(cb, '_paste_target', lambda: None)  # no desktop focus read
     assert cb.type_text_unicode('abc', key_interval=.05)
     assert [n for _, n in calls] == [2, 2, 2]
     assert all(b[0]-a[0] >= .05-1e-9 for a,b in zip(calls, calls[1:]))
     calls.clear()
     assert cb.type_text_unicode('abc')
-    assert [n for _,n in calls] == [6]
+    # 1166s: the default no longer bursts 6 events in one call; one pair per
+    # call at the named minimum spacing (was: [6]).
+    assert [n for _,n in calls] == [2, 2, 2]
+    assert all(b[0]-a[0] >= cb.TYPE_MIN_PAIR_INTERVAL_S-1e-9 for a,b in zip(calls, calls[1:]))
 
 
 @pytest.mark.parametrize('display', [pytest.param('Full', marks=pytest.mark.skipif(
@@ -479,8 +483,13 @@ def test_explicit_typed_target_restores_head_branch(monkeypatch, length, thresho
     clipboard = Mock(side_effect=central)
     result = paste.paste_preserving_clipboard(app, 'x'*length, return_delivery_confirmation=True,
         paste_with_preservation_fn=clipboard, type_text_unicode_fn=typed, get_foreground_hwnd_fn=lambda: 123)
-    assert result == (True, length < threshold and typed_ok)
-    assert result.outcome == cb.DeliveryOutcome.SENT
+    # 1166s: typing accepted by Windows without exact readback is unverified,
+    # not confirmed (was: confirmed=True with outcome SENT).
+    assert result == (True, False)
+    if length < threshold and typed_ok:
+        assert result.outcome == cb.DeliveryOutcome.UNVERIFIED
+    else:  # Ctrl+V branch: SENT today, UNVERIFIED once 1165's adapter lands.
+        assert result.outcome in (cb.DeliveryOutcome.SENT, cb.DeliveryOutcome.UNVERIFIED)
     if length < threshold:
         typed.assert_called_once_with('x'*length)
     else:

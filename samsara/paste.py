@@ -14,6 +14,7 @@ from samsara import clipboard_recovery as recovery
 from samsara import delivery_verify
 from samsara.clipboard import (
     DeliveryOutcome,
+    TypedDispatch,
     paste_with_preservation,
     type_text_unicode,
 )
@@ -202,7 +203,14 @@ def flight_foreground_process_name() -> str | None:
 
 
 class DeliveryResult(tuple):
-    """Two legacy booleans plus the three-way delivery outcome."""
+    """Two legacy booleans plus the three-way delivery outcome.
+
+    ``dispatch`` is 'partial' when typing stopped after Windows accepted only
+    part of the text (1166s): sent stays True so no client retries or pastes
+    the whole sentence over the inserted prefix; confirmed stays False.
+    """
+    dispatch = None
+
     def __new__(cls, sent, confirmed, outcome):
         result = super().__new__(cls, (sent, confirmed))
         result.outcome = outcome
@@ -284,11 +292,35 @@ def paste_preserving_clipboard(
         if not before_delivery(app, text):
             return _result(False, False, reason='privacy_refused')
         app._unit_before = _editor_snapshot()
-        if type_text_unicode_fn(text):
+        typed = type_text_unicode_fn(text)
+        stopped = _typed_stop(typed)
+        if stopped == 'partial':
+            return _partial_typed_result(app, text, typed, _result)
+        if stopped == 'target_changed':
+            flight_recorder.record(
+                'inject', path='typed', why='under_paste_min_chars',
+                target_process=app._flight_foreground_process_name(),
+                chars=len(text), result='cancelled_target_changed',
+            )
+            return _result(False, False, reason='target_changed')
+        if typed:
             verified = delivery_verify.verified_snapshot(typed_proof, text, typed_hwnd)
             app._last_delivery = (verified, text) if verified is not None else None
             app._record_undoable_paste(text, target_hwnd=typed_hwnd)
             app.adaptive_learner.record_transcription(text)
+            if verified is None:
+                # 1166s: SendInput accepting every event is dispatch, not a
+                # receipt. Without exact readback this stays unverified.
+                logger.info(
+                    "[TYPE] Unicode-typed chars=%d hwnd=%r; no target readback",
+                    len(text), typed_hwnd,
+                )
+                flight_recorder.record(
+                    'inject', path='typed', why='under_paste_min_chars',
+                    target_process=app._flight_foreground_process_name(),
+                    chars=len(text), result='sent_unverified',
+                )
+                return _result(True, False, DeliveryOutcome.UNVERIFIED)
             logger.info(
                 "[TYPE] Unicode-typed chars=%d hwnd=%r", len(text), typed_hwnd,
             )
@@ -337,16 +369,26 @@ def paste_preserving_clipboard(
         app._unit_before = _editor_snapshot()
         return True
 
-    typed_fallback_used = {"value": False}
+    typed_fallback_used = {"value": False, "partial": None}
 
     def _typed_fallback_without_clipboard():
         # 986: the allowlist chooses typed-first delivery, not whether a full
         # clipboard may prevent dictation. Do not repeat a failed typing try.
         if _typed_failed or not _capture_target_before_paste():
             return False
-        # Preserve the existing debounce pacing for configured typed targets.
-        typed_fallback_used["value"] = (type_text_unicode_fn(text, key_interval=0.05)
+        # Preserve the existing debounce pacing for configured typed targets;
+        # every other target gets the primitive's paced default (1166s).
+        typed = (type_text_unicode_fn(text, key_interval=0.05)
             if app._foreground_wants_typed_injection() else type_text_unicode_fn(text))
+        stopped = _typed_stop(typed)
+        if stopped == 'partial':
+            # A prefix may be in the target: report it as sent-unverified so
+            # nothing pastes or retypes the whole sentence on top of it.
+            typed_fallback_used["partial"] = typed
+            typed = True
+        elif stopped == 'target_changed':
+            paste_target['abort'] = 'target_changed'
+        typed_fallback_used["value"] = typed
         return typed_fallback_used["value"]
 
     # Keep one clipboard implementation. The centralized path captures
@@ -394,9 +436,13 @@ def paste_preserving_clipboard(
     elif paste_ok:
         if outcome == DeliveryOutcome.UNVERIFIED:
             logger.warning('[PASTE] Sent without target acknowledgement; text recoverable in History')
-        _arm_undo_after_paste(app, text, paste_target['hwnd'], get_foreground_hwnd_fn)
+        if typed_fallback_used["partial"] is None:  # 1166s: no undo after a partial
+            _arm_undo_after_paste(app, text, paste_target['hwnd'], get_foreground_hwnd_fn)
     else:
         logger.error("[PASTE] Ctrl+V delivery failed; text retained by caller when possible")
+    if typed_fallback_used["partial"] is not None and paste_ok and not delivery_confirmed:
+        return _partial_typed_result(app, text, typed_fallback_used["partial"], _result,
+                                     path='typed_fallback')
     flight_recorder.record(
         'inject', path='clipboard',
         why=('typed_failed' if _typed_failed else 'over_paste_min_chars' if len(text) >= threshold
@@ -406,6 +452,43 @@ def paste_preserving_clipboard(
     )
     return _result(paste_ok, delivery_confirmed, outcome,
                    paste_target.get('abort') if not paste_ok else None)
+
+
+def _typed_stop(typed):
+    """'partial' / 'target_changed' for a stopped TypedDispatch, else None.
+
+    Legacy injected callables return plain booleans (or mocks); they keep the
+    old success/failure handling because they cannot report a partial send.
+    """
+    if not isinstance(typed, TypedDispatch):
+        return None
+    if typed.state == 'partial':
+        return 'partial'
+    if typed.state == 'none' and typed.reason == 'target_changed':
+        return 'target_changed'
+    return None
+
+
+def _partial_typed_result(app, text, typed, result, *, path='typed'):
+    """1166s fence: part of the text may be in the target. Never retried.
+
+    sent=True so no caller pastes or retypes the whole sentence over the
+    prefix; confirmed=False with the existing unverified feedback, so the
+    words stay recoverable in History; no undo receipt is armed.
+    """
+    logger.warning(
+        "[TYPE] Typing stopped after %d/%d events (%s); not retried or pasted again",
+        typed.accepted, typed.total, typed.reason or 'unknown',
+    )
+    flight_recorder.record(
+        'inject', path=path, why='partial_dispatch',
+        target_process=app._flight_foreground_process_name(),
+        chars=len(text), result='partial_unverified',
+    )
+    delivered = result(True, False, DeliveryOutcome.UNVERIFIED, reason='typed_partial')
+    if isinstance(delivered, DeliveryResult):
+        delivered.dispatch = 'partial'
+    return delivered
 
 
 _UNDO_TERMINAL_PROCESSES = frozenset({
