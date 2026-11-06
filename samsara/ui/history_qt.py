@@ -73,6 +73,8 @@ class _HistoryWindow(QMainWindow):
             legacy_clear_fn=self._clear_legacy,
         )
         self.setCentralWidget(self._view)
+        from samsara.ui.kept_dictations_qt import add_history
+        add_history(self._view, app)
 
     def _clear_legacy(self):
         legacy = getattr(self.app, 'history', None)

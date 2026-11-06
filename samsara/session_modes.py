@@ -41,6 +41,7 @@ through to step 4 instead (fail CLOSED for switches, not fail-open).
 """
 from __future__ import annotations
 from samsara.log import describe_text
+from samsara.kept_dictations import dispatch_session, observe_commit
 import logging
 import re
 import string
@@ -1791,11 +1792,7 @@ class SessionModeManager(UtteranceUndoMixin):
     def dispatch_utterance(self, raw_text: str, signals: UtteranceSignals,
                            onset_context=None) -> DispatchOutcome:
         timing = _current_stage_timing()
-        timing.mark("dispatch_start")
-        with self._dispatch_lock:
-            outcome = self._dispatch_utterance_locked(raw_text, signals, onset_context)
-        timing.mark("action_done")
-        return outcome
+        return dispatch_session(self, raw_text, signals, onset_context, timing)
 
     def _dispatch_utterance_locked(self, raw_text: str, signals: UtteranceSignals,
                                    onset_context=None) -> DispatchOutcome:
@@ -2877,6 +2874,7 @@ class SessionModeManager(UtteranceUndoMixin):
             "pending_chars": len(self._dictate_pending_buffer),
         })
 
+    @observe_commit
     def _commit_dictate_buffer(
         self, *, target_mode: Optional[SessionMode],
         consumed_trailing_commit_word: bool = False,

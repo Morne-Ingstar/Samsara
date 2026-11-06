@@ -287,6 +287,8 @@ def begin_incident(session):
     """Called on hold start, before any final can finish out of order."""
     from samsara.hold_diagnostics import bind
     bind(session)
+    from samsara.kept_dictations import begin_held
+    begin_held(session)
     if not _enabled(session.app) or _exiting(session.app):
         return
     store = _store(session.app)
@@ -496,6 +498,8 @@ def complete_incident(session, text):
 
 
 def prepare_final(session, text, raw_text, duration_s):
+    from samsara.kept_dictations import capture_held
+    capture_held(session, text, raw_text)
     # Preserve master's final-audit/lost-range policy while always archiving.
     quiet = getattr(session, '_quiet_empty_capture_899', False)
     result = ((text, raw_text, duration_s) if quiet or getattr(session, '_hold_final_audit', None)

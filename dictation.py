@@ -8328,7 +8328,6 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         flight_recorder.record('session.dispatch', op='enqueued', kind='wake_buffer',
                                thread='wake-utt-queue', oww_confirmed=oww_confirmed)
         self._wake_dispatch_queue.enqueue(decode, finish)
-
     def _decode_wake_word_buffer(self, buffer, src_rate=None, *, oww_confirmed=False,
                                  stage_timing=None):
         """Process audio — check for wake word, commands, or dictation content.
@@ -8345,13 +8344,14 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         token = self._transcription_owners.claim('wake')
         from samsara import mic_score
         mic_history_token = mic_score.open_history(self)
+        from samsara.kept_dictations import begin_wake, end_wake
+        kept_token = begin_wake(self, buffer, src_rate)
         try:
             audio = np.concatenate(buffer)
             audio = resample_audio(audio, src_rate, self.model_rate)
             audio_duration = len(audio) / self.model_rate
             if stage_timing is not None:
                 stage_timing.mark("capture_finalised", audio_s=audio_duration)
-
             # DEBUG: dump raw audio before Whisper for onset-clipping diagnosis.
             # Enable with config key debug_dump_wake_audio: true
             # Listen to the WAV — if the first word is already missing, it's a
@@ -8883,6 +8883,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             # is stateless between calls, so this is currently a no-op.
             self._vad_reset()
             mic_score.close_history(mic_history_token)
+            end_wake(self, kept_token)
 
     def _wake_opens_session(self) -> bool:
         """wake_word_config.opens_session (default False): a wake-word hit
@@ -9559,9 +9560,9 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         history, so history stores what was actually typed."""
         return apply_formatting_tokens_if_enabled(
             text, self.config.get('formatting_tokens', {}).get('enabled', True))
-
     def _output_dictation(self, text):
         """Output dictated text"""
+        from samsara.kept_dictations import note_wake_output; note_wake_output(self, text)
         from samsara import tutorial_capture
         stage_timing = current_stage_timing() if getattr(self, "_stage_timing_enabled", False) else None
         pending_timings = getattr(self, "_wake_pending_stage_timings", [])
@@ -9573,7 +9574,6 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         # and reset here so the next utterance starts from a clean slate.
         _diag_acc = getattr(self, '_wake_diag_acc', None) or {}
         self._wake_diag_acc = None
-
         # Apply text processing (auto-capitalize, number formatting)
         _diag_corr_start = time.perf_counter()
         raw = text
@@ -11018,12 +11018,12 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                         ), app=self)
                     except Exception as _diag_exc:
                         logger.debug(f"[DIAG] hotkey record failed: {describe_text(_diag_exc)}")
-
                     # Personal WER benchmark sample (opt-in, off by default --
                     # see samsara/benchmark_store.py). Raw audio buffer at
                     # model rate, pre-corrections transcript, and this fully
                     # processed text. Never affects dictation output on failure.
                     try:
+                        from samsara.kept_dictations import capture; capture(self, audio, _bench_raw_transcript, text, 'hold')
                         benchmark_store.append_sample(
                             self, audio, self.model_rate,
                             _bench_raw_transcript, text.strip(),

@@ -181,6 +181,8 @@ def prepare(session, text):
 
 @best_effort
 def receipt(session, text, sent, confirmed, reason=None):
+    from samsara.kept_dictations import held_delivery
+    held_delivery(session, text, sent, confirmed)
     evidence = get(session)
     if evidence is None:
         return

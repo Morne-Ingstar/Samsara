@@ -2095,6 +2095,8 @@ class StreamingSession:
         if not live:
             tutorial_capture.retire_final(self, text, raw_text, duration_s)
             return
+        from samsara.kept_dictations import handle_held_control
+        if handle_held_control(self, text): return
         from samsara.hold_recording_recovery import prepare_final
         text, raw_text, duration_s = prepare_final(self, text, raw_text, duration_s)
         from samsara.decode_recovery import deliver_failure
@@ -2166,14 +2168,12 @@ class StreamingSession:
                     self._overlay.close()
                     self._notify_finished()
                     return
-
         self._overlay.update_text(text.rstrip(),
                                   StreamingOverlayQt.STATE_DONE)
         logger.info("[TRANSCRIBED] Held dictation ready for delivery")
         if not tutorial_capture.record_final(self, text, raw_text, duration_s):
             tutorial_capture.retire_final(self, text, raw_text, duration_s)
             return
-
         if self.app.config.get('auto_paste', True) or tutorial_waiting:
             if self._parking_enabled or tutorial_waiting:
                 try:

@@ -179,6 +179,8 @@ def log_history(app, raw_text, display_text=None, duration_ms=0,
                 mode="hold", status="success", app_context=None,
                 entry_type="dictation", log_prob=None, matched_command=None):
     """Best-effort privacy-aware writer with this capture's microphone evidence."""
+    from samsara.kept_dictations import wake_history
+    wake_history(app, raw_text, display_text if display_text is not None else raw_text, mode, entry_type, status)
     if app.history_db is None:
         return
     try:

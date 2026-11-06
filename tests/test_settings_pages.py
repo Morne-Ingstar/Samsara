@@ -56,7 +56,8 @@ def test_dictation_rows_supply_distinct_plain_language_help(qapp):
     try:
         rows = [row for row in window._destination_rows if row.page_name == 'Dictation']
         # 312 added a custom profile editor; 359 made help schema-owned and optional.
-        assert len(rows) == len(specs) + 1
+        # 1161 adds the keeping switch and retention limit.
+        assert len(rows) == len(specs) + 3
         for _title, description, names, config in specs:
             row = window._rows_by_widget[names.split(',')[0]]
             assert row.description == description

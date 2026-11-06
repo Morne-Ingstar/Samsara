@@ -1142,6 +1142,10 @@ SETTINGS_SCHEMA = {
         "depends_on": "smart_corrections.enabled",
     },
 
+    # 1161: private owner-selected audio evidence; collection is opt-in.
+    "kept_dictations.enabled": {"type": "bool", "default": False, "tab": "general"},
+    "kept_dictations.maximum": {"type": "int", "default": 50, "min": 1, "max": 500, "tab": "general"},
+    "keep_dictation_hotkey": {"type": "str", "default": "", "tab": "modes"},
     # Dictation Diagnostics: per-utterance pipeline instrumentation viewer.
     # 1124: 1052a exposes count/Open/Clear in Diagnostics; opt-in stays file-only.
     "diagnostics.keep_incident_holds": {"type": "bool", "default": False, "tab": "help", "settings_ui": False,

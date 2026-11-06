@@ -121,6 +121,8 @@ class PageAssembly:
         with source_config(self):
             self._prepare_actions(name)
             page = module.build(self)
+            from samsara.ui.kept_dictations_qt import add_settings
+            add_settings(self, page, name)
         placeholder = self._stack.widget(index)
         self._stack.removeWidget(placeholder)
         self._stack.insertWidget(index, page)
@@ -236,7 +238,11 @@ class PageAssembly:
             if any(key in spec[2].split(',') for spec in module.BASE + module.ADVANCED):
                 self._ensure_destination(index)
                 return
-        if key == 'wake_profiles':
+        if key in ('keep_dictations', 'kept_dictations_maximum'):
+            self._lookup_page('Dictation')
+        elif key == 'keep_dictation_hotkey':
+            self._lookup_page('Shortcuts')
+        elif key == 'wake_profiles':
             self._lookup_page('Dictation')
         elif key.startswith(('cloud_', 'ava_', 'sc_')):
             self._lookup_page('Ava')

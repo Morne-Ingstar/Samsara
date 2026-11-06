@@ -368,6 +368,13 @@ class HotkeyCluster:
         wake_hotkey = self.config.get('wake_word_hotkey', 'ctrl+alt+w')
         command_hotkey = self.config.get('command_hotkey', 'ctrl+alt+c')
         cancel_hotkey = self.config.get('cancel_hotkey', 'escape')
+        keep_hotkey = self.config.get('keep_dictation_hotkey', '')
+        if keep_hotkey and self.check_hotkey_state(keep_hotkey):
+            if not getattr(self, '_keep_dictation_down', False):
+                self._keep_dictation_down = True
+                from samsara.kept_dictations import request_keep
+                request_keep(self)
+            return
         if key_name in ('esc', 'escape') and not self.recording:
             from samsara.message_lifetime import dismiss_messages
             self._schedule_ui(dismiss_messages, self)
@@ -641,6 +648,9 @@ class HotkeyCluster:
         key_name = self.get_key_name(key)
         if key_name and key_name in self.current_keys:
             self.current_keys.discard(key_name)
+        keep_hotkey = self.config.get('keep_dictation_hotkey', '')
+        if not keep_hotkey or not self.check_hotkey_state(keep_hotkey):
+            self._keep_dictation_down = False
 
         self._check_command_mode_key(key, pressed=False)
 

@@ -10429,6 +10429,33 @@
     },
     {
       "aliases": [
+        "keep that",
+        "save that dictation"
+      ],
+      "args": [
+        {
+          "name": "text",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "kept_dictations.keep_that",
+      "description": "Save audio and text in History > Kept, even with automatic keeping off.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "that",
+      "pack": "core",
+      "plugin": "kept_dictations",
+      "precondition": "",
+      "risk": "ui",
+      "source": "plugins/commands/kept_dictations.py:5",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "keep",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "bring back bar",
         "bring back display",
         "bring back indicator",

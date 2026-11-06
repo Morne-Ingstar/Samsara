@@ -668,11 +668,14 @@ class _MainWindow(QMainWindow):
             return page
         if name == "History":
             store = getattr(self._app, 'history_store', None)
-            return HistoryView(
+            view = HistoryView(
                 store,
                 legacy_history_fn=lambda: getattr(self._app, 'history', []),
                 legacy_clear_fn=self._clear_legacy_history,
             )
+            from samsara.ui.kept_dictations_qt import add_history
+            add_history(view, self._app)
+            return view
         if name == "Commands":
             from samsara.ui.command_cheatsheet_qt import build_hub_page
             return build_hub_page(self._app, self._stack)
