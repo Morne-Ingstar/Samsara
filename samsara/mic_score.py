@@ -185,7 +185,7 @@ def log_history(app, raw_text, display_text=None, duration_ms=0,
         return
     try:
         from samsara.recent_privacy import write_history
-        write_history(app,
+        entry_id = write_history(app,
             raw_text=raw_text,
             display_text=display_text if display_text is not None else raw_text,
             app_context=app_context if app_context is not None else app._get_foreground_app(),
@@ -196,6 +196,9 @@ def log_history(app, raw_text, display_text=None, duration_ms=0,
             **history_fields(app, log_prob),
             matched_command=matched_command,
         )
+        from samsara.dictation_history import remember_entry
+        if entry_type == 'dictation':
+            remember_entry(app, entry_id, display_text if display_text is not None else raw_text)
     except Exception as error:
         import logging
         from samsara.log import describe_text, safe_exception

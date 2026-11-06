@@ -77,7 +77,7 @@ from samsara.ui.splash_qt import _system_reduced_motion as _reduced_motion
 from samsara.ui.tray_qt import SPIN_SECONDS_PER_TURN, paint_mark
 from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer
 from samsara.message_durations import PendingMessages, message_duration_ms, message_protected, message_should_wait
-from samsara.ui.indicator_message_layout import MessageHoverWindow, message_lines, message_height, message_line_spacing
+from samsara.ui.indicator_message_layout import MessageHoverWindow, message_height
 
 logger = logging.getLogger(__name__)
 
@@ -1372,25 +1372,8 @@ class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QW
             painter.drawPath(outline_path)
 
     def _paint_chip(self, painter, rect, label, kind):
-        radius = min(13, rect.height() / 2.0)
-        path = QPainterPath()
-        path.addRoundedRect(rect, radius, radius)
-        from samsara.ui.result_message_rendering import is_ava_chain_result, paint_result
-        running = getattr(getattr(self._chip_feedback, 'kind', None), 'value', '') == 'running'
-        fill = theme.AVA if is_ava_chain_result(label) else theme.WARNING if running else theme.TEXT_SECONDARY if kind == 'accent' else _chip_fill().get(kind, theme.WARNING)
-        if kind in ('error', 'warning'):
-            fill = theme._mix(_chip_fill()[kind], theme.BG0, .80)
-        painter.fillPath(path, theme.qcolor(fill))
-        font = self._chip_font()
-        lines, _ = message_lines(label, font, rect.width()-2*_CHIP_PAD_X-self._report_width(), max_lines=compact_max_lines(self))
-        height = message_line_spacing(label, font)
-        for index, line in enumerate(lines):
-            line_rect = QRectF(rect.x()+_CHIP_PAD_X, rect.center().y()-len(lines)*height/2+index*height,
-                               rect.width()-2*_CHIP_PAD_X-self._report_width(), height)
-            ink = QColor(theme.ink_on(fill) if kind in ('error', 'warning') or is_ava_chain_result(label) else theme.TEXT_ON_ACCENT)
-            if index and getattr(self._chip_feedback, 'owner', '') == 'capture_clipping':
-                ink.setAlphaF(.72)
-            paint_result(painter, line_rect, line, font, ink)
+        from samsara.ui.compact_result_paint import paint_chip
+        paint_chip(self, painter, rect, label, kind, _chip_fill, _CHIP_PAD_X)
 
     def dismiss_error(self, *, next_action=False):
         from samsara.clipboard_recovery import IMAGE_MESSAGE, BITMAP_MESSAGE, open_choices

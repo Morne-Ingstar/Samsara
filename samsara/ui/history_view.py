@@ -51,7 +51,7 @@ from PySide6.QtWidgets import (
 from samsara import history_export
 from samsara import outcome_ring
 from samsara.message_durations import ReceiptDwell, message_duration_ms, restore_receipt_text as _safe_set_text
-from samsara.ui import theme
+from samsara.ui import history_entry_navigation, theme
 from samsara.ui.history_source import _elide_plain, row_context
 from samsara.ui.history_status import summary_text, SCOPE_LAST_7_DAYS as _SCOPE_LAST_7_DAYS
 from samsara.runtime import thread_registry
@@ -1098,7 +1098,7 @@ def _size(height: int) -> QSize:
 # HistoryView
 # ---------------------------------------------------------------------------
 
-class HistoryView(QWidget):
+class HistoryView(history_entry_navigation.HistoryEntryNavigation, QWidget):
     """Day-grouped dictation history built for finding and copying things
     back out. Self-contained -- header, search, filters, list, detail card,
     footer.

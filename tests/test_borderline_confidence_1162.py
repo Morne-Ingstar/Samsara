@@ -87,7 +87,9 @@ def test_unsafe_final_stays_refused_without_borderline_replay(make_worker, monke
     session.app.model.transcribe.side_effect = lambda *a, **k: (iter([borderline(**changes)]), NS(language='en'))
     segments, _, text = decoder.stream_final(worker, audio, worker._final_params())
     assert not text and not segments
-    assert session.app.model.transcribe.call_count == 1
+    # 1165: the refused long range also gets two guarded smaller pieces.
+    assert session.app.model.transcribe.call_count == 3
+    assert all(call.kwargs['temperature'] != 0. for call in session.app.model.transcribe.call_args_list)
     np.testing.assert_array_equal(dictation_retry.live(session.app).audio, audio)
 
 
@@ -123,7 +125,9 @@ def test_deterministic_replay_is_guarded_instead_of_blindly_admitted(make_worker
         return iter(candidates), NS(language='en')
     session.app.model.transcribe.side_effect = transcribe
     assert decoder.stream_final(worker, audio, worker._final_params())[2] == ''
-    assert session.app.model.transcribe.call_count == 2
+    # 1165: the initial range and its two smaller pieces each retain 1162's replay guard.
+    assert session.app.model.transcribe.call_count == 6
+    assert all(len(call.args[0]) <= 5 * RATE for call in session.app.model.transcribe.call_args_list[2:])
     assert dictation_retry.live(session.app) is not None
 
 
@@ -132,7 +136,7 @@ def test_refusal_offers_working_try_again_on_both_displays(display, make_worker,
     audio[:] = .0061
     session.app.listening_indicator = display.i
     session.app._schedule_ui = lambda fn, *args: fn(*args)
-    session.app._paste_preserving_clipboard = Mock(return_value=True)
+    session.app._paste_preserving_clipboard = Mock(return_value=(True, True))  # 1165: explicit receipt
     session.app.model.transcribe.side_effect = lambda *a, **k: (
         iter([borderline(compression_ratio=4.)]), NS(language='en'))
     session._last_partial = 'Synthetic preview'
@@ -147,8 +151,10 @@ def test_refusal_offers_working_try_again_on_both_displays(display, make_worker,
     assert button.isVisible() and button.text() == 'Try again'
     np.testing.assert_array_equal(dictation_retry.live(session.app).audio, audio)
     monkeypatch.setattr('samsara.runtime.thread_registry.spawn', lambda name, target, **kw: target())
-    session.app.model.transcribe.side_effect = lambda *a, **k: (
-        iter([segment('Recovered synthetic words.', 0., 6.1)]), NS(language='en'))
+    # 1165: model the two original PCM ranges rather than repeat one whole-take fake.
+    session.app.model.transcribe.side_effect = lambda pcm, **k: (
+        iter([segment('Recovered' if len(pcm) > 3 * RATE else 'synthetic words.', .25, 1.5)]), NS(language='en'))
     QTest.mouseClick(button, Qt.MouseButton.LeftButton)
     display.flush(); qapp.processEvents()
-    session.app._paste_preserving_clipboard.assert_called_once_with('Recovered synthetic words.')
+    session.app._paste_preserving_clipboard.assert_called_once_with(
+        'Recovered synthetic words.', return_delivery_confirmation=True)  # 1165: confirmed insertion

@@ -34,6 +34,9 @@ class RetainedAudio:
     reason: str
     ranges: tuple = ()
     expires_at: float = 0.
+    hold_seq_id: str = ''
+    audit: object = None
+    history_entry_id: int | None = None
 
 
 @dataclass
@@ -181,10 +184,10 @@ class Chunk:
     core_end: int
 
 
-def chunk_audio(audio, rate, evidence):
+def chunk_audio(audio, rate, evidence, *, recovery=False):
     """Keep the original timeline; disjoint cores, 250 ms context on each side."""
-    size, pad, width = len(audio), round(.25 * rate), round(24.5 * rate)
-    if size <= 20 * rate:
+    size, pad, width = len(audio), round(.25 * rate), round((4.5 if recovery else 24.5) * rate)
+    if size <= (4.5 if recovery else 20) * rate:
         return [Chunk(0, size, 0, size)] if size else []
     pauses = _pauses(evidence, rate, size)
     chunks, start = [], 0
@@ -360,7 +363,7 @@ def _can_retry_no_speech(evidence, rate, samples, chunk, params, capture):
     return total + 1e-9 >= NO_SPEECH_RETRY_TOTAL_S and longest + 1e-9 >= NO_SPEECH_RETRY_RUN_S
 
 
-def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None):
+def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None, *, recovery=False, inline=None):
     from samsara.hold_final_policy import current_audit
     from samsara.speech_presence import measure
     from samsara.transcript_gates import gate_repetition_segments, gate_repetition_text
@@ -384,7 +387,7 @@ def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None):
                 bounds = None
             sparse = (len(audio) > 10 * app.model_rate and bounds is not None
                       and sum(b-a for a, b in bounds) < .15 * len(audio))
-            chunks = chunk_audio(audio, app.model_rate, evidence)
+            chunks = chunk_audio(audio, app.model_rate, evidence, recovery=recovery)
             previous_chunk, previous_segments = None, []
             for index, chunk in enumerate(chunks):
                 check()
@@ -397,7 +400,8 @@ def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None):
                     chunk = Chunk(max(chunk.start, spoken[0][0]), min(chunk.end, spoken[-1][1]),
                                   chunk.core_start, chunk.core_end)
                 pcm = audio[chunk.start:chunk.end]
-                effective = _params(app, params, len(pcm) / app.model_rate)
+                effective = _params(app, params, len(pcm) / app.model_rate, retry=recovery)
+                missed_start = len(result.missed)
                 effective['word_timestamps'] = len(chunks) > 1 or sparse or params.get('word_timestamps', False)
                 reason, accepted, relaxed, chunk_warning = None, [], params.get('no_speech_threshold', .6) is None, False
                 first_pass = None
@@ -492,6 +496,23 @@ def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None):
                                                  chunk.start / app.model_rate, result.missed)
                     chunk_warning = True
                     reason = 'repetition_loop'
+                if chunk_warning:
+                    for item in raw:
+                        matching = next((s for s in accepted if s is item or getattr(s, '_original', None) is item), None)
+                        if matching is None or matching.text != item.text:
+                            result.missed.append(MissedRange(
+                                chunk.start / app.model_rate + getattr(item, 'start', 0.),
+                                chunk.start / app.model_rate + getattr(item, 'end', len(pcm) / app.model_rate),
+                                matching.text if matching is not None else ''))
+                if reason and not accepted:
+                    result.missed.append(MissedRange(chunk.core_start / app.model_rate, chunk.core_end / app.model_rate))
+                if not recovery:
+                    from samsara.hold_segment_recovery import recover_failed_ranges
+                    accepted, reason, recovered = recover_failed_ranges(
+                        app, audio, chunk, accepted, reason, result, missed_start,
+                        params, deadline, cancel, guard, abandoned)
+                    if recovered and not result.missed[missed_start:]:
+                        chunk_warning = False
                 if reason:
                     start, end = chunk.core_start / app.model_rate, chunk.core_end / app.model_rate
                     result.failures.append((start, end, reason))
@@ -501,20 +522,12 @@ def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None):
                     logger.warning('[HOLD_FINAL] failed start_s=%.3f end_s=%.3f reason=%s audio_retained=1 hold_seq_id=%s',
                                    start, end, reason, getattr(audit, 'hold_seq_id', 'unknown'))
                     # Keep accepted segments even when iteration failed afterwards.
-                    if not accepted:
+                    if not accepted and not result.missed[missed_start:]:
                         result.missed.append(MissedRange(start, end))
-                    elif reason == 'chunk_decode_failed':
+                    elif accepted and reason == 'chunk_decode_failed':
                         tail = max(getattr(s, 'end', 0.) for s in accepted) + chunk.start / app.model_rate
                         if tail < end:
                             result.missed.append(MissedRange(tail, end))
-                if chunk_warning:
-                    for item in raw:
-                        matching = next((s for s in accepted if s is item or getattr(s, '_original', None) is item), None)
-                        if matching is None or matching.text != item.text:
-                            result.missed.append(MissedRange(
-                                chunk.start / app.model_rate + getattr(item, 'start', 0.),
-                                chunk.start / app.model_rate + getattr(item, 'end', len(pcm) / app.model_rate),
-                                matching.text if matching is not None else ''))
                 result.warning |= chunk_warning
                 from samsara.hold_text import append_chunk
                 shifted = [_offset(s, chunk.start / app.model_rate) for s in accepted]
@@ -531,7 +544,7 @@ def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None):
         finally:
             current_audit.reset(token)
     try:
-        result = _run(app, decode, deadline, cancel)
+        result = decode(inline) if inline is not None else _run(app, decode, deadline, cancel)
     except TimeoutError:
         if cancel.is_set():
             raise
@@ -585,7 +598,7 @@ def partial_decode(worker, audio, params):
     return prior + shifted, info
 
 
-def retain(app, audio, params, reason, ranges=None):
+def retain(app, audio, params, reason, ranges=None, *, source=None):
     if audio is not None and len(audio):
         from samsara.dictation_retry import MissedRange, NOTE_MS
         ranges = ranges or [MissedRange(0., len(audio) / app.model_rate)]
@@ -595,8 +608,18 @@ def retain(app, audio, params, reason, ranges=None):
                 ordered[-1] = MissedRange(ordered[-1].start, max(part.end, ordered[-1].end))
             else:
                 ordered.append(part)
+        from samsara.hold_final_policy import current_audit, FinalAudit
+        from samsara.hold_diagnostics import get
+        from uuid import uuid4
+        audit = getattr(source, 'audit', None) or current_audit.get() or FinalAudit()
+        joined = getattr(audit, '_hold_evidence_1121', None) or get(app)
+        audit.hold_seq_id = (getattr(source, 'hold_seq_id', '') or getattr(audit, 'hold_seq_id', '')
+                             or getattr(joined, 'hold_seq_id', '') or uuid4().hex)
+        if joined is not None:
+            audit._hold_evidence_1121 = joined
         app._hold_retry_audio = RetainedAudio(np.array(audio, copy=True), dict(params), reason,
-                                             tuple(ordered), time.monotonic() + NOTE_MS / 1000)
+            tuple(ordered), time.monotonic() + NOTE_MS / 1000, audit.hold_seq_id, audit)
+        app._hold_retry_audio.history_entry_id = getattr(source, 'history_entry_id', None)
 
 
 def _retry_request(app, text):
@@ -642,6 +665,7 @@ def stream_final(worker, audio, params):
     deadline, cancel = _deadline(app, len(audio) / app.model_rate), session.cancel_event
     def guard(segments, text, effective, pcm):
         return worker._decoder_guard(segments, text, effective, duration_s=len(pcm) / app.model_rate, audio=pcm)
+    requested = None
     try:
         decoded = _transcribe(app, audio, params, deadline, cancel, guard, getattr(worker, '_speech_presence_capture', None))
         _capture_omission(app, decoded, audio)
@@ -658,18 +682,18 @@ def stream_final(worker, audio, params):
         session._hold_quality_warning = bool(decoded.missed or decoded.warning)
         if decoded.failures or decoded.missed:
             retain(app, audio, params, decoded.failures[0][2] if decoded.failures else 'repetition_loop',
-                   decoded.missed if text else None)
+                   decoded.missed if text else None, source=requested)
             if not text:
                 session._decode_failure = UNCLEAR
         elif decoded.warning:
-            retain(app, audio, params, 'repetition_loop')
+            retain(app, audio, params, 'repetition_loop', source=requested)
         from samsara.borderline_confidence import low_confidence
         session._hold_low_confidence = low_confidence(decoded.segments, params)
         from samsara.hold_final_policy import preserve_preview_tail
         return decoded.segments, decoded.info, preserve_preview_tail(session, text)
     except Exception as exc:
         reason = 'timeout' if isinstance(exc, TimeoutError) else 'decode_rejected'
-        retain(app, audio, params, reason)
+        retain(app, audio, params, reason, source=requested)
         session._hold_failed_ranges = ((0., len(audio) / app.model_rate, reason),)
         session._decode_failure = UNCLEAR
         joined = getattr(session, '_hold_evidence_1121', None)
@@ -747,6 +771,7 @@ def decode_hold(app, audio, params, duration_s):
     from samsara.audio_tools import _HotkeyDecodeResult
     from samsara.transcript_gates import _apply_segment_quality_gates
     cancel, deadline = threading.Event(), _deadline(app, duration_s)
+    requested = None
     low = False
     def guard(segments, text, effective, pcm):
         nonlocal low
@@ -768,9 +793,9 @@ def decode_hold(app, audio, params, duration_s):
             text = ''.join(s.text for s in decoded.segments).strip()
         if decoded.failures or decoded.missed:
             retain(app, audio, params, decoded.failures[0][2] if decoded.failures else 'repetition_loop',
-                   decoded.missed if text else None)
+                   decoded.missed if text else None, source=requested)
         elif decoded.warning:
-            retain(app, audio, params, 'repetition_loop')
+            retain(app, audio, params, 'repetition_loop', source=requested)
         language_rejected = bool(text and not app._filter_dictation_language(text, decoded.info))
         if language_rejected:
             text = ''
@@ -780,7 +805,7 @@ def decode_hold(app, audio, params, duration_s):
         return _HotkeyDecodeResult(text, low, decoded.segments, getattr(decoded.info, 'language', None),
                                    'hold_1052d', language_rejected or bool(decoded.failures and not text))
     except Exception:
-        retain(app, audio, params, 'decode_failed')
+        retain(app, audio, params, 'decode_failed', source=requested)
         try:
             from samsara.dictation_retry import show_note
             show_note(app, empty=True)

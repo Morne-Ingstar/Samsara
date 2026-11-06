@@ -108,12 +108,12 @@ def test_persistent_loop_loses_only_its_chunk_warns_and_retains_complete_pcm(mak
     def transcribe(pcm, **params):
         offset = (pcm.ctypes.data - audio.ctypes.data) // audio.itemsize / RATE
         calls.append((offset, params))
-        return iter([segment('beep beep beep beep' if offset < 1 else 'Good later words remain.')]), NS(language='en')
+        return iter([segment('beep beep beep beep' if offset < 24.25 else 'Good later words remain.')]), NS(language='en')  # 1165: reject the same PCM in smaller pieces
     session.app.model.transcribe.side_effect = transcribe
     session._last_partial = 'An unrelated hallucinated preview.'
     with caplog.at_level(logging.WARNING):
         text = decoder.stream_final(worker, audio, {})[2]
-    assert text == 'Good later words remain.' and len(calls) == 3
+    assert text == 'Good later words remain.' and len(calls) > 3  # 1165: failed long chunk is subdivided
     np.testing.assert_array_equal(session.app._hold_retry_audio.audio, audio)
     assert session._hold_failed_ranges == ((0., 24.5, 'repetition_loop'),)
     assert not session._hold_last_chunk_failed
@@ -129,7 +129,7 @@ def test_native_ladder_failure_has_no_five_second_recovery_or_preview_replacemen
     session.app.model.transcribe.side_effect = lambda *a, **kw: (iter([segment('Untrusted.', compression_ratio=13.5)]), NS(language='en'))
     session._last_partial = 'Previously shown but unconfirmed words.'
     assert decoder.stream_final(worker, audio, {})[2] == ''
-    assert session.app.model.transcribe.call_count == 1
+    assert session.app.model.transcribe.call_count == 5  # 1165: original plus four bounded pieces
     assert session._decode_failure == decoder.UNCLEAR  # 1125: nothing typed
     np.testing.assert_array_equal(session.app._hold_retry_audio.audio, audio)
 

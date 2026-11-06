@@ -103,7 +103,7 @@ def test_voice_retry_in_every_lane_inserts_only_missing_part(make_worker, monkey
     session.app.model.transcribe.side_effect = transcribe
     from samsara.ava_pending import consume
     assert consume(session.app, 'Try again.', capture_path=lane)
-    session.app._paste_preserving_clipboard.assert_called_once_with('Recovered words.')
+    session.app._paste_preserving_clipboard.assert_called_once_with('Recovered words.', return_delivery_confirmation=True)  # 1165: explicit receipt
     np.testing.assert_array_equal(seen[0], audio[16000:32000])
     assert not consume_acknowledgement(session.app, 'try again')
 
@@ -114,6 +114,7 @@ def test_note_button_redecodes_and_inserts_on_both_displays(display, make_worker
     app = session.app
     install_retry(app, monkeypatch)
     app.listening_indicator = display.i
+    app._show_outcome_chip = lambda *a: display.i.show_outcome(*a)  # 1165: show retry completion too
     decoder.retain(app, audio, {}, 'synthetic', [retry.MissedRange(1., 2.)])
     app.model.transcribe.side_effect = lambda *a, **k: (iter([segment('Recovered words.')]), NS(language='en'))
     retry.show_note(app, empty=empty)
@@ -123,8 +124,8 @@ def test_note_button_redecodes_and_inserts_on_both_displays(display, make_worker
     assert button.text() == 'Try again' and button.isVisible()
     QTest.mouseClick(button, Qt.MouseButton.LeftButton)
     display.flush(); qapp.processEvents()
-    app._paste_preserving_clipboard.assert_called_once_with('Recovered words.')
-    assert not display.text()
+    app._paste_preserving_clipboard.assert_called_once_with('Recovered words.', return_delivery_confirmation=True)  # 1165
+    assert display.text() == retry.RETRY_DONE  # 1165: every retry has a visible result
 
 
 def test_information_note_lasts_eight_seconds_and_clears_at_next_dictation(display, qapp):
@@ -211,7 +212,7 @@ def test_dropped_loop_retry_decodes_only_its_timed_segment(make_worker, monkeypa
     session.app.model.transcribe.side_effect = transcribe
     assert retry.request(session.app)
     assert len(seen[0]) == 16000
-    session.app._paste_preserving_clipboard.assert_called_once_with('Missing middle.')
+    session.app._paste_preserving_clipboard.assert_called_once_with('Missing middle.', return_delivery_confirmation=True)  # 1165
 
 
 def overflow(consumer, monkeypatch, where):
@@ -324,7 +325,7 @@ def test_retry_returning_nothing_keeps_a_working_retry(make_worker, monkeypatch)
     assert retry.request(session.app)
     session.app._paste_preserving_clipboard.assert_not_called()
     assert retry.live(session.app) is not None
-    session.app._show_outcome_chip.assert_called_once_with(retry.EMPTY + ' - Try again', 'info', 8000)
+    session.app._show_outcome_chip.assert_called_once_with(retry.RETRY_FAILED + ' - Try again', 'info', 8000)  # 1165: distinguish failed retry
 
 
 @pytest.mark.parametrize('retry_fails', ['empty', 'exception'])

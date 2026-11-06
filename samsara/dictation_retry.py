@@ -11,16 +11,20 @@ MISSED = 'Missed a few words'
 EMPTY = "Didn't catch that"
 NOTE_MS = 8000
 OWNER = 'dictation_retry'
+# PLACEHOLDER COPY (1165)
+RETRY_FAILED = "Still couldn't catch those words."
+RETRY_DONE = 'Recovered words inserted.'
+RETRY_EXPIRED = 'That retry has expired.'
 _claim_lock = threading.Lock()
 
 
 class CompactRetryNotice:
     """Compact display hooks; share the retry lifetime and ownership here."""
 
-    def show_retry_notice(self, label, callback):
+    def show_retry_notice(self, label, callback, *, history=None):
         from samsara.live_surface.feedback import Feedback, FeedbackKind
         self._dictation_retry_callback = callback
-        self.show_feedback(label, 'accent', NOTE_MS, Feedback(FeedbackKind.INFORMATION, owner=OWNER))
+        self.show_feedback(label, 'accent', NOTE_MS, Feedback(FeedbackKind.INFORMATION, owner=OWNER, history=history))
 
     def clear_retry_notice(self):
         self._waiting_outcomes.remove(lambda row: getattr(row[3], 'owner', '') == OWNER)
@@ -47,7 +51,7 @@ def live(app):
     return slot if slot is not None and time.monotonic() < getattr(slot, 'expires_at', 0.) else None
 
 
-def claim(app, text='try again'):
+def claim(app, text='try again', *, expected=None):
     literal = getattr(app, '_verbatim_rule', None)
     if callable(literal) and literal():
         return None
@@ -60,6 +64,8 @@ def claim(app, text='try again'):
         if (slot is None and captured is not None and captured[0] is getattr(app, '_hold_retry_audio', None)
                 and time.monotonic() < captured[1]):
             slot = captured[0]
+        if expected is not None and slot is not expected:
+            return None
         if slot is not None:
             app._hold_retry_audio = None
         return slot
@@ -67,6 +73,8 @@ def claim(app, text='try again'):
 
 def begin_capture(app):
     """A phrase begun inside the window may finish decoding afterwards."""
+    from samsara.dictation_history import fence_capture
+    fence_capture(app)
     slot = live(app)
     app._dictation_retry_capture = (slot, time.monotonic() + 30.) if slot is not None else None
 
@@ -79,20 +87,29 @@ def clear_note(app):
         app._schedule_ui(clear)
 
 
-def show_note(app, *, empty=False):
-    label = EMPTY if empty else MISSED
+def show_note(app, *, empty=False, label=None):
+    label = label or (EMPTY if empty else MISSED)
     slot = live(app)
     if slot is not None:
         slot.expires_at = time.monotonic() + NOTE_MS / 1000
+    from samsara.dictation_history import retry_entry, bind_entry, link_for, history_label
+    entry_id = retry_entry(app, slot, label)
+    label = history_label(label, entry_id)
     indicator = getattr(app, 'listening_indicator', None)
     show = getattr(indicator, 'show_retry_notice', None)
     if callable(show):
+        with bind_entry(app, entry_id):
+            history = link_for(app, label)
         indicator._dictation_retry_app = app
-        app._schedule_ui(show, label, lambda: request(app))
+        def display():
+            callback = lambda: request(app, expected=slot) if slot is not None else _result_note(app, RETRY_EXPIRED)
+            show(label, callback, **({'history': history} if history else {}))
+        app._schedule_ui(display)
     else:
         show = getattr(app, '_show_outcome_chip', None) or getattr(indicator, 'show_outcome', None)
         if callable(show):
-            show(label + ' - Try again', 'info', NOTE_MS)
+            with bind_entry(app, entry_id):
+                show(label + ' - Try again', 'info', NOTE_MS)
 
 
 def remaining_text(text, delivered):
@@ -109,32 +126,49 @@ def remaining_text(text, delivered):
 
 def decode_slot(app, slot, guard=None):
     from samsara import decode_recovery as decoder
+    from samsara.hold_final_policy import current_audit
     result = decoder.DecodedHold()
     deadline, cancel = decoder._deadline(app, len(slot.audio) / app.model_rate), threading.Event()
     params = dict(slot.params, no_speech_threshold=None)
-    for missed in slot.ranges:
-        a, b = round(missed.start * app.model_rate), round(missed.end * app.model_rate)
-        part = decoder._transcribe(app, slot.audio[a:b], params, deadline, cancel, guard)
-        if not part.segments and not part.missed:
-            part.missed.append(MissedRange(0., (b - a) / app.model_rate))
-        if missed.delivered:
-            text = remaining_text(''.join(s.text for s in part.segments).strip(), missed.delivered)
-            part.segments = decoder._replace_text(part.segments, text) if text else []
-        result.segments.extend(part.segments)
-        result.info = part.info
-        result.warning |= part.warning
-        result.failures.extend((x + missed.start, y + missed.start, why) for x, y, why in part.failures)
-        result.missed.extend(MissedRange(x.start + missed.start, x.end + missed.start, x.delivered)
-                             for x in part.missed)
+    token = current_audit.set(slot.audit or current_audit.get())
+    try:
+        for missed in slot.ranges:
+            a, b = max(0, round(missed.start * app.model_rate)), min(len(slot.audio), round(missed.end * app.model_rate))
+            part = decoder._transcribe(app, slot.audio[a:b], params, deadline, cancel, guard, recovery=True)
+            if not part.segments and not part.missed:
+                part.missed.append(MissedRange(0., (b - a) / app.model_rate))
+            if missed.delivered:
+                text = remaining_text(''.join(s.text for s in part.segments).strip(), missed.delivered)
+                part.segments = decoder._replace_text(part.segments, text) if text else []
+            result.segments.extend(decoder._offset(s, missed.start) for s in part.segments)
+            result.info = part.info
+            result.warning |= part.warning
+            result.failures.extend((x + missed.start, y + missed.start, why) for x, y, why in part.failures)
+            result.missed.extend(MissedRange(x.start + missed.start, x.end + missed.start, x.delivered)
+                                 for x in part.missed)
+    finally:
+        current_audit.reset(token)
     return result
 
 
-def request(app, text='try again'):
-    slot = claim(app, text)
+def request(app, text='try again', *, expected=None):
+    slot = claim(app, text, expected=expected)
     if slot is None:
+        if expected is not None:
+            _result_note(app, RETRY_EXPIRED, slot=expected)
         return False
     clear_note(app)
+    # Keep the take reachable even if a newer capture replaces the retry offer.
+    app._last_dictation_retry = slot
     from samsara.runtime import thread_registry
+    def failed(ranges):
+        with _claim_lock:
+            if getattr(app, '_hold_retry_audio', None) is None:
+                decoder.retain(app, slot.audio, slot.params, 'retry_failed', ranges, source=slot)
+            elif app._hold_retry_audio.hold_seq_id != slot.hold_seq_id:
+                _result_note(app, RETRY_FAILED, slot=slot)
+                return
+        show_note(app, empty=True, label=RETRY_FAILED)
     def run():
         from samsara import decode_recovery as decoder
         try:
@@ -146,20 +180,50 @@ def request(app, text='try again'):
             decoded = decode_slot(app, slot, guard)
             text = ''.join(s.text for s in decoded.segments).strip()
             if text and not app._filter_dictation_language(text, decoded.info):
-                decoder.retain(app, slot.audio, slot.params, 'retry_failed', slot.ranges)
-                show_note(app, empty=True)
+                failed(slot.ranges)
                 return
             if text:
-                delivered = app._paste_preserving_clipboard(text)
-                if delivered is False:
-                    decoder.retain(app, slot.audio, slot.params, 'delivery_failed', slot.ranges)
-                    show_note(app, empty=True)
+                for name in ('add_to_history', '_notify_main_window'):
+                    callback = getattr(app, name, None)
+                    if callable(callback):
+                        callback(text)
+                history = getattr(app, '_log_history', None)
+                if callable(history):
+                    history(raw_text=text, display_text=text, mode='streaming', status='recovered', entry_type='dictation')
+                receipt = app._paste_preserving_clipboard(text, return_delivery_confirmation=True)
+                sent, confirmed = receipt if isinstance(receipt, tuple) else (bool(receipt), bool(receipt))
+                if not sent:
+                    failed(slot.ranges)
                     return
-            if decoded.missed:
-                decoder.retain(app, slot.audio, slot.params, 'retry_failed', decoded.missed)
-                show_note(app, empty=not text)
+                from samsara.clipboard import DeliveryOutcome
+                from samsara.paste import show_delivery_result
+                if not confirmed:
+                    show_delivery_result(app, sent, DeliveryOutcome.UNVERIFIED)
+            if decoded.missed or not text:
+                failed(decoded.missed or slot.ranges)
+            elif confirmed:
+                _result_note(app, RETRY_DONE, 'success')
         except Exception:
-            decoder.retain(app, slot.audio, slot.params, 'retry_failed', slot.ranges)
-            show_note(app, empty=True)
-    thread_registry.spawn('dictation-retry', run, daemon=True)
+            failed(slot.ranges)
+    from samsara import decode_recovery as decoder
+    try:
+        thread_registry.spawn('dictation-retry', run, daemon=True)
+    except Exception:
+        failed(slot.ranges)
     return True
+
+
+def _result_note(app, label, kind='info', *, slot=None):
+    if slot is not None:
+        from samsara.dictation_history import retry_entry, bind_entry, history_label
+        entry_id = retry_entry(app, slot, label)
+        with bind_entry(app, entry_id):
+            return _result_note(app, history_label(label, entry_id), kind)
+    show = getattr(app, '_show_outcome_chip', None)
+    if callable(show):
+        show(label, kind, NOTE_MS)
+        return
+    indicator = getattr(app, 'listening_indicator', None)
+    show = getattr(indicator, 'show_outcome', None)
+    if callable(show):
+        app._schedule_ui(show, label, kind, NOTE_MS)

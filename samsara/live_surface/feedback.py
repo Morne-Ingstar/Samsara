@@ -59,6 +59,7 @@ class Feedback:
     resolves: str = ""
     alive: Callable[[], bool] | None = field(default=None, compare=False, repr=False)
     dismiss: Callable[[], bool] | None = field(default=None, compare=False, repr=False)
+    history: Callable[[], None] | None = field(default=None, compare=False, repr=False)
 
 
 MOUSE_HOTKEY_OWNER = "mouse_hotkey"
@@ -166,6 +167,8 @@ def schedule_feedback(app, label, kind, ttl_ms, *, source="", detail=None):
     if context is not None and context[0] is app:
         _, source, detail = context
     feedback = producer_feedback(app, kind, source, detail)
+    from samsara.dictation_history import link_for
+    feedback = replace(feedback, history=link_for(app, label))
     from samsara.consent_feedback import pending_label
     label = pending_label(app, label, feedback)
     if source == "command_miss":

@@ -1,7 +1,6 @@
 """1126: synthetic decoder output, actual final processing, no live app/audio."""
 import logging
 from types import SimpleNamespace as NS
-from unittest.mock import Mock
 
 import pytest
 
@@ -175,9 +174,13 @@ def test_multichunk_decoder_offsets_words_and_requests_timing(make_worker, monke
     calls = []
     def transcribe(pcm, **params):
         calls.append(params)
+        # 1165: retry has 4.5s cores; keep these word times at its first seam.
+        if path == 'retry' and len(calls) > 2:
+            return iter([]), NS(language='en')
+        shift = 20 if path == 'retry' else 0
         if len(calls) == 1:
-            item = timed('very' if repeated else "I don't know", [('very' if repeated else 'I', 23, 23.2)] +
-                         ([] if repeated else [("don't", 23.3, 24), ('know', 24.3, 24.5)]))
+            item = timed('very' if repeated else "I don't know", [('very' if repeated else 'I', 23-shift, 23.2-shift)] +
+                         ([] if repeated else [("don't", 23.3-shift, 24-shift), ('know', 24.3-shift, 24.5-shift)]))
         else:
             item = timed('very good' if repeated else 'know why',
                          [('very' if repeated else 'know', .55 if repeated else .05, .75 if repeated else .25),
@@ -193,7 +196,7 @@ def test_multichunk_decoder_offsets_words_and_requests_timing(make_worker, monke
         decoded = dictation_retry.decode_slot(session.app, slot)
         text = ''.join(s.text for s in decoded.segments).strip()
     assert text == ('very very good' if repeated else "I don't know why")
-    assert len(calls) == 2 and all(p['word_timestamps'] for p in calls)
+    assert len(calls) == (6 if path == 'retry' else 2) and all(p['word_timestamps'] for p in calls)  # 1165
 
 
 def test_conflict_resolution_preserves_1121_audit_and_1125_partial(make_worker, monkeypatch, caplog):

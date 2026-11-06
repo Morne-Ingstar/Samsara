@@ -260,6 +260,9 @@ def paste_preserving_clipboard(
     # their own announcement (session outcome, hold path) check earlier;
     # this guard makes every other lane fail honestly instead of "pasting".
     def _result(sent, confirmed, outcome=DeliveryOutcome.UNVERIFIED, reason=None):
+        remember_unconfirmed(app, text, sent, confirmed, outcome)
+        from samsara.dictation_history import prepare_delivery
+        prepare_delivery(app, text)
         from samsara.hold_diagnostics import paste_result
         paste_result(text, sent, confirmed and (outcome == DeliveryOutcome.CONFIRMED
                      or app._last_delivery is not None), reason)
@@ -559,6 +562,17 @@ def show_delivery_result(app, sent, outcome, *, feedback=True):
             show(CLIPBOARD_FAILED_DELIVERY if attempt is not None and attempt.backup_failed
                  else FAILED_DELIVERY, 'error')
     return sent
+
+
+def remember_unconfirmed(app, text, sent, confirmed, outcome):
+    """Memory-only offer for Paste again; no automatic second insertion."""
+    app._unconfirmed_delivery_text = text if sent and not confirmed else ''
+    hook = getattr(app, '_on_unconfirmed_delivery', None)
+    if sent and not confirmed and callable(hook):
+        try:
+            hook(text, outcome)
+        except Exception:
+            logger.warning('[DELIVERY] unconfirmed offer unavailable')
 
 
 def retain_failed_dictation(app, text, raw):

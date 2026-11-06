@@ -138,6 +138,7 @@ class SurfaceEvent:
     owner: str = ""
     resolves: str = ""
     persistent: bool = False
+    history: Callable[[], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -149,6 +150,7 @@ class Notice:
     feedback: FeedbackKind = FeedbackKind.INFORMATION
     purpose: FeedbackPurpose = FeedbackPurpose.RESULT
     owner: str = ""
+    history: Callable[[], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -361,7 +363,7 @@ class LiveSurfaceModel:
             duration = NOTE_MS
         ttl = None if duration is None else duration / 1000
         candidate = Notice(event.notice, event.message, None if ttl is None else now + ttl,
-                           event.lane or self.lane, feedback, purpose, event.owner)
+                           event.lane or self.lane, feedback, purpose, event.owner, event.history)
         if publish_feedback:
             # Receipt delivery/History/accessibility happen once on arrival;
             # only its visible text may wait behind the current message.

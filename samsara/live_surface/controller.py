@@ -695,9 +695,9 @@ class LiveSurfaceIndicatorAdapter:
     def show_outcome(self, label: str, kind: str, ttl_ms=DEFAULT_TTL_MS) -> None:
         self.show_feedback(label, kind, ttl_ms, feedback_for(kind))
 
-    def show_retry_notice(self, label, callback):
+    def show_retry_notice(self, label, callback, *, history=None):
         self.controller._dictation_retry_callback = callback
-        self.show_feedback(label, 'accent', 8000, Feedback(FeedbackKind.INFORMATION, owner='dictation_retry'))
+        self.show_feedback(label, 'accent', 8000, Feedback(FeedbackKind.INFORMATION, owner='dictation_retry', history=history))
 
     def clear_retry_notice(self):
         self.controller.model.clear_retry_notice()
@@ -726,7 +726,7 @@ class LiveSurfaceIndicatorAdapter:
         self.controller.post(SurfaceEvent(EventKind.NOTICE, notice=notice,
             message=str(label), ttl_s=None if ttl_ms is None else float(ttl_ms) / 1000,
             persistent=ttl_ms is None, feedback=feedback.kind, purpose=feedback.purpose,
-            owner=feedback.owner, resolves=feedback.resolves))
+            owner=feedback.owner, resolves=feedback.resolves, history=feedback.history))
 
     def clear_feedback(self, owner: str) -> None:
         self.controller.post(SurfaceEvent(EventKind.NOTICE_CLEARED, owner=owner))

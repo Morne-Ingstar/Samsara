@@ -196,7 +196,8 @@ class _FeedbackBand(QWidget):
         super().__init__(parent)
         self.notice, self.chip = None, chip
         self.setAccessibleName("Live surface feedback")
-        self.label = QLabel(self)
+        from samsara.ui.history_result_link import HistoryResultLabel
+        self.label = HistoryResultLabel(self)
         self.label.setObjectName(name)
         self.label.setWordWrap(False)
         self.label.setTextFormat(Qt.TextFormat.PlainText)
@@ -247,6 +248,8 @@ class _FeedbackBand(QWidget):
         self._message = message
         lines, self.elided = message_lines(message, self.label.font(), max(1, self.width()-(42 if self.chip else 24)-self._action_width()), max_lines=self._max_lines())
         set_result_label(self.label, '\n'.join(lines), theme.TEXT_PRIMARY)
+        from samsara.ui.history_result_link import set_history_link
+        set_history_link(self.label, '\n'.join(lines), getattr(notice, 'history', None))
         if notice and notice.owner == 'capture_clipping':
             from html import escape
             self.label.setTextFormat(Qt.TextFormat.RichText)
@@ -771,6 +774,15 @@ class LiveSurfaceWidget(QWidget):
                 self._chip.hide(); self._chip.deleteLater(); self._chip = None
         self._band.set_notice(notice if notice and not (echo or short) else None)
         self._secondary_band.set_notice(view.secondary_notice)
+        linked = any(getattr(row, 'history', None) for row in (notice, view.secondary_notice))
+        if linked and self.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus:
+            visible = self.isVisible()
+            self.setWindowFlag(Qt.WindowType.WindowDoesNotAcceptFocus, False)
+            self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+            if visible:
+                self.show()
+        elif not linked and getattr(previous.notice, 'history', None):
+            self._restore_passive()
         self._restyle()
         self._state.setAccessibleDescription(state)
         self.setAccessibleDescription("; ".join(part for part in (
