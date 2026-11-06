@@ -308,9 +308,10 @@ def hands_free_state(app) -> CapabilityState:
             action_label=SETUP_MICROPHONE_LABEL, action=ACTION_SETUP_MICROPHONE)
 
     models = wake_models_state(app)
+    # 1159: sample pending first; activation may finish while reading capture.
+    starting = bool(getattr(app, "_wake_start_pending", False))
     running = wake_consumer_running(app)
     armed = bool(getattr(app, "wake_word_active", False))
-    starting = bool(getattr(app, "_wake_start_pending", False))
     if models == "loading" or starting:
         return CapabilityState(
             HANDS_FREE, UNKNOWN,

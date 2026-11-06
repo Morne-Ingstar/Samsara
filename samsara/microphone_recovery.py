@@ -524,8 +524,9 @@ class DeviceChanges:
         if getattr(app, '_no_microphone', False):
             return  # Arrival/recovery will retry; never start on a missing mic.
         if (getattr(app, 'loading_model', False)
-                or getattr(app, '_wake_models_state', None) == 'loading'):
-            return  # Model loading must not spend the device restart budget.
+                or getattr(app, '_wake_models_state', None) == 'loading'
+                or getattr(app, '_wake_start_pending', False)):
+            return  # Loading/activation must not spend the device restart budget.
         if (hasattr(app, '_wake_consumer_reasons')
                 and not app._wake_consumer_reasons
                 and not getattr(app, 'wake_word_active', False)

@@ -7280,13 +7280,13 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         with self._wake_models_lock:
             self._wake_models_state = 'ready'
             start = self._wake_start_pending
-            self._wake_start_pending = False
+            # 1159: pending lasts through listener activation, not just model loading.
         self.wake_ready.set()
         logger.info(f"[WAKE] wake_ready: models loaded in "
                     f"{(time.perf_counter() - _t) * 1000:.0f}ms")
-        self._publish_wake_state()
-        if start and not self.wake_word_active:
-            self.start_wake_word_mode()
+        from samsara.wake_startup import finish_pending_start
+        finish_pending_start(self, start)
+        # Publish completion only after capture and wake detection have started.
 
     def _publish_wake_state(self) -> None:
         """Push wake loading/ready to the tray tooltip and indicator label."""
