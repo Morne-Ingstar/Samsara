@@ -311,10 +311,11 @@ def test_unsnapshottable_office_format_is_named_as_lost(fake):
 # ---------------------------------------------------------------------------
 
 def test_unresponsive_owner_skips_the_snapshot_and_says_the_content_is_lost(fake, caplog):
+    # 1167s: a missed WM_NULL ping is advisory now (readable data is kept by
+    # the bounded worker); only an owner Windows reports HUNG skips the read.
     fake.formats = {CF_UNICODETEXT: _utf16("from a frozen app")}
     fake.owner = 4242
-    fake.SendMessageTimeoutW = lambda *a: 0                   # no answer within the timeout
-    cb._user32.SendMessageTimeoutW = fake.SendMessageTimeoutW
+    cb._user32.IsHungAppWindow = lambda _hwnd: True
     get_calls = []
     cb._user32.GetClipboardData = lambda fmt: get_calls.append(fmt) or 0
 
@@ -324,6 +325,16 @@ def test_unresponsive_owner_skips_the_snapshot_and_says_the_content_is_lost(fake
     assert dict(snapshot) == {} and get_calls == [], "must not risk blocking in GetClipboardData"
     assert snapshot.lost == {0: "clipboard owner not responding"}
     assert any("could not be snapshotted" in r.getMessage() for r in caplog.records)
+
+
+def test_slow_ping_owner_with_readable_data_is_preserved(fake):
+    # 1167s: superseded half of the test above -- slow is not hung.
+    fake.formats = {CF_UNICODETEXT: _utf16("from a slow app")}
+    fake.owner = 4242
+    cb._user32.SendMessageTimeoutW = lambda *a: 0             # no answer within the timeout
+    snapshot = save_clipboard()
+    assert snapshot.complete and snapshot.owner_slow
+    assert snapshot[CF_UNICODETEXT] == _utf16("from a slow app")
 
 
 def test_slow_snapshot_is_logged(fake, monkeypatch, caplog):

@@ -16,6 +16,70 @@ CHOICE_MESSAGE = IMAGE_MESSAGE + CHOICE_SUFFIX
 LOSS_MESSAGE = "Image removed from clipboard."
 # PLACEHOLDER COPY (986); kept in sync with the pure feedback mapping by tests.
 RESTORE_MESSAGE = "Your words were sent, but the old clipboard couldn't be fully restored."
+# PLACEHOLDER COPY (1167s): standalone wording for Paste-and-Warn. The image
+# lines match the session chips for the same receipts word for word.
+IMAGE_REMOVED_CONFIRMED = "Text inserted. " + LOSS_MESSAGE
+IMAGE_REMOVED_UNCONFIRMED = "Sent, unconfirmed. " + LOSS_MESSAGE
+RESTORE_UNCONFIRMED_MESSAGE = ("Sent, but not confirmed, and the old clipboard couldn't be "
+                               "fully restored. Your words are in History.")
+IMAGE_REMOVED_NOT_SENT = LOSS_MESSAGE + " Text wasn't inserted. Copy your words from History."
+RESTORE_NOT_SENT = ("Text wasn't inserted and the old clipboard couldn't be fully restored. "
+                    "Your words are in History.")
+
+
+def loss_message(receipt, sent, outcome):
+    """One clipboard-loss chip for a standalone delivery, or None (1167s).
+
+    ``outcome`` is the clipboard.DeliveryOutcome value. Only 'confirmed'
+    (acknowledged/readback) reads as inserted; 'unverified' always says not
+    confirmed. Returns (message, severity).
+    """
+    if receipt is None or not (receipt.restore_failed or receipt.replaced):
+        return None
+    outcome = getattr(outcome, 'value', outcome)
+    if not sent:
+        return (IMAGE_REMOVED_NOT_SENT if receipt.replaced and not receipt.restore_failed
+                else RESTORE_NOT_SENT), 'error'
+    if receipt.restore_failed:
+        return (RESTORE_UNCONFIRMED_MESSAGE if outcome == 'unverified' else RESTORE_MESSAGE), 'warning'
+    return (IMAGE_REMOVED_CONFIRMED if outcome == 'confirmed' else IMAGE_REMOVED_UNCONFIRMED), 'warning'
+_IMAGE_NAMES = frozenset({"PNG", "JFIF", "GIF", "WebP", "image/svg+xml"})
+
+
+def lost_is_image_only(snapshot):
+    """True when everything a snapshot lost is picture data (1167s)."""
+    from samsara import clipboard as cb
+    lost = getattr(snapshot, "lost", None) or {}
+
+    def name(fmt):
+        try:
+            buf = cb.ctypes.create_unicode_buffer(128)
+            return buf.value if cb._user32.GetClipboardFormatNameW(fmt, buf, 128) else ""
+        except Exception:
+            return ""
+    return bool(lost) and all(fmt in (cb.CF_BITMAP, cb.CF_DIB, cb.CF_DIBV5)
+                              or (fmt >= 0xC000 and name(fmt) in _IMAGE_NAMES) for fmt in lost)
+
+
+def record_paste_and_warn(receipt, saved):
+    """Attempt-local, truthful clipboard outcome after Paste-and-Warn (1167s).
+
+    Pictures that could not be backed up read as removed when every captured
+    format went back (or a newer copy was kept); files, rich text, the whole
+    clipboard or a failed restore read as not fully restored.
+    """
+    from samsara import clipboard as cb
+    status = getattr(saved, "restore_status", None)
+    cb.logger.warning("[CLIP] Paste-and-Warn finished: restore=%s, not put back: %s",
+                      status, saved.describe_lost())
+    if receipt is None:
+        return
+    if lost_is_image_only(saved) and status in ("put_back", "kept_newer"):
+        receipt.replaced = True
+    else:
+        receipt.restore_failed = True
+
+
 _attempt = ContextVar("clipboard_delivery_attempt", default=None)
 
 
@@ -28,6 +92,9 @@ class Attempt:
     replaced: bool = False
     restore_failed: bool = False
     backup_failed: bool = False
+    # 1167s: which incomplete-snapshot policy this one delivery uses
+    # (samsara.clipboard PRESERVE / PASTE_AND_WARN); None = PRESERVE.
+    incomplete_policy: str | None = None
 
 
 def current_attempt():

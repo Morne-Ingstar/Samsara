@@ -35,9 +35,12 @@ def session(fake, target, monkeypatch):
     def inject(text, guard):
         # Mirrors the app's legacy bool-returning boundary; context must carry
         # refusal and consent across this callback without changing its API.
+        # 1167s: dictation now defaults to Paste-and-Warn; these tests pin the
+        # explicit PRESERVE contract and its choice offer, so request it.
         result = paste.paste_preserving_clipboard(app, text, before_paste=guard,
             return_delivery_confirmation=True, type_text_unicode_fn=typed,
-            get_foreground_hwnd_fn=lambda: foreground[1])
+            get_foreground_hwnd_fn=lambda: foreground[1],
+            incomplete_snapshot_policy=cb.PRESERVE)
         return sm.InjectionDelivery(text, confirmed=result[1]) if result[0] else False
 
     manager = sm.SessionModeManager(abort_phrases=['abort'], foreground_exe_resolver=lambda: foreground[0],

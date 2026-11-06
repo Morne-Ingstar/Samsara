@@ -123,9 +123,18 @@ _SYNTHESIZED_FROM = {
 }
 
 #: A clipboard owner that does not answer a WM_NULL within this long is
-#: treated as unable to render: the snapshot is skipped (and reported as
-#: incomplete) rather than blocking dictation inside GetClipboardData.
+#: logged as slow. 1167s: that is advisory only -- the bounded, single-flight
+#: snapshot worker still reads what it can. Only an owner Windows itself
+#: reports as hung (IsHungAppWindow) skips the snapshot.
 _OWNER_PING_TIMEOUT_MS = 250
+
+#: 1167s: incomplete-snapshot policies for paste_with_preservation.
+#: PRESERVE (the generic contract): never replace content that cannot be put
+#: back; use the caller's typed fallback or refuse. PASTE_AND_WARN (dictation
+#: only, chosen by samsara.paste): replace the OLD unpreservable content once,
+#: put back everything that was captured, and report the loss.
+PRESERVE = 'preserve'
+PASTE_AND_WARN = 'paste_and_warn'
 #: A snapshot slower than this is logged as a warning (delayed rendering).
 _SLOW_SNAPSHOT_S = 0.5
 
@@ -406,6 +415,15 @@ class ClipboardSnapshot(dict):
         # Owner-private/no-data formats are reported once but do not make the
         # snapshot incomplete: there is no user payload to restore.
         self.omitted: Dict[int, str] = {}
+        # 1167s: formats whose bytes Samsara explicitly requested from a
+        # Windows conversion (CF_BITMAP -> CF_DIB/CF_DIBV5).
+        self.synthesized = frozenset()
+        # 1167s: the owner missed the WM_NULL ping (advisory only).
+        self.owner_slow = False
+        # 1167s: what the last restore did -- 'put_back' (every captured
+        # format is back), 'kept_newer' (a later copy was left alone),
+        # 'failed' (captured content could not be put back) or None.
+        self.restore_status = None
 
     @property
     def complete(self) -> bool:
@@ -482,175 +500,23 @@ def _save_clipboard_impl() -> "ClipboardSnapshot":
                 _log_error("Failed to save clipboard text fallback", e)
         return {}
 
-    saved = ClipboardSnapshot()
-    skipped = 0
-    not_saved: Dict[int, str] = {}   # candidate losses; synthesis-filtered at the end
-    started = time.monotonic()
-    total_bytes = 0
-    format_count = 0
-
-    if not _open_clipboard_with_retry():
-        _log_error("Could not open clipboard for save after retries")
-        _mark_whole_clipboard_lost(saved, "clipboard busy")
-        return saved
-
-    try:
-        # A hung delayed-render provider (an app that registered a format
-        # but defers actually producing the data until GetClipboardData is
-        # called) would block GetClipboardData indefinitely below. Skip the
-        # snapshot entirely rather than risk hanging dictation on it -- an
-        # empty save just makes restore_clipboard() a no-op later; the
-        # dictated text still lands via the paste that follows.
-        # IsHungAppWindow only trips after ~5 s of unresponsiveness, so the
-        # owner must also answer a WM_NULL ping within _OWNER_PING_TIMEOUT_MS.
-        # Neither can interrupt a render that has already STARTED:
-        # GetClipboardData has no timeout; isolate it from the caller.
-        owner = _user32.GetClipboardOwner()
-        if owner and (_user32.IsHungAppWindow(owner) or not _owner_answers_ping(owner)):
-            logger.info("[CLIP] clipboard owner hung, skipping snapshot")
-            _mark_whole_clipboard_lost(saved, "clipboard owner not responding")
-            return saved
-
-        fmt = 0
-        while True:
-            if time.monotonic() - started >= _SNAPSHOT_TIMEOUT_S:
-                saved.lost[0] = "clipboard backup timed out"
-                break
-            fmt = _user32.EnumClipboardFormats(fmt)
-            if fmt == 0:
-                break
-            format_count += 1
-            if format_count > _MAX_SNAPSHOT_FORMATS:
-                saved.lost[0] = "too many clipboard formats"
-                break
-
-            # Skip formats that aren't memory handles, or that we
-            # deliberately don't snapshot (CF_BITMAP/CF_METAFILEPICT/etc --
-            # see module docstring).
-            if not is_snapshot_eligible_format(fmt):
-                skipped += 1
-                not_saved[fmt] = "not a format that can be snapshotted"
-                continue
-
-            try:
-                # GetClipboardData forces a delayed-render provider (e.g.
-                # a screenshot tool that defers rendering until requested)
-                # to render now, so this always returns real data or NULL,
-                # never a placeholder -- no separate "force render" step
-                # needed.
-                handle = _user32.GetClipboardData(fmt)
-                # A provider can answer WM_NULL, then stall while rendering.
-                # Never copy a late result or publish it as a usable backup.
-                if time.monotonic() - started >= _SNAPSHOT_TIMEOUT_S:
-                    saved.lost[0] = "clipboard backup timed out"
-                    break
-                if not handle:
-                    skipped += 1
-                    not_saved[fmt] = "owner provided no data"
-                    continue
-
-                size = _kernel32.GlobalSize(handle)
-                if size <= 0 or size > _MAX_FORMAT_BYTES:
-                    skipped += 1
-                    not_saved[fmt] = "over the 100 MB cap" if size > _MAX_FORMAT_BYTES else "empty"
-                    continue
-                if total_bytes + size > _MAX_SNAPSHOT_BYTES:
-                    saved.lost[0] = "over the 100 MB total snapshot cap"
-                    break
-
-                ptr = _kernel32.GlobalLock(handle)
-                if not ptr:
-                    skipped += 1
-                    not_saved[fmt] = "could not lock its memory"
-                    continue
-                try:
-                    raw = ctypes.string_at(ptr, size)
-                finally:
-                    _kernel32.GlobalUnlock(handle)
-
-                # Never count a format as saved unless its bytes are
-                # actually non-empty -- an empty "success" is a lie.
-                if is_nonempty_payload(raw):
-                    saved[fmt] = raw
-                    total_bytes += size
-                else:
-                    skipped += 1
-                    not_saved[fmt] = "empty"
-            except Exception as e:
-                skipped += 1
-                not_saved[fmt] = "read error"
-                _log_error(f"Could not read clipboard format {fmt}", e)
-    finally:
-        saved.source_seq = get_clipboard_sequence_number()
-        _user32.CloseClipboard()
-
-    elapsed = time.monotonic() - started
-    if elapsed > _SLOW_SNAPSHOT_S:
-        _log_error(f"clipboard snapshot took {elapsed:.1f} s -- the clipboard owner was slow to render its data")
-
-    # Legacy text dedup: if CF_UNICODETEXT was captured non-empty, Windows
-    # synthesizes CF_TEXT/CF_OEMTEXT/CF_LOCALE from it automatically on
-    # restore (the mirror image of the CF_DIB -> CF_BITMAP synthesis this
-    # module already relies on -- see module docstring). Dropping the
-    # redundant legacy copies here shrinks the restore window (fewer
-    # formats for restore's prepare phase to allocate) without
-    # losing anything actually restorable.
-    if is_nonempty_payload(saved.get(CF_UNICODETEXT)):
-        for legacy_fmt in (CF_TEXT, CF_OEMTEXT, CF_LOCALE):
-            if legacy_fmt in saved:
-                del saved[legacy_fmt]
-                skipped += 1
-
-    # Completeness (292): an owner that provides no handle for a private
-    # format has supplied no user content to lose.  Keep delivery fail-closed
-    # for actual text/HTML/RTF/file/image content, but preserve every readable
-    # format and warn once about non-content formats we omit.
-    for fmt, reason in not_saved.items():
-        if reason == "empty" or _SYNTHESIZED_FROM.get(fmt, set()) & set(saved):
-            continue
-        if reason == "owner provided no data" and is_known_private_format(fmt):
-            continue
-        if (is_user_content_format(fmt)
-                or reason in {"over the 100 MB cap", "could not lock its memory", "read error"}):
-            saved.lost[fmt] = reason
-        else:
-            saved.omitted[fmt] = reason
-    if saved.lost:
-        _log_error("clipboard snapshot is incomplete -- these cannot be put back after a paste: "
-                   + saved.describe_lost())
-    if saved.omitted:
-        logger.warning("[CLIP] clipboard snapshot omitted formats that could not be restored: "
-                       + saved.describe_omitted())
-
-    if saved or skipped:
-        print(f"[DEBUG] Clipboard saved: {len(saved)} format(s), skipped {skipped} format(s)")
-
-    return saved
+    from samsara import clipboard_snapshot
+    return clipboard_snapshot.read_snapshot(sys.modules[__name__])
 
 
 def _mark_whole_clipboard_lost(snapshot: "ClipboardSnapshot", reason: str) -> None:
-    """Record that nothing could be snapshotted although the clipboard has
-    content. Never raises."""
-    try:
-        if _user32.CountClipboardFormats() > 0:
-            snapshot.lost[0] = reason
-            _log_error(f"clipboard content could not be snapshotted ({reason}); "
-                       "a paste will not be able to put it back")
-    except Exception:
-        snapshot.lost[0] = reason
+    from samsara import clipboard_snapshot
+    clipboard_snapshot.mark_whole_clipboard_lost(sys.modules[__name__], snapshot, reason)
 
 
 def _owner_answers_ping(owner) -> bool:
-    """True if the clipboard owner window answers WM_NULL within
-    _OWNER_PING_TIMEOUT_MS (SMTO_ABORTIFHUNG). Never raises; an API failure
-    counts as answering, so a missing API never blocks a snapshot."""
-    try:
-        WM_NULL, SMTO_ABORTIFHUNG = 0x0000, 0x0002
-        result = ctypes.c_size_t(0)
-        return bool(_user32.SendMessageTimeoutW(owner, WM_NULL, 0, 0, SMTO_ABORTIFHUNG,
-                                                _OWNER_PING_TIMEOUT_MS, ctypes.byref(result)))
-    except Exception:
-        return True
+    from samsara import clipboard_snapshot
+    return clipboard_snapshot.owner_answers_ping(sys.modules[__name__], owner)
+
+
+def _restore_status(saved, status):
+    if isinstance(saved, ClipboardSnapshot):
+        saved.restore_status = status
 
 
 def restore_clipboard(saved: Dict[int, bytes]) -> bool:
@@ -673,23 +539,33 @@ def restore_clipboard(saved: Dict[int, bytes]) -> bool:
         return _restore_clipboard_impl(saved)
     except Exception as e:
         _log_error("restore_clipboard failed unexpectedly", e)
+        _restore_status(saved, 'failed')
         return False
 
 
 def _restore_clipboard_impl(saved: Dict[int, bytes]) -> bool:
+    _restore_status(saved, 'failed')
     if not saved:
         # A genuinely empty original is user clipboard state too. Only clear
         # the transport text when this snapshot belongs to a completed copy.
+        # 1167s: or to a Paste-and-Warn replacement that captured no bytes --
+        # the old content is gone either way; never leave dictated text behind.
         if (sys.platform == 'win32' and isinstance(saved, ClipboardSnapshot)
-                and saved.complete and hasattr(saved, 'pasted_text')):
+                and hasattr(saved, 'pasted_text')
+                and (saved.complete or saved.seq is not None)):
             if not _open_clipboard_with_retry():
                 return False
             try:
                 if saved.seq is not None and get_clipboard_sequence_number() != saved.seq:
-                    return True  # a later user copy wins
-                return bool(_user32.EmptyClipboard())
+                    _restore_status(saved, 'kept_newer')
+                    return saved.complete  # a later user copy wins
+                emptied = bool(_user32.EmptyClipboard())
+                if emptied:
+                    _restore_status(saved, 'put_back')
+                return emptied and saved.complete
             finally:
                 _user32.CloseClipboard()
+        _restore_status(saved, 'put_back')
         return True
 
     if sys.platform != 'win32':
@@ -735,6 +611,7 @@ def _restore_clipboard_impl(saved: Dict[int, bytes]) -> bool:
                 guard_seq = current_seq
             else:
                 logger.info("[CLIP] clipboard changed during paste window, skipping restore to preserve user copy")
+                _restore_status(saved, 'kept_newer')
                 return True
 
     GMEM_MOVEABLE = 0x0002
@@ -778,6 +655,7 @@ def _restore_clipboard_impl(saved: Dict[int, bytes]) -> bool:
             return False
 
     if not prepared:
+        _restore_status(saved, 'put_back')
         return True  # everything saved was empty/unrestorable -- nothing to do, not a failure
 
     # Every handle exists now; only past this point do we touch the live
@@ -803,6 +681,7 @@ def _restore_clipboard_impl(saved: Dict[int, bytes]) -> bool:
                             "skipping restore to preserve user copy")
                 for _fmt, handle in prepared:
                     _kernel32.GlobalFree(handle)
+                _restore_status(saved, 'kept_newer')
                 return True
 
         _user32.EmptyClipboard()
@@ -852,6 +731,7 @@ def _restore_clipboard_impl(saved: Dict[int, bytes]) -> bool:
                             recovery_failed.append(recovery_fmt)
                     if not recovery_failed:
                         logger.warning("[CLIP] restored snapshot after SetClipboardData failure")
+                        _restore_status(saved, 'put_back')
                         return True
                     failed.extend(recovery_failed)
                 skipped += 1
@@ -865,6 +745,8 @@ def _restore_clipboard_impl(saved: Dict[int, bytes]) -> bool:
     if failed:
         _log_error("clipboard restore was partial -- could not put back: "
                    + ", ".join(format_label(f) for f in failed))
+    if not failed:
+        _restore_status(saved, 'put_back')
     lost = getattr(saved, 'lost', None) or {}
     if lost:
         # NOT refused (49, audit issue 4): by the time restore runs, Samsara's
@@ -1072,16 +954,23 @@ def wait_for_clipboard_ready(expected_seq, settle) -> str:
         time.sleep(min(pause, deadline - now))
 
 
-def _copy_private_text_windows(text, receipt=None):
+def _copy_private_text_windows(text, receipt=None, *, expected_seq=None, state=None):
     """Publish markers and text atomically; never fall back to an unsafe copy.
 
     Prepare everything before EmptyClipboard. A failed marker is a failed
     delivery: text is only published after all three protections are set.
     The optional image-loss receipt retains its check under OpenClipboard.
+    1167s: ``expected_seq`` is the same check for Paste-and-Warn (the old
+    snapshot's sequence, rechecked immediately before EmptyClipboard);
+    ``state`` records whether the old content was replaced and the sequence
+    read under OpenClipboard after the write, so restore stays guarded even
+    when a later step fails.
     """
     handles = {}
     opened = False
     window = None
+    if receipt is not None and expected_seq is None:
+        expected_seq = receipt.sequence
     try:
         payloads = []
         for name in PRIVATE_CLIPBOARD_FORMATS:
@@ -1113,7 +1002,7 @@ def _copy_private_text_windows(text, receipt=None):
         if not opened:
             recovery.fail(recovery.clipboard_failure_message())
             return False
-        if receipt is not None and get_clipboard_sequence_number() != receipt.sequence:
+        if expected_seq is not None and get_clipboard_sequence_number() != expected_seq:
             recovery.fail("Clipboard changed. Say finish again. Draft kept.")
             return False
         if not _user32.EmptyClipboard():
@@ -1121,6 +1010,8 @@ def _copy_private_text_windows(text, receipt=None):
             return False
         if receipt is not None:
             receipt.replaced = True
+        if state is not None:
+            state['replaced'] = True
         for fmt, _raw in payloads:
             if not _user32.SetClipboardData(fmt, handles[fmt]):
                 return False
@@ -1131,6 +1022,8 @@ def _copy_private_text_windows(text, receipt=None):
         return False
     finally:
         if opened:
+            if state is not None and state.get('replaced'):
+                state['seq'] = get_clipboard_sequence_number()
             _user32.CloseClipboard()
         if window:
             _user32.DestroyWindow(window)
@@ -1168,6 +1061,7 @@ def paste_with_preservation(
     before_paste: Optional[Callable[[], bool]] = None,
     incomplete_snapshot_fallback: Optional[Callable[[], bool]] = None,
     delivery_observer: Optional[Callable[[DeliveryOutcome], None]] = None,
+    incomplete_snapshot_policy: Optional[str] = None,
 ) -> bool:
     """
     Paste text via clipboard while preserving original clipboard content.
@@ -1182,6 +1076,12 @@ def paste_with_preservation(
             before Ctrl+V after clipboard preparation and paste delay.
         incomplete_snapshot_fallback: Optional typed-input delivery callable
             used when snapshot preservation or clipboard readiness fails.
+        incomplete_snapshot_policy: PRESERVE (default; also when None and the
+            current delivery attempt names no policy) or PASTE_AND_WARN
+            (1167s, dictation only): an incomplete snapshot whose clipboard
+            sequence is known is replaced once -- rechecked under
+            OpenClipboard immediately before EmptyClipboard -- the captured
+            part is restored, and the attempt receipt records the loss.
 
     Returns:
         True if input was sent (does not confirm receipt by the target).
@@ -1198,6 +1098,7 @@ def paste_with_preservation(
 
     with clipboard_lock:
         receipt = recovery.current_attempt()
+        policy = incomplete_snapshot_policy or getattr(receipt, 'incomplete_policy', None) or PRESERVE
         # The clipboard is user data, not a disposable transport buffer. Do
         # not overwrite a snapshot that cannot be restored exactly.
         try:
@@ -1207,9 +1108,21 @@ def paste_with_preservation(
             saved = ClipboardSnapshot()
             saved.lost[0] = "clipboard snapshot failed"
 
+        warn_loss = False   # 1167s Paste-and-Warn for this attempt
+        published = {}      # replaced/seq, filled under OpenClipboard
         if isinstance(saved, ClipboardSnapshot) and not saved.complete:
             if receipt is not None:
                 receipt.backup_failed = True
+            # 1167s: the user's policy risks the OLD unpreservable content
+            # only. A failed/timed-out/busy snapshot has no sequence, so it
+            # can never authorize replacement: it keeps the PRESERVE contract.
+            warn_loss = (policy == PASTE_AND_WARN
+                         and not (receipt is not None and receipt.mode == 'paste')
+                         and bool(getattr(saved, 'source_seq', None)))
+        if warn_loss:
+            logger.warning("[CLIP] Paste-and-Warn: the old clipboard cannot be fully backed up "
+                           "and will be replaced once: " + saved.describe_lost())
+        elif isinstance(saved, ClipboardSnapshot) and not saved.complete:
             _log_error("clipboard paste refused because the original content cannot be restored: "
                        + saved.describe_lost())
             image = bool(saved.lost) and set(saved.lost) <= {CF_BITMAP, CF_DIB, CF_DIBV5}
@@ -1239,6 +1152,22 @@ def paste_with_preservation(
                 saved = None  # explicit consent: never restore a partial image
                 if not _copy_with_image_consent(text, receipt):
                     return False
+            elif warn_loss:
+                # Target/privacy guard BEFORE the old content is destroyed;
+                # it runs again immediately before Ctrl+V below.
+                if before_paste is not None and not before_paste():
+                    return False
+                ok = _copy_private_text_windows(text, expected_seq=saved.source_seq,
+                                                state=published)
+                if published.get('replaced'):
+                    # Guard the restore with the sequence read under our own
+                    # OpenClipboard, even when the write itself failed.
+                    saved.seq = published.get('seq')
+                    saved.pasted_text = text
+                if not ok:
+                    if receipt is not None and not receipt.reason:
+                        recovery.fail("Clipboard couldn't be replaced. Draft kept.")
+                    return False
             else:
                 copy_private_text(text)
 
@@ -1247,7 +1176,8 @@ def paste_with_preservation(
             # runs, something else changed the clipboard during the paste
             # window and blindly restoring would clobber that, not just
             # put back the original content restore is meant to protect.
-            copied_seq = get_clipboard_sequence_number()
+            copied_seq = (published.get('seq') if warn_loss and published.get('seq') is not None
+                          else get_clipboard_sequence_number())
             if isinstance(saved, ClipboardSnapshot):
                 saved.seq = copied_seq
                 saved.pasted_text = text
@@ -1293,8 +1223,14 @@ def paste_with_preservation(
             return False
 
         finally:
+            if warn_loss:
+                # Nothing was destroyed unless EmptyClipboard ran: never
+                # restore an unguarded snapshot over a newer copy.
+                if published.get('replaced'):
+                    restore_clipboard(saved)
+                    recovery.record_paste_and_warn(receipt, saved)
             # Always restore clipboard, even if paste failed
-            if saved or (isinstance(saved, ClipboardSnapshot) and hasattr(saved, 'pasted_text')):
+            elif saved or (isinstance(saved, ClipboardSnapshot) and hasattr(saved, 'pasted_text')):
                 if not restore_clipboard(saved):
                     logger.error('[CLIP] Original clipboard restore failed; exact preservation not confirmed')
                     if receipt is not None:

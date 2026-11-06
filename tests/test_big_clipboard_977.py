@@ -170,8 +170,10 @@ def test_standalone_typing_failure_is_visible_and_clipboard_unchanged(session):
     s.typed.return_value = False
     s.app._show_outcome_chip = Mock()
     original = dict(s.fake.formats)
+    # 1167s: explicit PRESERVE (standalone dictation now defaults to Paste-and-Warn).
     assert paste.paste_preserving_clipboard(s.app, 'Synthetic failed delivery.',
-                type_text_unicode_fn=s.typed, get_foreground_hwnd_fn=lambda: 42) is False
+                type_text_unicode_fn=s.typed, get_foreground_hwnd_fn=lambda: 42,
+                incomplete_snapshot_policy=cb.PRESERVE) is False
     message, severity = s.app._show_outcome_chip.call_args.args
     assert 'History' in message and 'Copy' in message and severity == 'error'
     assert 'Clipboard backup failed' in message

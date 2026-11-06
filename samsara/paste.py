@@ -13,6 +13,8 @@ from samsara import flight_recorder, injection_safety
 from samsara import clipboard_recovery as recovery
 from samsara import delivery_verify
 from samsara.clipboard import (
+    PASTE_AND_WARN,
+    PRESERVE,
     DeliveryOutcome,
     TypedDispatch,
     paste_with_preservation,
@@ -229,14 +231,27 @@ def paste_preserving_clipboard(
     paste_with_preservation_fn=paste_with_preservation,
     type_text_unicode_fn=type_text_unicode,
     get_foreground_hwnd_fn=_get_foreground_hwnd,
+    incomplete_snapshot_policy=None,
 ):
-    """Paste text through the app's guarded clipboard/type delivery seam."""
+    """Paste text through the app's guarded clipboard/type delivery seam.
+
+    1167s: this is the dictation seam (standalone holds, hands-free commits
+    and the app's other spoken-text deliveries). An old clipboard that cannot
+    be fully backed up is pasted over once and reported (PASTE_AND_WARN)
+    instead of being typed automatically. Clipboard-only/agent clients and
+    silent streaming partials cannot show that warning, so they keep the
+    generic PRESERVE contract; ``incomplete_snapshot_policy`` overrides
+    either default explicitly. The policy travels on this attempt's receipt,
+    so injected paste callables keep their signatures.
+    """
     app._last_delivery = None  # 823: a new/failed attempt fences older selection receipts.
     app._unit_before = None
     app._undo_unit = None
     app._redo_unit = None
     attempt = recovery.current_attempt()
     if attempt is not None:
+        attempt.incomplete_policy = incomplete_snapshot_policy or (
+            PRESERVE if clipboard_only or feedback == 'silent' else PASTE_AND_WARN)
         schedule = getattr(app, '_schedule_ui', None)
         if callable(schedule):
             schedule(lambda: recovery.bind_compact(app))
@@ -519,12 +534,12 @@ def show_delivery_result(app, sent, outcome, *, feedback=True):
     if isinstance(outcome, bool):
         outcome = DeliveryOutcome.CONFIRMED if outcome else DeliveryOutcome.UNVERIFIED
     attempt = recovery.current_attempt()
-    if attempt is not None and attempt.restore_failed:
+    # 986/1167s: one clipboard-loss message replaces the delivery chip and
+    # the success sound/flash, so nothing green or audible masks the loss.
+    loss = recovery.loss_message(attempt, sent, outcome)
+    if loss is not None:
         if callable(show := getattr(app, '_show_outcome_chip', None)):
-            # PLACEHOLDER COPY (986)
-            message = (recovery.RESTORE_MESSAGE if sent else
-                       "Text wasn't inserted and the old clipboard couldn't be fully restored. Your words are in History.")
-            show(message, 'warning' if sent else 'error')
+            show(*loss)
         return sent
     if sent and outcome in (DeliveryOutcome.CONFIRMED, DeliveryOutcome.SENT):
         if not feedback:
