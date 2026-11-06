@@ -123,6 +123,10 @@ def transcribe_with_vocabulary(app, audio, *, path, **params):
     from samsara.config_defaults import cfg_get
     from samsara.hold_recording_recovery import incident_model
     model = app.model if path in ('hold_partial', 'handsfree_preview') else incident_model(app)
-    return transcribe_without_outro(model, audio, effective,
+    result = transcribe_without_outro(model, audio, effective,
         rate=getattr(app, 'model_rate', 16000), enabled=path not in ('hold_partial', 'handsfree_preview')
         and cfg_get(getattr(app, 'config', {}) or {}, 'dictation.signoff_filter'))
+    if path == 'commit_redecode':
+        from samsara.segment_speech_guard import screen_commit
+        return screen_commit(result, audio, getattr(app, 'model_rate', 16000), effective)
+    return result

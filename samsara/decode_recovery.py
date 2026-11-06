@@ -513,6 +513,8 @@ def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None, 
                         params, deadline, cancel, guard, abandoned)
                     if recovered and not result.missed[missed_start:]:
                         chunk_warning = False
+                from samsara.segment_speech_guard import screen
+                accepted = screen(accepted, bounds, app.model_rate, chunk.start / app.model_rate, effective)
                 if reason:
                     start, end = chunk.core_start / app.model_rate, chunk.core_end / app.model_rate
                     result.failures.append((start, end, reason))
