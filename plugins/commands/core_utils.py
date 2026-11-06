@@ -13,6 +13,17 @@ from samsara.log import get_logger
 logger = get_logger(__name__)
 
 
+@command('paste that again', aliases=['paste again'], pack='core',
+         whole_utterance=True, risk_class='write', ai_visible=False,
+         ai_composable=False, side_effects=['clipboard', 'keystrokes'],
+         voice_triggerable=True)
+def paste_that_again(app, remainder='', **kwargs):
+    """Pastes your last dictation into the current window; keeps your clipboard."""
+    from samsara.paste_again import request
+    request(app)
+    return True
+
+
 def start_services(app):
     """Install the user-owned alias file after the live matcher exists."""
     from samsara.user_backup import start_daily_service

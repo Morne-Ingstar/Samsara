@@ -122,6 +122,8 @@ def write_history(app, **fields):
         if target.sensitive:
             fields.update(raw_text="", display_text="", app_context="",
                           matched_command=None, audio_path=None)
+    from samsara.paste_again import remember_history
+    remember_history(app, fields)
     return app.history_db.add(**fields)
 
 
@@ -138,6 +140,8 @@ def before_delivery(app, text):
               or isinstance(getattr(app, "history", None), list) else TargetPrivacy())
     app._recent_delivery_privacy = (time.monotonic(), target)
     if target.sensitive:
+        from samsara.paste_again import conceal
+        conceal(app, text)
         manager = getattr(app, "history_db", None)
         if manager is not None:
             try:

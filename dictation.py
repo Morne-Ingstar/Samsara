@@ -531,7 +531,7 @@ _HANDS_FREE_PRESERVE_COMMANDS = frozenset({
     "show numbers", "show", "refresh numbers", "update numbers",
     "show windows", "label windows", "window labels",
     "read windows", "list windows", "what windows",
-    "maximize", "minimize",
+    "maximize", "minimize", "paste again", "paste that again",  # 1163
 })
 _HANDS_FREE_COMMIT_COMMANDS = frozenset({
     "submit", "enter", "escape", "press tab", "next field", "previous field",

@@ -1,6 +1,7 @@
 """Control names for Quick Reference; checked against UI definitions (1150)."""
 
 CONTROL_LABELS = (
+    'Paste again',
     'Clear draft',
     'Clean up',
     'Accept?',

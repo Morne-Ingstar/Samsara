@@ -19,6 +19,7 @@ from samsara.button_voice import (
 # Deliberately bounded to the session surfaces named in 1150. No third-party
 # windows, text editors, arbitrary links or model-generated answer text.
 SURFACE_MODULES = frozenset({
+    "samsara.ui.paste_again_qt",
     "samsara.streaming", "samsara.ui.live_surface_qt",
     "samsara.ui.listening_indicator", "samsara.ui.ava_captions_qt",
     "samsara.ui.ava_search_panel_qt", "samsara.ui.ava_consent_qt",

@@ -1239,7 +1239,7 @@ class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QW
         fm = QFontMetrics(self._font())
         text_w = fm.horizontalAdvance(label)
         dot_reserve = _DOT_SPACE if show_dot else 0
-        return max(_PILL_MIN_W, text_w + 2 * _PILL_PAD_X + dot_reserve)
+        return max(_PILL_MIN_W, text_w + 2 * _PILL_PAD_X + dot_reserve) + getattr(self, '_paste_again_width', 0)
 
     def _reposition(self):
         """Resize the widget to fit the current label, then position it.
@@ -1291,7 +1291,7 @@ class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QW
 
         if chip is None:
             return pill_w, _PILL_H, QRectF(0, 0, pill_w, _PILL_H), None
-        if self._chip_only:
+        if self._chip_only and not getattr(self, '_paste_again_width', 0):
             return chip_w, chip_h, None, QRectF(0, 0, chip_w, chip_h)
 
         total_w = max(pill_w, chip_w)
@@ -1341,12 +1341,11 @@ class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QW
 
     def _paint_pill(self, painter, rect, bg_hex, fg_hex, label, show_dot):
         path = QPainterPath()
-        path.addRoundedRect(rect, _CORNER_R, _CORNER_R)
+        path.addRoundedRect(rect.adjusted(.5, .5, -.5, -.5), _CORNER_R, _CORNER_R)
         painter.fillPath(path, QColor(bg_hex))
-
+        painter.strokePath(path, QPen(theme.qcolor(theme.BORDER), 1))
         fg = QColor(fg_hex)
-
-        text_rect = rect
+        text_rect = rect.adjusted(0, 0, -getattr(self, '_paste_again_width', 0), 0)
         if show_dot:
             # State glyph: the Samsara mark (shared routine, tray_qt.paint_mark).
             capture, eye, rotation, opacity = self._glyph_mark()
@@ -1354,7 +1353,7 @@ class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QW
                            rect.y() + (rect.height() - _GLYPH_PX) / 2.0,
                            _GLYPH_PX, _GLYPH_PX)
             paint_mark(painter, glyph, capture, eye, rotation, opacity)
-            text_rect = rect.adjusted(_DOT_SPACE, 0, 0, 0)
+            text_rect = text_rect.adjusted(_DOT_SPACE, 0, 0, 0)
 
         painter.setPen(fg)
         painter.setFont(self._font())
@@ -1402,6 +1401,8 @@ class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QW
 
     def _sync_receipt(self):
         super()._sync_receipt()
+        if getattr(self, '_paste_again_width', 0):
+            self._paste_again_control.sync()
         chip = self._active_chip()
         window = getattr(self, '_message_window', None)
         if chip and self.isVisible():
@@ -1414,7 +1415,6 @@ class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QW
             window.show(); window.update()
         elif window is not None:
             window.hide()
-
     def _retire_input_window(self):
         window = getattr(self, '_message_window', None)
         if window is not None:
