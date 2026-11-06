@@ -479,7 +479,7 @@ def _typed_stop(typed):
         return None
     if typed.state == 'partial':
         return 'partial'
-    if typed.state == 'none' and typed.reason == 'target_changed':
+    if typed.state == 'none' and typed.reason in ('target_changed', 'cancelled'):
         return 'target_changed'
     return None
 

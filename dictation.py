@@ -430,7 +430,7 @@ from samsara.smart_corrections import (
 )
 from samsara.formatting_tokens import apply_formatting_tokens_if_enabled
 from samsara import autostart
-from samsara import config_defaults, listening_display, tutorial_capture, speech_presence, failure_reasons, hold_backstop
+from samsara import config_defaults, listening_display, tutorial_capture, speech_presence, failure_reasons, hold_backstop, typed_delivery
 from samsara.onboarding import display_placement
 from samsara import injection_safety
 from samsara import diagnostics
@@ -4253,7 +4253,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             self.play_sound('scratch_success' if success else 'scratch_refuse')
 
         def _on_abort() -> None:
-            logger.info('[SESSION] Global abort phrase -- exiting command mode')
+            typed_delivery.cancel(self); logger.info('[SESSION] Global abort phrase -- exiting command mode')
             # Queue 110: an abort phrase ("cancel") and a sleep phrase both
             # land here, and both must reach an Ava turn that is still
             # talking. Only "stop" did before, and only in the AVA lane
@@ -5483,13 +5483,13 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
 
     def _touch_session_activity(self, *, speech_onset=False) -> None:
         """Only a fresh Silero onset extends toggle-session inactivity.
-
         Queueing, decode/delivery, and agent completion may still signal this
         chokepoint, but cannot extend a session without a new speech edge.
 
         No-ops while _session_recovery_pause is set -- an announced device
         outage must not have some other in-flight signal quietly re-arm the
         timer out from under the deliberate pause below."""
+        if speech_onset: typed_delivery.cancel(self)
         if not speech_onset or not self.command_mode_active:
             return
         _cancel_windows = _cancel_window_module()
@@ -9466,7 +9466,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         owner = tutorial_capture.resolve(tutorial_dictation)
         if owner is not None:
             return tutorial_capture.handoff(self, owner, text, return_delivery_confirmation)
-        return _paste.paste_preserving_clipboard(
+        return typed_delivery.deliver(_paste.paste_preserving_clipboard,
             self,
             text,
             before_paste=before_paste,
@@ -10055,7 +10055,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         return True
 
     def start_recording(self, streaming=None, play_earcon=True, *, capture_path='dictation_hold'):
-        from samsara.vocabulary_decode import log_vocabulary
+        from samsara.vocabulary_decode import log_vocabulary; typed_delivery.cancel(self)
         log_vocabulary(self)  # 1009: once at session entry, never per utterance.
         with self._hold_capture_lifecycle_lock:
             if (not self._running or self.recording
@@ -11168,9 +11168,9 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         )
         if stage_timing is not None:
             stage_timing.handoff()
-
     def cancel_recording(self):
         """Escape and failed startup must release the hold even if cancel raises."""
+        typed_delivery.cancel(self)
         with self._hold_capture_lifecycle_lock:
             try:
                 self._cancel_recording_impl()

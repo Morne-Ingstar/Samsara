@@ -593,8 +593,10 @@ def test_continuous_chunk_disables_success_and_wrapper_forwards_feedback():
     method = next(n for n in ast.walk(source) if isinstance(n, ast.FunctionDef)
                   and n.name == '_paste_preserving_clipboard')
     deliver = Mock(return_value=True)
+    from samsara import typed_delivery  # 1172: wrapper now admits one delivery transaction.
     namespace = dict(_paste=SimpleNamespace(paste_preserving_clipboard=deliver),
-        paste_with_preservation=Mock(), type_text_unicode=Mock(), _get_foreground_hwnd=Mock())
+        paste_with_preservation=Mock(), type_text_unicode=Mock(), _get_foreground_hwnd=Mock(),
+        typed_delivery=typed_delivery)
     exec(compile(ast.Module(body=[method], type_ignores=[]), 'paste-wrapper', 'exec'), namespace)
-    namespace['_paste_preserving_clipboard'](object(), 'synthetic', feedback=False)
+    namespace['_paste_preserving_clipboard'](SimpleNamespace(), 'synthetic', feedback=False)
     assert deliver.call_args.kwargs['feedback'] is False

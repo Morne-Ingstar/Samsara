@@ -734,8 +734,8 @@ def is_stop_utterance(text: str) -> bool:
     normalized = normalized.strip(string.punctuation + " ")
     return normalized in STOP_UTTERANCES
 
-
 def stop_all(app, reason: str = "stop", *, chip: bool = True, bump: bool = True) -> dict:
+    from samsara.typed_delivery import cancel; cancel(app)
     from samsara import ava_turn_queue
     with ava_turn_queue.ownership_lock(app):
         return _stop_all(app, reason, chip=chip, bump=bump)

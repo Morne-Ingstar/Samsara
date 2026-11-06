@@ -62,17 +62,34 @@ class TypedDispatch:
                 f'total={self.total}, reason={self.reason!r})')
 
 
-def _wait_until(clock, deadline):
+def _wait_until(clock, deadline, cancelled):
     # A few bounded sleeps: time.sleep may return early on some timers.
     for _ in range(4):
         remaining = deadline - clock.monotonic()
         if remaining <= 0:
             return
-        clock.sleep(remaining)
+        # Real waits wake immediately on Stop; synthetic clocks keep the
+        # original deterministic pacing contract used by the native tests.
+        import time
+        if clock is time:
+            if cancelled.wait(remaining):
+                return
+        else:
+            clock.sleep(remaining)
 
 
 def dispatch_pairs(send, inputs, input_type, size, *, interval, target,
                    target_matches, clock, logger, log_error):
+    from samsara.typed_delivery import run_paced
+    receipt = run_paced(lambda cancelled: _dispatch_pairs(
+        send, inputs, input_type, size, interval=interval, target=target,
+        target_matches=target_matches, clock=clock, logger=logger,
+        log_error=log_error, cancelled=cancelled))
+    return receipt if receipt is not None else TypedDispatch(0, len(inputs), 'cancelled', unknown=True)
+
+
+def _dispatch_pairs(send, inputs, input_type, size, *, interval, target,
+                    target_matches, clock, logger, log_error, cancelled):
     """Send ``inputs`` one down/up pair per call; return a TypedDispatch.
 
     ``send`` is user32.SendInput. Before every pair the focus captured by the
@@ -86,8 +103,12 @@ def dispatch_pairs(send, inputs, input_type, size, *, interval, target,
     last = None
     try:
         for start in range(0, total, TYPE_EVENTS_PER_CALL):
+            if cancelled.is_set():
+                return TypedDispatch(accepted, total, 'cancelled')
             if last is not None:
-                _wait_until(clock, last + interval)
+                _wait_until(clock, last + interval, cancelled)
+            if cancelled.is_set():
+                return TypedDispatch(accepted, total, 'cancelled')
             # The send boundary: the window/control that had focus at entry.
             if not target_matches(target):
                 logger.warning(
