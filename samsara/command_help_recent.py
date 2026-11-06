@@ -49,8 +49,9 @@ HELP = {
         'Changes the favorites list font size; the list keeps this setting.'),
     'favorites window size': (['favorites window size 640 by 480'],
         'Changes the favorites list window size; the list keeps this setting.'),
-    'show favorites': (['show favorites'],
+    # 1144 n08: no-tail controls have descriptions, not argument examples.
+    'show favorites': ([],
         'Shows the saved favorites list; say a visible number to open an item.'),
-    'hide favorites': (['hide favorites'],
+    'hide favorites': ([],
         'Closes the favorites list if it is open.'),
 }

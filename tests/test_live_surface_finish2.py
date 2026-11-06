@@ -55,7 +55,8 @@ def flush(posted):
 def test_hold_then_handsfree_uses_current_lane_and_vad_before_any_partial(surface):
     c, app, _, posted, _ = surface
     hold = c.begin_capture(Lane.HOLD); c.drain()
-    assert c.widget._lane.text() == 'Hold' and c.widget._state.text() == 'recording'
+    # 1144 n10: preserve 1127's owner-approved feature name.
+    assert c.widget._lane.text() == 'Hold to talk' and c.widget._state.text() == 'recording'
     assert c.widget._mark.capture == 'recording'
     c.stop_capture(capture_id=hold)
     indicator = LiveSurfaceIndicatorAdapter(c); indicator.set_session_mode('HANDS FREE')
@@ -105,8 +106,7 @@ def test_rolling_preview_never_republishes_committed_lines_as_provisional(surfac
     assert c.view().provisional_text == 'Synthetic settled sentence.'
 
 
-def test_clear_discards_hold_and_already_queued_final_cannot_type(surface):
-    c, app, clock, posted, injected = surface
+def bind_host_cancel(app, posted):
     tree = ast.parse((Path(__file__).parents[1]/'dictation.py').read_text(encoding='utf-8'))
     cls = next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='DictationApp')
     names = {'cancel_recording','_cancel_recording_impl','_on_streaming_session_finished'}
@@ -120,6 +120,40 @@ def test_clear_discards_hold_and_already_queued_final_cannot_type(surface):
     app.play_sound = Mock(); app._dictation_consumer = Mock()
     app.set_app_state = lambda **values: app.__dict__.update(values)
     app._schedule_ui = lambda fn,*args: posted.append(partial(fn,*args))
+
+
+@pytest.mark.parametrize('display', ['Full', 'Compact'])
+def test_cancel_recording_is_owned_and_temporary(surface, qt_widget_scope, display):
+    # 1144: Escape and failed-start cleanup share Clear's real host cancel path.
+    c, app, clock, posted, _ = surface
+    bind_host_cancel(app, posted)
+    app._streaming_session = None
+    app._ace_dictation_active = True
+    if display == 'Full':
+        app.listening_indicator = LiveSurfaceIndicatorAdapter(c)
+        app.cancel_recording(); flush(posted); c.drain()
+        notice = c.view().notice
+        assert notice.message == 'Recording cancelled'
+        assert notice.kind is NoticeKind.WARNING and notice.owner == 'hold'
+        assert notice.expires_at is not None
+        clock[0] = notice.expires_at
+        c.refresh_expired()
+        assert c.view().notice.kind is NoticeKind.NONE
+    else:
+        from samsara.ui.listening_indicator import ListeningIndicator
+        with qt_widget_scope(ListeningIndicator()) as indicator:
+            app.listening_indicator = indicator
+            app.cancel_recording(); flush(posted)
+            assert indicator._active_chip() == ('Recording cancelled', 'warning')
+            assert indicator._chip_feedback.owner == 'hold'
+            assert indicator._chip_timer.isActive() and indicator._chip_deadline > 0
+    app._dictation_consumer.cancel.assert_called_once()
+    app._close_hold_capture_duck.assert_called_once()
+
+
+def test_clear_discards_hold_and_already_queued_final_cannot_type(surface):
+    c, app, clock, posted, injected = surface
+    bind_host_cancel(app, posted)
     app._paste_preserving_clipboard = Mock(side_effect=lambda text: injected.append(text))
     app._log_history = Mock(); app.add_to_history = Mock()
     app.listening_indicator = LiveSurfaceIndicatorAdapter(c)

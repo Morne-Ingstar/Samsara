@@ -359,8 +359,9 @@ def _expected_scopes():
     )})
     from samsara.spoken_numbers import NUMBER_WORDS
     words = {number: word for word, number in NUMBER_WORDS.items()}
+    # 1144: 958 shares numbered follow-ups between window overview and favorites.
     expected.update({f"window {words.get(number) or words[number // 10 * 10] + ' ' + words[number % 10]}":
-                     {'tags': ['window_overview.visible']} for number in range(10, 100)})
+                     {'tags': ['numbered_list.visible']} for number in range(10, 100)})
     return expected
 
 
@@ -492,7 +493,8 @@ def test_cheatsheet_window_hides_not_live_and_says_how_many(
         hidden.update(ids_by_phrase[phrase]
                       for phrase, scope in _expected_scopes().items()
                       if 'apps' in scope or scope.get('tags') in (
-                          ['window_overview.visible'], ['show_numbers.visible']))
+                          ['window_overview.visible'], ['show_numbers.visible'],
+                          ['numbered_list.visible']))  # 1144: the shared list is hidden too.
         all_ids = {spec.canonical_id for spec in specs}
         assert all_ids - ids == hidden
         assert win._category_bar._hidden_lbl.text() == f"({len(hidden)} not live here)"

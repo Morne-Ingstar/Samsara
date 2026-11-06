@@ -251,6 +251,9 @@ RETIRED_TEXT_SLOTS = {
     'core_utils.reset_floating_windows': 'reset floating windows',
     'show_numbers.refresh_numbers': 'refresh numbers',
     'window_cube.refresh_cube': 'refresh cube',
+    # 1144: favorites reject prose tails; retain the historical test IDs.
+    'favorites.show_favorites': 'show favorites',
+    'favorites.hide_favorites': 'hide favorites',
 }
 
 # 806: these newly understood chains fail quiet policy before any effect.

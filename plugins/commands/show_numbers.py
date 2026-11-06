@@ -1885,15 +1885,15 @@ def _click_number(app, number: int, modifier: str, keys_frozen: frozenset = froz
 
     if _overlay_window is not None:
         qt_runtime.post(lambda: _overlay_window and _overlay_window.highlight_number(number))
-    from samsara.click_effect_policy import element_action
+    from samsara.numbered_click_action import element_action
     result = element_action(app, element, modifier, keys_frozen,
                             lambda: _click_with_validation(element, modifier, keys_frozen))
     if result is False:
+        _destroy_overlay(app)
         msg = f"Element {number} is no longer available."
         logger.info(f"[OVERLAY] {msg}")
         _speak(app, msg)
         return True
-
     _destroy_overlay(app)
     return result
 

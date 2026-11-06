@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ATTRIBUTES = ROOT / ".gitattributes"
-EXPECTED_BINARY_EXTENSIONS = {".ico", ".jpg", ".mp4", ".png", ".wav"}
+EXPECTED_BINARY_EXTENSIONS = {".ico", ".jpg", ".mp4", ".onnx", ".png", ".wav"}  # 1144: shipped wake models.
 HASHED_LF_PATHS = {
     "assets/icon/samsara.svg",
     "assets/brand/samsara-mark.svg",

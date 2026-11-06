@@ -70,7 +70,7 @@ def _refresh(app):
 
 
 @command('show favorites', aliases=['quick list', 'show quick list', 'list favorites'],
-         pack='core', risk_class='ui', side_effects=['ui'], param_schema=_OPTIONAL_ARGS)
+         pack='core', risk_class='ui', side_effects=['ui'])
 def show_favorites(app, remainder=''):
     """Shows numbered files, folders, shortcuts and websites. Say a number to open."""
     global _app, _rows, _visible
@@ -92,7 +92,7 @@ def show_favorites(app, remainder=''):
 
 
 @command('hide favorites', aliases=['hide quick list', 'close favorites', 'close quick list'],
-         pack='core', risk_class='ui', side_effects=['ui'], param_schema=_OPTIONAL_ARGS)
+         pack='core', risk_class='ui', side_effects=['ui'])
 def hide_favorites(app, remainder=''):
     """Closes the quick list."""
     if remainder:

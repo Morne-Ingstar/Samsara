@@ -22,6 +22,7 @@ from pathlib import Path
 import numpy as np
 
 from samsara.log import get_logger
+from samsara.config_defaults import cfg_get
 from samsara.paths import samsara_home_dir
 
 logger = get_logger(__name__)
@@ -115,7 +116,7 @@ def capture_held_final(session, text, raw_text):
         # Snapshot values now: later holds/config changes cannot replace them.
         pcm = np.array(audio, copy=True)
         rate = app.model_rate
-        model = app.config.get('model_size', '')
+        model = cfg_get(app.config, 'model_size')
         def save():
             try:
                 append_sample(app, pcm, rate, raw_text or '', text.strip(), model)

@@ -203,6 +203,8 @@ class TestResolveFormattingTokens:
         assert len(state["tokens"]) == distinct + len(ft.TRAILING_WRAPS)
         inserts = [t["inserts"] for t in state["tokens"]]
         assert 'straight quote "' in inserts and not any(i.startswith("'") for i in inserts)
+        assert {'question mark ?', 'exclamation mark !', 'period .', 'comma ,',
+                'semicolon ;', 'colon :'} <= set(inserts)
 
     def test_disabled_reflected(self):
         app = _make_app({"formatting_tokens": {"enabled": False}})

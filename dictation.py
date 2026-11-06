@@ -11209,10 +11209,10 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 self._dictation_consumer.cancel()
 
         self.play_sound("error")  # Play error sound to indicate cancellation
-
+        from samsara.live_surface.feedback import Feedback, FeedbackKind
         if hasattr(self, 'listening_indicator'):
             self._schedule_ui(self.listening_indicator.set_listening, False)
-            self._schedule_ui(self.listening_indicator.flash_error)
+            self._schedule_ui(self.listening_indicator.show_feedback, "Recording cancelled", "warning", 2000, Feedback(FeedbackKind.WARNING, owner="hold"))  # PLACEHOLDER COPY (1144)
 
     def _on_streaming_session_finished(self, session):
         """Release app ownership only if ``session`` is still the owner."""

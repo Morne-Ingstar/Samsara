@@ -236,7 +236,7 @@
 {"accept": ["alarm_commands.show_alarms"], "id": "alarm_commands.show_alarms", "kind": "filler", "polarity": "positive", "text": "could you alarm status"}
 {"accept": ["alarm_commands.show_alarms"], "id": "alarm_commands.show_alarms", "kind": "filler", "polarity": "positive", "text": "alarm status for me"}
 {"id": "alarm_commands.show_alarms", "kind": "sentence", "polarity": "negative", "reject": "alarm_commands.show_alarms", "text": "honestly the whole point of the meeting was to alarm overview and nobody did"}
-{"id": "alarm_commands.show_alarms", "kind": "other_command", "polarity": "negative", "reject": "alarm_commands.show_alarms", "text": "show"}
+{"id": "alarm_commands.show_alarms", "kind": "other_command", "polarity": "negative", "reject": "alarm_commands.show_alarms", "text": "show me status bar"}
 {"id": "alarm_commands.show_alarms", "kind": "nonsense", "polarity": "negative", "reject": "alarm_commands.show_alarms", "text": "purple glimmer overview octopus thunderous"}
 {"accept": ["app_verbs.close"], "id": "app_verbs.close", "kind": "alias", "polarity": "positive", "text": "close"}
 {"accept": ["app_verbs.close"], "id": "app_verbs.close", "kind": "determiner", "polarity": "positive", "text": "close the notepad"}
@@ -3476,7 +3476,7 @@
 {"accept": ["builtin.game_bar"], "id": "builtin.game_bar", "kind": "filler", "polarity": "positive", "text": "Can you game bar for me please."}
 {"accept": ["builtin.game_bar"], "id": "builtin.game_bar", "kind": "filler", "polarity": "positive", "text": "could you game bar please"}
 {"id": "builtin.game_bar", "kind": "sentence", "polarity": "negative", "reject": "builtin.game_bar", "text": "during the lecture she explained how to game bar without breaking anything"}
-{"id": "builtin.game_bar", "kind": "other_command", "polarity": "negative", "reject": "builtin.game_bar", "text": "address bar"}
+{"id": "builtin.game_bar", "kind": "other_command", "polarity": "negative", "reject": "builtin.game_bar", "text": "find bar"}
 {"id": "builtin.game_bar", "kind": "nonsense", "polarity": "negative", "reject": "builtin.game_bar", "text": "pickle thunderous game cobalt wobble"}
 {"accept": ["builtin.go_back"], "id": "builtin.go_back", "kind": "alias", "polarity": "positive", "text": "go to the previous page"}
 {"accept": ["builtin.go_back"], "id": "builtin.go_back", "kind": "determiner", "polarity": "positive", "text": "previous the page"}
@@ -10596,7 +10596,7 @@
 {"accept": ["builtin.samsara_listening_display"], "id": "builtin.samsara_listening_display", "kind": "punct", "polarity": "positive", "text": "Open, samsara listening indicator?"}
 {"accept": ["builtin.samsara_listening_display"], "id": "builtin.samsara_listening_display", "kind": "synonym", "polarity": "positive", "text": "start samsara listening display"}
 {"id": "builtin.samsara_listening_display", "kind": "sentence", "polarity": "negative", "reject": "builtin.samsara_listening_display", "text": "during the lecture she explained how to open samsara listening display without breaking anything"}
-{"id": "builtin.samsara_listening_display", "kind": "other_command", "polarity": "negative", "reject": "builtin.samsara_listening_display", "text": "open samsara"}
+{"id": "builtin.samsara_listening_display", "kind": "other_command", "polarity": "negative", "reject": "builtin.samsara_listening_display", "text": "show me listening display"}
 {"id": "builtin.samsara_listening_display", "kind": "nonsense", "polarity": "negative", "reject": "builtin.samsara_listening_display", "text": "banana pickle listening velvet purple"}
 {"accept": ["builtin.samsara_live_log"], "id": "builtin.samsara_live_log", "kind": "alias", "polarity": "positive", "text": "open samsara live log"}
 {"accept": ["builtin.samsara_live_log"], "id": "builtin.samsara_live_log", "kind": "determiner", "polarity": "positive", "text": "open the samsara live log"}
@@ -15916,7 +15916,7 @@
 {"accept": ["comfy.where_is_the_image"], "id": "comfy.where_is_the_image", "kind": "filler", "polarity": "positive", "text": "could you where is the image please"}
 {"accept": ["comfy.where_is_the_image"], "id": "comfy.where_is_the_image", "kind": "filler", "polarity": "positive", "text": "Could you where is the image please."}
 {"id": "comfy.where_is_the_image", "kind": "sentence", "polarity": "negative", "reject": "comfy.where_is_the_image", "text": "last night he wrote in the notes that you can where is the image whenever it feels right"}
-{"id": "comfy.where_is_the_image", "kind": "other_command", "polarity": "negative", "reject": "comfy.where_is_the_image", "text": "where is"}
+{"id": "comfy.where_is_the_image", "kind": "other_command", "polarity": "negative", "reject": "comfy.where_is_the_image", "text": "where is the bar"}
 {"id": "comfy.where_is_the_image", "kind": "nonsense", "polarity": "negative", "reject": "comfy.where_is_the_image", "text": "saxophone marmalade where glimmer wobble"}
 {"accept": ["core_utils.check_for_updates"], "id": "core_utils.check_for_updates", "kind": "alias", "polarity": "positive", "text": "check for update"}
 {"accept": ["core_utils.check_for_updates"], "id": "core_utils.check_for_updates", "kind": "determiner", "polarity": "positive", "text": "check the for update"}
@@ -16116,7 +16116,7 @@
 {"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "reset live surface now"}
 {"accept": ["core_utils.reset_floating_windows"], "id": "core_utils.reset_floating_windows", "kind": "filler", "polarity": "positive", "text": "i need you to reset preview position"}
 {"id": "core_utils.reset_floating_windows", "kind": "sentence", "polarity": "negative", "reject": "core_utils.reset_floating_windows", "text": "last night he wrote in the notes that you can reset floating windows whenever it feels right"}
-{"id": "core_utils.reset_floating_windows", "kind": "other_command", "polarity": "negative", "reject": "core_utils.reset_floating_windows", "text": "move live surface to this screen"}
+{"id": "core_utils.reset_floating_windows", "kind": "other_command", "polarity": "negative", "reject": "core_utils.reset_floating_windows", "text": "reset indicator"}
 {"id": "core_utils.reset_floating_windows", "kind": "nonsense", "polarity": "negative", "reject": "core_utils.reset_floating_windows", "text": "quartz sideways floating marmalade pickle"}
 {"accept": ["core_utils.reset_hints"], "id": "core_utils.reset_hints", "kind": "alias", "polarity": "positive", "text": "replay hints"}
 {"accept": ["core_utils.reset_hints"], "id": "core_utils.reset_hints", "kind": "determiner", "polarity": "positive", "text": "replay the hints"}
@@ -16678,46 +16678,46 @@
 {"id": "favorites.favorites_window_size", "kind": "sentence", "polarity": "negative", "reject": "favorites.favorites_window_size", "text": "yesterday i told my sister we should favorites window size water the plants before dinner"}
 {"id": "favorites.favorites_window_size", "kind": "other_command", "polarity": "negative", "reject": "favorites.favorites_window_size", "text": "quick list font size buy milk"}
 {"id": "favorites.favorites_window_size", "kind": "nonsense", "polarity": "negative", "reject": "favorites.favorites_window_size", "text": "octopus pickle favorites zeppelin thunderous"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "alias", "polarity": "positive", "text": "hide favorites"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "determiner", "polarity": "positive", "text": "hide the quick list"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "filler", "polarity": "positive", "text": "close favorites thanks"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "mishear", "polarity": "positive", "text": "clothes favorites"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "punct", "polarity": "positive", "text": "Hide quick list."}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "reorder", "polarity": "positive", "text": "favorites close"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym", "polarity": "positive", "text": "conceal quick list"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym_unknown", "polarity": "positive", "text": "nuke favorites"}
 {"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "alias", "polarity": "positive", "text": "close quick list"}
 {"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "determiner", "polarity": "positive", "text": "close the quick list"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "filler", "polarity": "positive", "text": "would you please hide favorites water the plants"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "mishear", "polarity": "positive", "text": "clothes favorites"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "numeral", "polarity": "positive", "text": "close quick list call mom at 5"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "punct", "polarity": "positive", "text": "Hide quick list the build is green."}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "reorder", "polarity": "positive", "text": "favorites close"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "slot", "polarity": "positive", "text": "close quick list call mom at five"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym", "polarity": "positive", "text": "quit favorites check the oven"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym_unknown", "polarity": "positive", "text": "stash quick list"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "alias", "polarity": "positive", "text": "hide quick list"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "determiner", "polarity": "positive", "text": "hide the quick list"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "filler", "polarity": "positive", "text": "close favorites check the oven now"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "mishear", "polarity": "positive", "text": "clothes favorites check the oven"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "punct", "polarity": "positive", "text": "Close, favorites check the oven?"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "reorder", "polarity": "positive", "text": "favorites hide"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "slot", "polarity": "positive", "text": "hide quick list the build is green"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym", "polarity": "positive", "text": "quit favorites"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym_unknown", "polarity": "positive", "text": "stash favorites"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "alias", "polarity": "positive", "text": "close favorites"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "determiner", "polarity": "positive", "text": "close the quick list call mom at five"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "filler", "polarity": "positive", "text": "uh hide quick list the build is green"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "filler", "polarity": "positive", "text": "could you hide quick list"}
 {"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "mishear", "polarity": "positive", "text": "clothes quick list"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "punct", "polarity": "positive", "text": "Close, favorites?"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "slot", "polarity": "positive", "text": "close favorites check the oven"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym", "polarity": "positive", "text": "dismiss quick list"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym_unknown", "polarity": "positive", "text": "nuke quick list call mom at five"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "alias", "polarity": "positive", "text": "hide favorites"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "determiner", "polarity": "positive", "text": "hide the quick list the build is green"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "filler", "polarity": "positive", "text": "could you close favorites"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "mishear", "polarity": "positive", "text": "clothes quick list call mom at five"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "punct", "polarity": "positive", "text": "Hide quick list."}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "slot", "polarity": "positive", "text": "hide favorites water the plants"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym", "polarity": "positive", "text": "quit quick list call mom at five"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "punct", "polarity": "positive", "text": "Close, quick list?"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "reorder", "polarity": "positive", "text": "favorites hide"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym", "polarity": "positive", "text": "exit favorites"}
 {"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym_unknown", "polarity": "positive", "text": "nuke quick list"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "alias", "polarity": "positive", "text": "close favorites"}
 {"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "determiner", "polarity": "positive", "text": "hide the favorites"}
-{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "filler", "polarity": "positive", "text": "close quick list right now"}
-{"id": "favorites.hide_favorites", "kind": "sentence", "polarity": "negative", "reject": "favorites.hide_favorites", "text": "my grandmother never understood why people would close favorites on a sunday"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "filler", "polarity": "positive", "text": "okay close favorites"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "punct", "polarity": "positive", "text": "Hide, quick list?"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym", "polarity": "positive", "text": "quit quick list"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym_unknown", "polarity": "positive", "text": "stash favorites"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "alias", "polarity": "positive", "text": "hide quick list"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "determiner", "polarity": "positive", "text": "close the favorites"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "filler", "polarity": "positive", "text": "hide favorites please"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "punct", "polarity": "positive", "text": "Close, favorites?"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym", "polarity": "positive", "text": "quit favorites"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym_unknown", "polarity": "positive", "text": "stash quick list"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "filler", "polarity": "positive", "text": "close favorites right now"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "punct", "polarity": "positive", "text": "Hide, favorites?"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym", "polarity": "positive", "text": "shut quick list"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "filler", "polarity": "positive", "text": "can you close favorites"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "punct", "polarity": "positive", "text": "Close quick list."}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym", "polarity": "positive", "text": "shut favorites"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "filler", "polarity": "positive", "text": "go ahead and close quick list"}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "punct", "polarity": "positive", "text": "Close favorites."}
+{"accept": ["favorites.hide_favorites"], "id": "favorites.hide_favorites", "kind": "synonym", "polarity": "positive", "text": "dismiss quick list"}
+{"id": "favorites.hide_favorites", "kind": "sentence", "polarity": "negative", "reject": "favorites.hide_favorites", "text": "during the lecture she explained how to close favorites without breaking anything"}
 {"id": "favorites.hide_favorites", "kind": "other_command", "polarity": "negative", "reject": "favorites.hide_favorites", "text": "quick list"}
-{"id": "favorites.hide_favorites", "kind": "nonsense", "polarity": "negative", "reject": "favorites.hide_favorites", "text": "zeppelin cobalt favorites noodle velvet"}
+{"id": "favorites.hide_favorites", "kind": "nonsense", "polarity": "negative", "reject": "favorites.hide_favorites", "text": "pickle zeppelin favorites cobalt noodle"}
 {"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "determiner", "polarity": "positive", "text": "remove the favorite call mom at five"}
 {"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "filler", "polarity": "positive", "text": "uh remove from favorites the build is green"}
 {"accept": ["favorites.remove_favorite"], "id": "favorites.remove_favorite", "kind": "numeral", "polarity": "positive", "text": "remove favorite call mom at 5"}
@@ -16798,46 +16798,46 @@
 {"id": "favorites.rename_favorite", "kind": "sentence", "polarity": "negative", "reject": "favorites.rename_favorite", "text": "honestly the whole point of the meeting was to rename favorite buy milk and nobody did"}
 {"id": "favorites.rename_favorite", "kind": "other_command", "polarity": "negative", "reject": "favorites.rename_favorite", "text": "rename file"}
 {"id": "favorites.rename_favorite", "kind": "nonsense", "polarity": "negative", "reject": "favorites.rename_favorite", "text": "noodle banana favorite pickle zeppelin"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "alias", "polarity": "positive", "text": "show quick list"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "determiner", "polarity": "positive", "text": "quick the list call mom at five"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "filler", "polarity": "positive", "text": "i need you to quick list call mom at five"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "numeral", "polarity": "positive", "text": "list favorites call mom at 5"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "punct", "polarity": "positive", "text": "Quick list."}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "reorder", "polarity": "positive", "text": "favorites show"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "slot", "polarity": "positive", "text": "show quick list check the oven"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym", "polarity": "positive", "text": "display favorites buy milk"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym_unknown", "polarity": "positive", "text": "surface quick list"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "alias", "polarity": "positive", "text": "quick list"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "determiner", "polarity": "positive", "text": "show the quick list check the oven"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "filler", "polarity": "positive", "text": "please quick list call mom at five"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "numeral", "polarity": "positive", "text": "quick list call mom at 5"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "punct", "polarity": "positive", "text": "Quick, list?"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "reorder", "polarity": "positive", "text": "favorites list"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "slot", "polarity": "positive", "text": "list favorites call mom at five"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym", "polarity": "positive", "text": "pull up quick list"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym_unknown", "polarity": "positive", "text": "surface favorites"}
 {"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "alias", "polarity": "positive", "text": "show favorites"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "determiner", "polarity": "positive", "text": "list the favorites call mom at five"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "filler", "polarity": "positive", "text": "could you just show favorites buy milk"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "punct", "polarity": "positive", "text": "Show favorites."}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "determiner", "polarity": "positive", "text": "quick the list"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "filler", "polarity": "positive", "text": "could you just list favorites"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "punct", "polarity": "positive", "text": "Show, quick list?"}
 {"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "reorder", "polarity": "positive", "text": "list quick"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "slot", "polarity": "positive", "text": "quick list call mom at five"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym", "polarity": "positive", "text": "display favorites"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym_unknown", "polarity": "positive", "text": "surface quick list check the oven"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym", "polarity": "positive", "text": "reveal favorites"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym_unknown", "polarity": "positive", "text": "surface quick list"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "alias", "polarity": "positive", "text": "show quick list"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "determiner", "polarity": "positive", "text": "show the favorites"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "filler", "polarity": "positive", "text": "go ahead and show quick list"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "punct", "polarity": "positive", "text": "Show quick list."}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "reorder", "polarity": "positive", "text": "favorites show"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym", "polarity": "positive", "text": "display quick list"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym_unknown", "polarity": "positive", "text": "surface favorites"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "alias", "polarity": "positive", "text": "quick list"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "determiner", "polarity": "positive", "text": "list the favorites"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "filler", "polarity": "positive", "text": "show favorites please"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "punct", "polarity": "positive", "text": "Show, favorites?"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "reorder", "polarity": "positive", "text": "favorites list"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym", "polarity": "positive", "text": "enumerate favorites"}
 {"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "alias", "polarity": "positive", "text": "list favorites"}
 {"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "determiner", "polarity": "positive", "text": "show the quick list"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "filler", "polarity": "positive", "text": "go ahead and show quick list"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "punct", "polarity": "positive", "text": "Show quick list check the oven."}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "slot", "polarity": "positive", "text": "show favorites buy milk"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym", "polarity": "positive", "text": "display quick list check the oven"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym_unknown", "polarity": "positive", "text": "surface favorites buy milk"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "determiner", "polarity": "positive", "text": "list the favorites"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "filler", "polarity": "positive", "text": "can you list favorites"}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "punct", "polarity": "positive", "text": "Quick list call mom at five."}
-{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym", "polarity": "positive", "text": "pull up favorites buy milk"}
-{"id": "favorites.show_favorites", "kind": "sentence", "polarity": "negative", "reject": "favorites.show_favorites", "text": "during the lecture she explained how to list favorites without breaking anything"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "filler", "polarity": "positive", "text": "okay show favorites"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "punct", "polarity": "positive", "text": "Quick, list?"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym", "polarity": "positive", "text": "pull up favorites"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "filler", "polarity": "positive", "text": "i need you to show favorites"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "punct", "polarity": "positive", "text": "List, favorites?"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym", "polarity": "positive", "text": "pull up quick list"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "filler", "polarity": "positive", "text": "quick list now"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "punct", "polarity": "positive", "text": "Show favorites."}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym", "polarity": "positive", "text": "display favorites"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "filler", "polarity": "positive", "text": "i need you to quick list"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "punct", "polarity": "positive", "text": "List favorites."}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "synonym", "polarity": "positive", "text": "reveal quick list"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "filler", "polarity": "positive", "text": "uh show favorites"}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "punct", "polarity": "positive", "text": "Quick list."}
+{"accept": ["favorites.show_favorites"], "id": "favorites.show_favorites", "kind": "filler", "polarity": "positive", "text": "hey show quick list"}
+{"id": "favorites.show_favorites", "kind": "sentence", "polarity": "negative", "reject": "favorites.show_favorites", "text": "yesterday i told my sister we should list favorites before dinner"}
 {"id": "favorites.show_favorites", "kind": "other_command", "polarity": "negative", "reject": "favorites.show_favorites", "text": "show task list"}
-{"id": "favorites.show_favorites", "kind": "nonsense", "polarity": "negative", "reject": "favorites.show_favorites", "text": "quartz velvet favorites saxophone glimmer"}
+{"id": "favorites.show_favorites", "kind": "nonsense", "polarity": "negative", "reject": "favorites.show_favorites", "text": "pickle marmalade favorites sideways velvet"}
 {"accept": ["feedback_level.feedback_brief"], "id": "feedback_level.feedback_brief", "kind": "alias", "polarity": "positive", "text": "feedback brief"}
 {"accept": ["feedback_level.feedback_brief"], "id": "feedback_level.feedback_brief", "kind": "determiner", "polarity": "positive", "text": "feedback the brief"}
 {"accept": ["feedback_level.feedback_brief"], "id": "feedback_level.feedback_brief", "kind": "filler", "polarity": "positive", "text": "hey feedback brief"}
@@ -17316,7 +17316,7 @@
 {"accept": ["flashforge_printer.printer_status"], "id": "flashforge_printer.printer_status", "kind": "punct", "polarity": "positive", "text": "Printer status."}
 {"accept": ["flashforge_printer.printer_status"], "id": "flashforge_printer.printer_status", "kind": "filler", "polarity": "positive", "text": "i need you to print status"}
 {"id": "flashforge_printer.printer_status", "kind": "sentence", "polarity": "negative", "reject": "flashforge_printer.printer_status", "text": "yesterday afternoon we argued for an hour about who would check the printer first"}
-{"id": "flashforge_printer.printer_status", "kind": "other_command", "polarity": "negative", "reject": "flashforge_printer.printer_status", "text": "hold the print"}
+{"id": "flashforge_printer.printer_status", "kind": "other_command", "polarity": "negative", "reject": "flashforge_printer.printer_status", "text": "where is the status bar"}
 {"id": "flashforge_printer.printer_status", "kind": "nonsense", "polarity": "negative", "reject": "flashforge_printer.printer_status", "text": "purple noodle printer sideways velvet"}
 {"accept": ["flashforge_printer.resume_print"], "id": "flashforge_printer.resume_print", "kind": "alias", "polarity": "positive", "text": "resume print"}
 {"accept": ["flashforge_printer.resume_print"], "id": "flashforge_printer.resume_print", "kind": "determiner", "polarity": "positive", "text": "continue the printing"}
@@ -17398,6 +17398,126 @@
 {"id": "flashforge_printer.start_print", "kind": "sentence", "polarity": "negative", "reject": "flashforge_printer.start_print", "text": "my grandmother never understood why people would begin print on a sunday"}
 {"id": "flashforge_printer.start_print", "kind": "other_command", "polarity": "negative", "reject": "flashforge_printer.start_print", "text": "start"}
 {"id": "flashforge_printer.start_print", "kind": "nonsense", "polarity": "negative", "reject": "flashforge_printer.start_print", "text": "saxophone noodle begin lantern cobalt"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "alias", "polarity": "positive", "text": "game mode auto"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "determiner", "polarity": "positive", "text": "game the mode auto"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "can you game mode auto"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "punct", "polarity": "positive", "text": "Game, mode auto?"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "please game mode auto"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "punct", "polarity": "positive", "text": "Game mode auto."}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "game mode auto please"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "game mode auto now"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "um game mode auto"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "would you please game mode auto"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "go ahead and game mode auto"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "i need you to game mode auto"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "could you just game mode auto"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "uh game mode auto"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "game mode auto for me please"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "game mode auto for me"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "okay game mode auto"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "game mode auto thanks"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "can you please game mode auto"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "hey game mode auto"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "could you game mode auto"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "game mode auto right now"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "so game mode auto"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "can you game mode auto please"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "Can you game mode auto please."}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "can you game mode auto for me"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "Can you game mode auto for me."}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "can you game mode auto now"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "Can you game mode auto now."}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "can you game mode auto thanks"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "Can you game mode auto thanks."}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "can you game mode auto right now"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "Can you game mode auto right now."}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "can you game mode auto for me please"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "Can you game mode auto for me please."}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "could you game mode auto please"}
+{"accept": ["game_mode.game_mode_auto"], "id": "game_mode.game_mode_auto", "kind": "filler", "polarity": "positive", "text": "Could you game mode auto please."}
+{"id": "game_mode.game_mode_auto", "kind": "sentence", "polarity": "negative", "reject": "game_mode.game_mode_auto", "text": "yesterday afternoon we argued for an hour about who would game mode auto first"}
+{"id": "game_mode.game_mode_auto", "kind": "other_command", "polarity": "negative", "reject": "game_mode.game_mode_auto", "text": "game mode on"}
+{"id": "game_mode.game_mode_auto", "kind": "nonsense", "polarity": "negative", "reject": "game_mode.game_mode_auto", "text": "banana glimmer game velvet wobble"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "alias", "polarity": "positive", "text": "game mode off"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "determiner", "polarity": "positive", "text": "game the mode off"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "would you please game mode off"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "punct", "polarity": "positive", "text": "Game mode off."}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "game mode off for me please"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "punct", "polarity": "positive", "text": "Game, mode off?"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "please game mode off"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "can you game mode off"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "game mode off thanks"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "game mode off right now"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "uh game mode off"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "could you just game mode off"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "so game mode off"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "go ahead and game mode off"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "game mode off for me"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "hey game mode off"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "okay game mode off"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "can you please game mode off"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "game mode off now"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "game mode off please"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "i need you to game mode off"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "um game mode off"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "could you game mode off"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "can you game mode off please"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "Can you game mode off please."}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "can you game mode off for me"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "Can you game mode off for me."}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "can you game mode off now"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "Can you game mode off now."}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "can you game mode off thanks"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "Can you game mode off thanks."}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "can you game mode off right now"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "Can you game mode off right now."}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "can you game mode off for me please"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "Can you game mode off for me please."}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "could you game mode off please"}
+{"accept": ["game_mode.game_mode_off"], "id": "game_mode.game_mode_off", "kind": "filler", "polarity": "positive", "text": "Could you game mode off please."}
+{"id": "game_mode.game_mode_off", "kind": "sentence", "polarity": "negative", "reject": "game_mode.game_mode_off", "text": "yesterday afternoon we argued for an hour about who would game mode off first"}
+{"id": "game_mode.game_mode_off", "kind": "other_command", "polarity": "negative", "reject": "game_mode.game_mode_off", "text": "game mode on"}
+{"id": "game_mode.game_mode_off", "kind": "nonsense", "polarity": "negative", "reject": "game_mode.game_mode_off", "text": "banana quartz game thunderous purple"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "alias", "polarity": "positive", "text": "game mode on"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "determiner", "polarity": "positive", "text": "game the mode on"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "um game mode on"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "punct", "polarity": "positive", "text": "Game, mode on?"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "hey game mode on"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "punct", "polarity": "positive", "text": "Game mode on."}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "game mode on for me"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "game mode on please"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "go ahead and game mode on"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "uh game mode on"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "game mode on now"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "could you just game mode on"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "can you please game mode on"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "game mode on for me please"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "game mode on right now"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "please game mode on"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "game mode on thanks"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "so game mode on"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "i need you to game mode on"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "can you game mode on"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "could you game mode on"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "would you please game mode on"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "okay game mode on"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "can you game mode on please"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "Can you game mode on please."}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "can you game mode on for me"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "Can you game mode on for me."}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "can you game mode on now"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "Can you game mode on now."}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "can you game mode on thanks"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "Can you game mode on thanks."}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "can you game mode on right now"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "Can you game mode on right now."}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "can you game mode on for me please"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "Can you game mode on for me please."}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "could you game mode on please"}
+{"accept": ["game_mode.game_mode_on"], "id": "game_mode.game_mode_on", "kind": "filler", "polarity": "positive", "text": "Could you game mode on please."}
+{"id": "game_mode.game_mode_on", "kind": "sentence", "polarity": "negative", "reject": "game_mode.game_mode_on", "text": "honestly the whole point of the meeting was to game mode on and nobody did"}
+{"id": "game_mode.game_mode_on", "kind": "other_command", "polarity": "negative", "reject": "game_mode.game_mode_on", "text": "game mode off"}
+{"id": "game_mode.game_mode_on", "kind": "nonsense", "polarity": "negative", "reject": "game_mode.game_mode_on", "text": "marmalade glimmer game noodle lantern"}
 {"accept": ["gif_search.search_for_a_gif_of"], "id": "gif_search.search_for_a_gif_of", "kind": "alias", "polarity": "positive", "text": "find a gif of"}
 {"accept": ["gif_search.search_for_a_gif_of"], "id": "gif_search.search_for_a_gif_of", "kind": "determiner", "polarity": "positive", "text": "search the gif"}
 {"accept": ["gif_search.search_for_a_gif_of"], "id": "gif_search.search_for_a_gif_of", "kind": "filler", "polarity": "positive", "text": "can you please search for a gif of"}
@@ -18238,6 +18358,86 @@
 {"id": "interact.interact_snap", "kind": "sentence", "polarity": "negative", "reject": "interact.interact_snap", "text": "last night he wrote in the notes that you can interact snap check the oven whenever it feels right"}
 {"id": "interact.interact_snap", "kind": "other_command", "polarity": "negative", "reject": "interact.interact_snap", "text": "snap"}
 {"id": "interact.interact_snap", "kind": "nonsense", "polarity": "negative", "reject": "interact.interact_snap", "text": "thunderous cobalt interact octopus banana"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "alias", "polarity": "positive", "text": "wheres samsaras window"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "determiner", "polarity": "positive", "text": "where the is listening display"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "filler", "polarity": "positive", "text": "show me microphone thing for me"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "mishear_unknown", "polarity": "positive", "text": "wheres samsaras widow"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "punct", "polarity": "positive", "text": "Wheres, bar?"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "reorder", "polarity": "positive", "text": "widget find"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "synonym", "polarity": "positive", "text": "look for the widget"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "synonym_unknown", "polarity": "positive", "text": "surface me indicator"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "alias", "polarity": "positive", "text": "wheres widget"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "determiner", "polarity": "positive", "text": "bring the back the little window"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "filler", "polarity": "positive", "text": "um wheres status bar"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "mishear_unknown", "polarity": "positive", "text": "bring back the samsaras widow"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "punct", "polarity": "positive", "text": "Wheres the indicator."}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "reorder", "polarity": "positive", "text": "display find"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "synonym", "polarity": "positive", "text": "look for samsaras window"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "synonym_unknown", "polarity": "positive", "text": "surface me the display"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "alias", "polarity": "positive", "text": "where is the display"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "determiner", "polarity": "positive", "text": "bring the back samsaras window"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "filler", "polarity": "positive", "text": "please wheres the bar"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "mishear_unknown", "polarity": "positive", "text": "i lost the samsaras widow"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "punct", "polarity": "positive", "text": "I lost little window."}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "reorder", "polarity": "positive", "text": "display wheres"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "synonym", "polarity": "positive", "text": "search for status bar"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "synonym_unknown", "polarity": "positive", "text": "surface me little window"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "alias", "polarity": "positive", "text": "find status bar"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "determiner", "polarity": "positive", "text": "i the lost the microphone thing"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "filler", "polarity": "positive", "text": "okay bring back the samsaras window"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "mishear_unknown", "polarity": "positive", "text": "where is the samsaras widow"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "punct", "polarity": "positive", "text": "Find little window."}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "reorder", "polarity": "positive", "text": "indicator wheres"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "synonym", "polarity": "positive", "text": "pull up me the widget"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "synonym_unknown", "polarity": "positive", "text": "surface me samsaras window"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "alias", "polarity": "positive", "text": "where is status bar"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "determiner", "polarity": "positive", "text": "show the me the listening indicator"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "filler", "polarity": "positive", "text": "where is the bar please"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "mishear_unknown", "polarity": "positive", "text": "bring back the little widow"}
+{"accept": ["listening_display.find_the_listening_indicator"], "id": "listening_display.find_the_listening_indicator", "kind": "punct", "polarity": "positive", "text": "Find, listening display?"}
+{"id": "listening_display.find_the_listening_indicator", "kind": "sentence", "polarity": "negative", "reject": "listening_display.find_the_listening_indicator", "text": "yesterday i told my sister we should bring back bar before dinner"}
+{"id": "listening_display.find_the_listening_indicator", "kind": "other_command", "polarity": "negative", "reject": "listening_display.find_the_listening_indicator", "text": "put back the status bar"}
+{"id": "listening_display.find_the_listening_indicator", "kind": "nonsense", "polarity": "negative", "reject": "listening_display.find_the_listening_indicator", "text": "octopus banana bring glimmer noodle"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "alias", "polarity": "positive", "text": "put back the microphone thing"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "determiner", "polarity": "positive", "text": "put the back indicator"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "filler", "polarity": "positive", "text": "please put back the status bar"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "mishear_unknown", "polarity": "positive", "text": "put back samsaras widow"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "punct", "polarity": "positive", "text": "Reset microphone thing."}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "reorder", "polarity": "positive", "text": "display reset"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "synonym", "polarity": "positive", "text": "stick back the samsaras window"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "alias", "polarity": "positive", "text": "put back the listening display"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "determiner", "polarity": "positive", "text": "put the back little window"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "filler", "polarity": "positive", "text": "so put back the indicator"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "mishear_unknown", "polarity": "positive", "text": "reset samsaras widow"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "punct", "polarity": "positive", "text": "Put back widget."}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "reorder", "polarity": "positive", "text": "bar reset"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "synonym", "polarity": "positive", "text": "place back indicator"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "alias", "polarity": "positive", "text": "put back display"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "determiner", "polarity": "positive", "text": "put the back listening indicator"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "filler", "polarity": "positive", "text": "hey put back the microphone thing"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "mishear_unknown", "polarity": "positive", "text": "put back the samsaras widow"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "punct", "polarity": "positive", "text": "Reset, the microphone thing?"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "reorder", "polarity": "positive", "text": "widget reset"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "synonym", "polarity": "positive", "text": "move back listening display"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "alias", "polarity": "positive", "text": "put back the samsaras window"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "determiner", "polarity": "positive", "text": "put the back the microphone thing"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "filler", "polarity": "positive", "text": "uh reset the listening indicator"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "mishear_unknown", "polarity": "positive", "text": "put back little widow"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "punct", "polarity": "positive", "text": "Reset, the widget?"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "reorder", "polarity": "positive", "text": "indicator reset"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "synonym", "polarity": "positive", "text": "place back the samsaras window"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "alias", "polarity": "positive", "text": "reset the widget"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "determiner", "polarity": "positive", "text": "reset the listening indicator"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "filler", "polarity": "positive", "text": "would you please put back the samsaras window"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "mishear_unknown", "polarity": "positive", "text": "put back the little widow"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "punct", "polarity": "positive", "text": "Put back the microphone thing."}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "synonym", "polarity": "positive", "text": "move back the samsaras window"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "alias", "polarity": "positive", "text": "put back microphone thing"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "determiner", "polarity": "positive", "text": "put the back microphone thing"}
+{"accept": ["listening_display.reset_the_listening_indicator"], "id": "listening_display.reset_the_listening_indicator", "kind": "filler", "polarity": "positive", "text": "hey put back the indicator"}
+{"id": "listening_display.reset_the_listening_indicator", "kind": "sentence", "polarity": "negative", "reject": "listening_display.reset_the_listening_indicator", "text": "yesterday afternoon we argued for an hour about who would put back bar first"}
+{"id": "listening_display.reset_the_listening_indicator", "kind": "other_command", "polarity": "negative", "reject": "listening_display.reset_the_listening_indicator", "text": "bring back the status bar"}
+{"id": "listening_display.reset_the_listening_indicator", "kind": "nonsense", "polarity": "negative", "reject": "listening_display.reset_the_listening_indicator", "text": "noodle quartz back cobalt purple"}
 {"accept": ["macros.break_time"], "id": "macros.break_time", "kind": "alias", "polarity": "positive", "text": "stretch break"}
 {"accept": ["macros.break_time"], "id": "macros.break_time", "kind": "determiner", "polarity": "positive", "text": "stretch the break"}
 {"accept": ["macros.break_time"], "id": "macros.break_time", "kind": "filler", "polarity": "positive", "text": "break time for me please"}
@@ -19358,6 +19558,46 @@
 {"id": "message_claude.whats_in_it", "kind": "sentence", "polarity": "negative", "reject": "message_claude.whats_in_it", "text": "our manager keeps asking whether anyone remembered to whats in it last week"}
 {"id": "message_claude.whats_in_it", "kind": "other_command", "polarity": "negative", "reject": "message_claude.whats_in_it", "text": "do it"}
 {"id": "message_claude.whats_in_it", "kind": "nonsense", "polarity": "negative", "reject": "message_claude.whats_in_it", "text": "marmalade purple whats pickle wobble"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "alias", "polarity": "positive", "text": "check my mic"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "could you test my microphone buy milk"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "punct", "polarity": "positive", "text": "Check my mic the build is green."}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "slot", "polarity": "positive", "text": "check my mic the build is green"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "alias", "polarity": "positive", "text": "test my microphone"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "please test my microphone"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "punct", "polarity": "positive", "text": "Check, my mic?"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "slot", "polarity": "positive", "text": "test my microphone buy milk"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "so test my microphone"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "punct", "polarity": "positive", "text": "Test, my microphone buy milk?"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "go ahead and check my mic"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "punct", "polarity": "positive", "text": "Test, my microphone?"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "uh test my microphone"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "punct", "polarity": "positive", "text": "Check my mic."}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "check my mic the build is green thanks"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "punct", "polarity": "positive", "text": "Test my microphone."}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "check my mic for me please"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "punct", "polarity": "positive", "text": "Check, my mic the build is green?"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "um test my microphone"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "punct", "polarity": "positive", "text": "Test my microphone buy milk."}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "check my mic thanks"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "check my mic for me"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "test my microphone buy milk please"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "check my mic the build is green please"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "check my mic now"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "could you just check my mic the build is green"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "could you just check my mic"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "test my microphone buy milk now"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "test my microphone for me"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "would you please check my mic"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "hey test my microphone"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "can you please test my microphone buy milk"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "go ahead and check my mic the build is green"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "please test my microphone buy milk"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "okay check my mic the build is green"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "test my microphone right now"}
+{"accept": ["mic_score_voice.check_my_mic"], "id": "mic_score_voice.check_my_mic", "kind": "filler", "polarity": "positive", "text": "check my mic the build is green for me please"}
+{"id": "mic_score_voice.check_my_mic", "kind": "sentence", "polarity": "negative", "reject": "mic_score_voice.check_my_mic", "text": "last night he wrote in the notes that you can check my mic whenever it feels right"}
+{"id": "mic_score_voice.check_my_mic", "kind": "other_command", "polarity": "negative", "reject": "mic_score_voice.check_my_mic", "text": "test my mic"}
+{"id": "mic_score_voice.check_my_mic", "kind": "nonsense", "polarity": "negative", "reject": "mic_score_voice.check_my_mic", "text": "lantern purple check octopus sideways"}
 {"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "alias", "polarity": "positive", "text": "how is my mic doing"}
 {"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "determiner", "polarity": "positive", "text": "how the is my mic doing"}
 {"accept": ["mic_score_voice.hows_my_mic_doing"], "id": "mic_score_voice.hows_my_mic_doing", "kind": "filler", "polarity": "positive", "text": "hows my mic doing thanks"}
@@ -20038,6 +20278,126 @@
 {"id": "music.spotify_volume_up", "kind": "sentence", "polarity": "negative", "reject": "music.spotify_volume_up", "text": "my grandmother never understood why people would spotify louder on a sunday"}
 {"id": "music.spotify_volume_up", "kind": "other_command", "polarity": "negative", "reject": "music.spotify_volume_up", "text": "turn up the volume"}
 {"id": "music.spotify_volume_up", "kind": "nonsense", "polarity": "negative", "reject": "music.spotify_volume_up", "text": "velvet quartz spotify octopus sideways"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "alias", "polarity": "positive", "text": "send outlook email"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "determiner", "polarity": "positive", "text": "send the outlook email"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "filler", "polarity": "positive", "text": "send outlook email for me"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "numeral", "polarity": "positive", "text": "send outlook email call mom at 5"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "punct", "polarity": "positive", "text": "Send, outlook email?"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "slot", "polarity": "positive", "text": "send outlook email call mom at five"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "synonym", "polarity": "positive", "text": "move outlook email call mom at five"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "determiner", "polarity": "positive", "text": "send the outlook email call mom at five"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "filler", "polarity": "positive", "text": "would you please send outlook email"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "punct", "polarity": "positive", "text": "Send, outlook email call mom at five?"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "synonym", "polarity": "positive", "text": "throw outlook email call mom at five"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "filler", "polarity": "positive", "text": "okay send outlook email"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "punct", "polarity": "positive", "text": "Send outlook email."}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "synonym", "polarity": "positive", "text": "toss outlook email"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "filler", "polarity": "positive", "text": "go ahead and send outlook email call mom at five"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "punct", "polarity": "positive", "text": "Send outlook email call mom at five."}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "synonym", "polarity": "positive", "text": "move outlook email"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "filler", "polarity": "positive", "text": "send outlook email call mom at five for me please"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "synonym", "polarity": "positive", "text": "push outlook email call mom at five"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "filler", "polarity": "positive", "text": "send outlook email please"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "synonym", "polarity": "positive", "text": "push outlook email"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "filler", "polarity": "positive", "text": "please send outlook email"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "synonym", "polarity": "positive", "text": "toss outlook email call mom at five"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "filler", "polarity": "positive", "text": "send outlook email call mom at five for me"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "synonym", "polarity": "positive", "text": "throw outlook email"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "filler", "polarity": "positive", "text": "could you just send outlook email"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "filler", "polarity": "positive", "text": "uh send outlook email call mom at five"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "filler", "polarity": "positive", "text": "um send outlook email"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "filler", "polarity": "positive", "text": "uh send outlook email"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "filler", "polarity": "positive", "text": "send outlook email call mom at five now"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "filler", "polarity": "positive", "text": "send outlook email call mom at five thanks"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "filler", "polarity": "positive", "text": "go ahead and send outlook email"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "filler", "polarity": "positive", "text": "okay send outlook email call mom at five"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "filler", "polarity": "positive", "text": "hey send outlook email"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "filler", "polarity": "positive", "text": "um send outlook email call mom at five"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "filler", "polarity": "positive", "text": "i need you to send outlook email call mom at five"}
+{"accept": ["private_messages.send_outlook_email"], "id": "private_messages.send_outlook_email", "kind": "filler", "polarity": "positive", "text": "can you send outlook email"}
+{"id": "private_messages.send_outlook_email", "kind": "sentence", "polarity": "negative", "reject": "private_messages.send_outlook_email", "text": "yesterday afternoon we argued for an hour about who would send outlook email first"}
+{"id": "private_messages.send_outlook_email", "kind": "other_command", "polarity": "negative", "reject": "private_messages.send_outlook_email", "text": "send excel to the right monitor"}
+{"id": "private_messages.send_outlook_email", "kind": "nonsense", "polarity": "negative", "reject": "private_messages.send_outlook_email", "text": "saxophone purple outlook velvet glimmer"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "determiner", "polarity": "positive", "text": "slack the message the build is green"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "slack message the build is green thanks"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "punct", "polarity": "positive", "text": "Slack, message the build is green?"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "slot", "polarity": "positive", "text": "slack message the build is green"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "determiner", "polarity": "positive", "text": "slack the message buy milk"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "uh slack message buy milk"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "punct", "polarity": "positive", "text": "Slack message the build is green."}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "slot", "polarity": "positive", "text": "slack message buy milk"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "so slack message the build is green"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "punct", "polarity": "positive", "text": "Slack message buy milk."}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "slack message the build is green for me"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "punct", "polarity": "positive", "text": "Slack, message buy milk?"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "could you just slack message buy milk"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "slack message buy milk now"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "slack message the build is green for me please"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "i need you to slack message buy milk"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "slack message buy milk please"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "go ahead and slack message buy milk"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "slack message buy milk right now"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "go ahead and slack message the build is green"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "okay slack message the build is green"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "hey slack message buy milk"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "slack message the build is green now"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "can you slack message the build is green"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "could you slack message buy milk"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "hey slack message the build is green"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "slack message buy milk for me please"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "could you slack message the build is green"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "would you please slack message buy milk"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "slack message the build is green please"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "um slack message the build is green"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "uh slack message the build is green"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "slack message buy milk for me"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "can you please slack message buy milk"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "slack message buy milk thanks"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "please slack message the build is green"}
+{"accept": ["private_messages.slack_message"], "id": "private_messages.slack_message", "kind": "filler", "polarity": "positive", "text": "um slack message buy milk"}
+{"id": "private_messages.slack_message", "kind": "sentence", "polarity": "negative", "reject": "private_messages.slack_message", "text": "in the story the old captain decides to slack message call mom at five as the storm arrives"}
+{"id": "private_messages.slack_message", "kind": "other_command", "polarity": "negative", "reject": "private_messages.slack_message", "text": "message claude"}
+{"id": "private_messages.slack_message", "kind": "nonsense", "polarity": "negative", "reject": "private_messages.slack_message", "text": "banana noodle message cobalt saxophone"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "determiner", "polarity": "positive", "text": "trust the slack conversation call mom at five"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "trust slack conversation call mom at five for me please"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "numeral", "polarity": "positive", "text": "trust slack conversation call mom at 5"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "punct", "polarity": "positive", "text": "Trust slack conversation call mom at five."}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "slot", "polarity": "positive", "text": "trust slack conversation call mom at five"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "please trust slack conversation call mom at five"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "punct", "polarity": "positive", "text": "Trust, slack conversation call mom at five?"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "trust slack conversation call mom at five please"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "trust slack conversation call mom at five now"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "so trust slack conversation call mom at five"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "hey trust slack conversation call mom at five"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "trust slack conversation call mom at five right now"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "can you please trust slack conversation call mom at five"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "trust slack conversation call mom at five thanks"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "okay trust slack conversation call mom at five"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "i need you to trust slack conversation call mom at five"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "trust slack conversation call mom at five for me"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "can you trust slack conversation call mom at five"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "could you trust slack conversation call mom at five"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "uh trust slack conversation call mom at five"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "would you please trust slack conversation call mom at five"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "could you just trust slack conversation call mom at five"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "go ahead and trust slack conversation call mom at five"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "um trust slack conversation call mom at five"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "can you trust slack conversation call mom at five please"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "Can you trust slack conversation call mom at five please."}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "can you trust slack conversation call mom at five for me"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "Can you trust slack conversation call mom at five for me."}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "can you trust slack conversation call mom at five now"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "Can you trust slack conversation call mom at five now."}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "can you trust slack conversation call mom at five thanks"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "Can you trust slack conversation call mom at five thanks."}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "can you trust slack conversation call mom at five right now"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "Can you trust slack conversation call mom at five right now."}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "can you trust slack conversation call mom at five for me please"}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "Can you trust slack conversation call mom at five for me please."}
+{"accept": ["private_messages.trust_slack_conversation"], "id": "private_messages.trust_slack_conversation", "kind": "filler", "polarity": "positive", "text": "could you trust slack conversation call mom at five please"}
+{"id": "private_messages.trust_slack_conversation", "kind": "sentence", "polarity": "negative", "reject": "private_messages.trust_slack_conversation", "text": "last night he wrote in the notes that you can trust slack conversation the build is green whenever it feels right"}
+{"id": "private_messages.trust_slack_conversation", "kind": "other_command", "polarity": "negative", "reject": "private_messages.trust_slack_conversation", "text": "slack message call mom at five"}
+{"id": "private_messages.trust_slack_conversation", "kind": "nonsense", "polarity": "negative", "reject": "private_messages.trust_slack_conversation", "text": "banana sideways conversation zeppelin marmalade"}
 {"accept": ["quick_ask.ask"], "id": "quick_ask.ask", "kind": "alias", "polarity": "positive", "text": "ask"}
 {"accept": ["quick_ask.ask"], "id": "quick_ask.ask", "kind": "determiner", "polarity": "positive", "text": "ask the check the oven"}
 {"accept": ["quick_ask.ask"], "id": "quick_ask.ask", "kind": "filler", "polarity": "positive", "text": "can you please ask"}
@@ -20116,7 +20476,7 @@
 {"accept": ["quick_memo.open_memos"], "id": "quick_memo.open_memos", "kind": "filler", "polarity": "positive", "text": "would you please open memos"}
 {"accept": ["quick_memo.open_memos"], "id": "quick_memo.open_memos", "kind": "synonym", "polarity": "positive", "text": "bring up my memos"}
 {"id": "quick_memo.open_memos", "kind": "sentence", "polarity": "negative", "reject": "quick_memo.open_memos", "text": "last night he wrote in the notes that you can memo list whenever it feels right"}
-{"id": "quick_memo.open_memos", "kind": "other_command", "polarity": "negative", "reject": "quick_memo.open_memos", "text": "show my tasks"}
+{"id": "quick_memo.open_memos", "kind": "other_command", "polarity": "negative", "reject": "quick_memo.open_memos", "text": "show my stats"}
 {"id": "quick_memo.open_memos", "kind": "nonsense", "polarity": "negative", "reject": "quick_memo.open_memos", "text": "thunderous cobalt memo wobble octopus"}
 {"accept": ["quick_memo.take_a_memo"], "id": "quick_memo.take_a_memo", "kind": "alias", "polarity": "positive", "text": "take a memo"}
 {"accept": ["quick_memo.take_a_memo"], "id": "quick_memo.take_a_memo", "kind": "determiner", "polarity": "positive", "text": "quick the memo"}
@@ -20356,7 +20716,7 @@
 {"accept": ["reminders.show_reminders"], "id": "reminders.show_reminders", "kind": "filler", "polarity": "positive", "text": "reminder status for me"}
 {"accept": ["reminders.show_reminders"], "id": "reminders.show_reminders", "kind": "filler", "polarity": "positive", "text": "please reminder status"}
 {"id": "reminders.show_reminders", "kind": "sentence", "polarity": "negative", "reject": "reminders.show_reminders", "text": "during the lecture she explained how to reminder overview without breaking anything"}
-{"id": "reminders.show_reminders", "kind": "other_command", "polarity": "negative", "reject": "reminders.show_reminders", "text": "show"}
+{"id": "reminders.show_reminders", "kind": "other_command", "polarity": "negative", "reject": "reminders.show_reminders", "text": "show me status bar"}
 {"id": "reminders.show_reminders", "kind": "nonsense", "polarity": "negative", "reject": "reminders.show_reminders", "text": "lantern quartz reminder wobble sideways"}
 {"accept": ["screen_gif.record_my_screen"], "id": "screen_gif.record_my_screen", "kind": "alias", "polarity": "positive", "text": "record a gif"}
 {"accept": ["screen_gif.record_my_screen"], "id": "screen_gif.record_my_screen", "kind": "determiner", "polarity": "positive", "text": "start the recording"}
@@ -23678,6 +24038,46 @@
 {"id": "snippets.save_snippet", "kind": "sentence", "polarity": "negative", "reject": "snippets.save_snippet", "text": "in the story the old captain decides to name that snippet buy milk as the storm arrives"}
 {"id": "snippets.save_snippet", "kind": "other_command", "polarity": "negative", "reject": "snippets.save_snippet", "text": "save"}
 {"id": "snippets.save_snippet", "kind": "nonsense", "polarity": "negative", "reject": "snippets.save_snippet", "text": "purple banana snippet lantern glimmer"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "alias", "polarity": "positive", "text": "open stats"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "determiner", "polarity": "positive", "text": "open the stats"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "filler", "polarity": "positive", "text": "open stats for me please"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "punct", "polarity": "positive", "text": "Open stats."}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "reorder", "polarity": "positive", "text": "stats open"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "synonym", "polarity": "positive", "text": "start stats"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "synonym_unknown", "polarity": "positive", "text": "pop open stats"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "alias", "polarity": "positive", "text": "show my stats"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "filler", "polarity": "positive", "text": "can you open stats"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "punct", "polarity": "positive", "text": "Show my stats."}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "synonym", "polarity": "positive", "text": "launch stats"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "synonym_unknown", "polarity": "positive", "text": "surface my stats"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "filler", "polarity": "positive", "text": "show my stats thanks"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "punct", "polarity": "positive", "text": "Open, stats?"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "synonym", "polarity": "positive", "text": "bring up stats"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "filler", "polarity": "positive", "text": "show my stats for me please"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "punct", "polarity": "positive", "text": "Show, my stats?"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "synonym", "polarity": "positive", "text": "pull up my stats"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "filler", "polarity": "positive", "text": "show my stats right now"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "synonym", "polarity": "positive", "text": "reveal my stats"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "filler", "polarity": "positive", "text": "okay open stats"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "synonym", "polarity": "positive", "text": "pull up stats"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "filler", "polarity": "positive", "text": "open stats right now"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "synonym", "polarity": "positive", "text": "display my stats"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "filler", "polarity": "positive", "text": "i need you to open stats"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "filler", "polarity": "positive", "text": "um show my stats"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "filler", "polarity": "positive", "text": "could you show my stats"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "filler", "polarity": "positive", "text": "hey open stats"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "filler", "polarity": "positive", "text": "could you open stats"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "filler", "polarity": "positive", "text": "open stats for me"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "filler", "polarity": "positive", "text": "please open stats"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "filler", "polarity": "positive", "text": "show my stats now"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "filler", "polarity": "positive", "text": "so show my stats"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "filler", "polarity": "positive", "text": "open stats thanks"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "filler", "polarity": "positive", "text": "can you show my stats"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "filler", "polarity": "positive", "text": "can you please show my stats"}
+{"accept": ["stats.show_my_stats"], "id": "stats.show_my_stats", "kind": "filler", "polarity": "positive", "text": "i need you to show my stats"}
+{"id": "stats.show_my_stats", "kind": "sentence", "polarity": "negative", "reject": "stats.show_my_stats", "text": "my grandmother never understood why people would open stats on a sunday"}
+{"id": "stats.show_my_stats", "kind": "other_command", "polarity": "negative", "reject": "stats.show_my_stats", "text": "open my memos"}
+{"id": "stats.show_my_stats", "kind": "nonsense", "polarity": "negative", "reject": "stats.show_my_stats", "text": "octopus thunderous stats quartz sideways"}
 {"accept": ["stremio.close_stremio"], "id": "stremio.close_stremio", "kind": "alias", "polarity": "positive", "text": "close stremio"}
 {"accept": ["stremio.close_stremio"], "id": "stremio.close_stremio", "kind": "determiner", "polarity": "positive", "text": "quit the stremio"}
 {"accept": ["stremio.close_stremio"], "id": "stremio.close_stremio", "kind": "filler", "polarity": "positive", "text": "go ahead and exit stremio"}
@@ -24116,7 +24516,7 @@
 {"accept": ["tab_finder.find_tab"], "id": "tab_finder.find_tab", "kind": "synonym", "polarity": "positive", "text": "look for my"}
 {"accept": ["tab_finder.find_tab"], "id": "tab_finder.find_tab", "kind": "filler", "polarity": "positive", "text": "please find the tab"}
 {"id": "tab_finder.find_tab", "kind": "sentence", "polarity": "negative", "reject": "tab_finder.find_tab", "text": "my grandmother never understood why people would find my on a sunday"}
-{"id": "tab_finder.find_tab", "kind": "other_command", "polarity": "negative", "reject": "tab_finder.find_tab", "text": "where is the image"}
+{"id": "tab_finder.find_tab", "kind": "other_command", "polarity": "negative", "reject": "tab_finder.find_tab", "text": "where is the bar"}
 {"id": "tab_finder.find_tab", "kind": "nonsense", "polarity": "negative", "reject": "tab_finder.find_tab", "text": "cobalt marmalade find wobble velvet"}
 {"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "determiner", "polarity": "positive", "text": "find the buy milk"}
 {"accept": ["tab_finder.find_text"], "id": "tab_finder.find_text", "kind": "filler", "polarity": "positive", "text": "find buy milk now"}
@@ -30476,7 +30876,7 @@
 {"accept": ["window_switcher.window_bring"], "id": "window_switcher.window_bring", "kind": "filler", "polarity": "positive", "text": "window bring charlie now"}
 {"accept": ["window_switcher.window_bring"], "id": "window_switcher.window_bring", "kind": "punct", "polarity": "positive", "text": "Window, bring?"}
 {"id": "window_switcher.window_bring", "kind": "sentence", "polarity": "negative", "reject": "window_switcher.window_bring", "text": "in the story the old captain decides to bring forward as the storm arrives"}
-{"id": "window_switcher.window_bring", "kind": "other_command", "polarity": "negative", "reject": "window_switcher.window_bring", "text": "bring"}
+{"id": "window_switcher.window_bring", "kind": "other_command", "polarity": "negative", "reject": "window_switcher.window_bring", "text": "bring back little window"}
 {"id": "window_switcher.window_bring", "kind": "nonsense", "polarity": "negative", "reject": "window_switcher.window_bring", "text": "lantern cobalt forward quartz wobble"}
 {"accept": ["window_switcher.window_close"], "id": "window_switcher.window_close", "kind": "alias", "polarity": "positive", "text": "window close"}
 {"accept": ["window_switcher.window_close"], "id": "window_switcher.window_close", "kind": "determiner", "polarity": "positive", "text": "window the close"}
@@ -34396,8 +34796,48 @@
 {"accept": ["windows.bring"], "id": "windows.bring", "kind": "filler", "polarity": "positive", "text": "could you grab"}
 {"accept": ["windows.bring"], "id": "windows.bring", "kind": "punct", "polarity": "positive", "text": "Bring discord."}
 {"id": "windows.bring", "kind": "sentence", "polarity": "negative", "reject": "windows.bring", "text": "honestly the whole point of the meeting was to bring and nobody did"}
-{"id": "windows.bring", "kind": "other_command", "polarity": "negative", "reject": "windows.bring", "text": "bring back lost windows"}
+{"id": "windows.bring", "kind": "other_command", "polarity": "negative", "reject": "windows.bring", "text": "bring back bar"}
 {"id": "windows.bring", "kind": "nonsense", "polarity": "negative", "reject": "windows.bring", "text": "sideways octopus bring pickle wobble"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "determiner", "polarity": "positive", "text": "clear the layout tabs buy milk"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "would you please clear layout tabs buy milk"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "punct", "polarity": "positive", "text": "Clear, layout tabs buy milk?"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "slot", "polarity": "positive", "text": "clear layout tabs buy milk"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "synonym", "polarity": "positive", "text": "wipe layout tabs the build is green"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "determiner", "polarity": "positive", "text": "clear the layout tabs the build is green"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "could you just clear layout tabs the build is green"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "punct", "polarity": "positive", "text": "Clear, layout tabs the build is green?"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "slot", "polarity": "positive", "text": "clear layout tabs the build is green"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "synonym", "polarity": "positive", "text": "delete layout tabs buy milk"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "go ahead and clear layout tabs buy milk"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "punct", "polarity": "positive", "text": "Clear layout tabs buy milk."}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "synonym", "polarity": "positive", "text": "delete layout tabs the build is green"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "go ahead and clear layout tabs the build is green"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "punct", "polarity": "positive", "text": "Clear layout tabs the build is green."}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "synonym", "polarity": "positive", "text": "wipe layout tabs buy milk"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "can you please clear layout tabs the build is green"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "clear layout tabs the build is green for me please"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "could you clear layout tabs buy milk"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "okay clear layout tabs the build is green"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "please clear layout tabs buy milk"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "uh clear layout tabs buy milk"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "please clear layout tabs the build is green"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "clear layout tabs buy milk for me"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "clear layout tabs the build is green for me"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "can you please clear layout tabs buy milk"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "so clear layout tabs buy milk"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "can you clear layout tabs buy milk"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "uh clear layout tabs the build is green"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "i need you to clear layout tabs the build is green"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "clear layout tabs the build is green right now"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "clear layout tabs buy milk thanks"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "i need you to clear layout tabs buy milk"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "could you clear layout tabs the build is green"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "would you please clear layout tabs the build is green"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "um clear layout tabs buy milk"}
+{"accept": ["windows.clear_layout_tabs"], "id": "windows.clear_layout_tabs", "kind": "filler", "polarity": "positive", "text": "hey clear layout tabs buy milk"}
+{"id": "windows.clear_layout_tabs", "kind": "sentence", "polarity": "negative", "reject": "windows.clear_layout_tabs", "text": "honestly the whole point of the meeting was to clear layout tabs water the plants and nobody did"}
+{"id": "windows.clear_layout_tabs", "kind": "other_command", "polarity": "negative", "reject": "windows.clear_layout_tabs", "text": "load layout"}
+{"id": "windows.clear_layout_tabs", "kind": "nonsense", "polarity": "negative", "reject": "windows.clear_layout_tabs", "text": "thunderous quartz layout cobalt velvet"}
 {"accept": ["windows.cursor_to"], "id": "windows.cursor_to", "kind": "alias", "polarity": "positive", "text": "cursor to"}
 {"accept": ["windows.cursor_to"], "id": "windows.cursor_to", "kind": "determiner", "polarity": "positive", "text": "teleport the mouse to"}
 {"accept": ["windows.cursor_to"], "id": "windows.cursor_to", "kind": "filler", "polarity": "positive", "text": "so teleport cursor to"}
@@ -34556,7 +34996,7 @@
 {"accept": ["windows.find_window"], "id": "windows.find_window", "kind": "filler", "polarity": "positive", "text": "okay find window obsidian"}
 {"accept": ["windows.find_window"], "id": "windows.find_window", "kind": "filler", "polarity": "positive", "text": "could you just find window"}
 {"id": "windows.find_window", "kind": "sentence", "polarity": "negative", "reject": "windows.find_window", "text": "my grandmother never understood why people would find window on a sunday"}
-{"id": "windows.find_window", "kind": "other_command", "polarity": "negative", "reject": "windows.find_window", "text": "find check the oven"}
+{"id": "windows.find_window", "kind": "other_command", "polarity": "negative", "reject": "windows.find_window", "text": "find little window"}
 {"id": "windows.find_window", "kind": "nonsense", "polarity": "negative", "reject": "windows.find_window", "text": "sideways octopus window zeppelin marmalade"}
 {"accept": ["windows.list_layouts"], "id": "windows.list_layouts", "kind": "alias", "polarity": "positive", "text": "what layouts"}
 {"accept": ["windows.list_layouts"], "id": "windows.list_layouts", "kind": "determiner", "polarity": "positive", "text": "list the layouts"}
@@ -34756,8 +35196,48 @@
 {"accept": ["windows.save_layout"], "id": "windows.save_layout", "kind": "punct", "polarity": "positive", "text": "Save this layout water the plants."}
 {"accept": ["windows.save_layout"], "id": "windows.save_layout", "kind": "filler", "polarity": "positive", "text": "save this layout now"}
 {"id": "windows.save_layout", "kind": "sentence", "polarity": "negative", "reject": "windows.save_layout", "text": "last night he wrote in the notes that you can save layout whenever it feels right"}
-{"id": "windows.save_layout", "kind": "other_command", "polarity": "negative", "reject": "windows.save_layout", "text": "record this window"}
+{"id": "windows.save_layout", "kind": "other_command", "polarity": "negative", "reject": "windows.save_layout", "text": "save this tab to layout water the plants"}
 {"id": "windows.save_layout", "kind": "nonsense", "polarity": "negative", "reject": "windows.save_layout", "text": "sideways wobble layout zeppelin glimmer"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "save this tab to layout check the oven now"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "mishear", "polarity": "positive", "text": "save this tap to layout call mom at five"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "numeral", "polarity": "positive", "text": "save this tab to layout call mom at 5"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "punct", "polarity": "positive", "text": "Save, this tab to layout call mom at five?"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "slot", "polarity": "positive", "text": "save this tab to layout call mom at five"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "synonym", "polarity": "positive", "text": "store this tab to layout call mom at five"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "save this tab to layout check the oven for me please"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "mishear", "polarity": "positive", "text": "save this tab two layout call mom at five"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "punct", "polarity": "positive", "text": "Save this tab to layout call mom at five."}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "slot", "polarity": "positive", "text": "save this tab to layout check the oven"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "synonym", "polarity": "positive", "text": "store this tab to layout check the oven"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "can you save this tab to layout check the oven"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "mishear", "polarity": "positive", "text": "save this tab two layout check the oven"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "punct", "polarity": "positive", "text": "Save, this tab to layout check the oven?"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "could you just save this tab to layout check the oven"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "mishear", "polarity": "positive", "text": "save this tap to layout check the oven"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "punct", "polarity": "positive", "text": "Save this tab to layout check the oven."}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "save this tab to layout check the oven right now"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "save this tab to layout call mom at five right now"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "can you save this tab to layout call mom at five"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "would you please save this tab to layout call mom at five"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "um save this tab to layout call mom at five"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "save this tab to layout call mom at five please"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "um save this tab to layout check the oven"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "could you save this tab to layout call mom at five"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "i need you to save this tab to layout call mom at five"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "go ahead and save this tab to layout call mom at five"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "so save this tab to layout call mom at five"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "can you please save this tab to layout call mom at five"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "could you save this tab to layout check the oven"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "save this tab to layout check the oven please"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "could you just save this tab to layout call mom at five"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "save this tab to layout call mom at five for me please"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "uh save this tab to layout call mom at five"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "save this tab to layout call mom at five for me"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "would you please save this tab to layout check the oven"}
+{"accept": ["windows.save_this_tab_to_layout"], "id": "windows.save_this_tab_to_layout", "kind": "filler", "polarity": "positive", "text": "uh save this tab to layout check the oven"}
+{"id": "windows.save_this_tab_to_layout", "kind": "sentence", "polarity": "negative", "reject": "windows.save_this_tab_to_layout", "text": "yesterday i told my sister we should save this tab to layout the build is green before dinner"}
+{"id": "windows.save_this_tab_to_layout", "kind": "other_command", "polarity": "negative", "reject": "windows.save_this_tab_to_layout", "text": "save this layout"}
+{"id": "windows.save_this_tab_to_layout", "kind": "nonsense", "polarity": "negative", "reject": "windows.save_this_tab_to_layout", "text": "quartz sideways layout marmalade noodle"}
 {"accept": ["windows.send"], "id": "windows.send", "kind": "determiner", "polarity": "positive", "text": "send the obsidian to the main screen"}
 {"accept": ["windows.send"], "id": "windows.send", "kind": "filler", "polarity": "positive", "text": "put slack to the main screen please"}
 {"accept": ["windows.send"], "id": "windows.send", "kind": "mishear", "polarity": "positive", "text": "put slack two the main screen"}

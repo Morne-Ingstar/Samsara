@@ -9,6 +9,7 @@ from plugins.commands import show_numbers as sn, click_by_name as cb
 from samsara import execution_policy, plugin_commands
 from samsara.command_registry import CommandMatcher, DispatchState
 from samsara.commands import CommandExecutor
+from samsara.effect_policy import SubmitTarget
 from samsara.uia import UIAService
 from samsara.uia.backend import Rect
 
@@ -44,6 +45,11 @@ def rig(monkeypatch):
         click=lambda rect, verb: effects.append((rect, verb)))
     app = SimpleNamespace(config={'command_packs': {'accessibility': True}},
                           command_mode_active=True, command_matching_enabled=True)
+    # 1144: bind the synthetic destination without consulting the owner's UIA.
+    monkeypatch.setattr(execution_policy, 'foreground_window_identity',
+                        lambda: {'hwnd': host.hwnd, 'process': 'synthetic.exe'})
+    app._resolve_submit_target = lambda: SubmitTarget(
+        hwnd=host.hwnd, process='synthetic.exe', revision='synthetic-revision')
     shown, spoken = [], []
     monkeypatch.setattr(sn, 'get_service', lambda: service)
     monkeypatch.setattr(sn, '_foreground_info', lambda hwnd: {
@@ -139,6 +145,8 @@ def test_taskbar_focus_change_before_click_refuses(rig):
     rig.host.hwnd = 55
     sn.handle_click(rig.app, '2')
     assert not rig.effects
+    assert rig.spoken == ['Element 2 is no longer available.']
+    assert not sn.is_overlay_active()
 
 
 def test_moved_taskbar_control_refuses(rig):
@@ -146,6 +154,8 @@ def test_moved_taskbar_control_refuses(rig):
     rig.leaf.rect = (30, 710, 100, 750)
     sn.handle_right_click(rig.app, '2')
     assert not rig.effects
+    assert rig.spoken == ['Element 2 is no longer available.']
+    assert not sn.is_overlay_active()
 
 
 def test_focus_change_during_discovery_never_draws(rig, monkeypatch):
@@ -184,6 +194,9 @@ def test_grid_keeps_number_ownership(rig, monkeypatch):
 def test_dom_bare_label_and_right_click_reuse_bridge(rig, monkeypatch):
     sent = []
     sn._dom_active, sn._dom_hint_count = True, 4
+    # 1144: 1031b requires a bound DOM target; text entry is immediate navigation.
+    monkeypatch.setattr(sn, '_dom_effect_hints', [
+        {'binding': 'synthetic-binding', 'kind': 'input'} for _ in range(4)])
     monkeypatch.setattr(sn.browser_bridge, 'get_bridge', lambda: SimpleNamespace(
         send_selection=lambda *args, **kwargs: sent.append((args, kwargs)) or True,
         send_dismiss=lambda: None))
@@ -191,6 +204,7 @@ def test_dom_bare_label_and_right_click_reuse_bridge(rig, monkeypatch):
     ex = executor(rig.app)
     assert ex.process_text('three', rig.app, force_commands=True).state is DispatchState.COMPLETED
     assert sent[0][0] == (3, 'click')
+    assert sent[0][1]['binding'] == 'synthetic-binding'
     assert not sn._dom_active
 
 

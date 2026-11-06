@@ -1224,7 +1224,9 @@ def handle_clear_layout_tabs(app, remainder):
     return True
 
 
-handle_clear_layout_tabs.match_utterance = lambda text: _tab_layout_name(text, 'clear layout tabs')
+# 1144: the command wash singularizes "tabs" before exact matching.
+handle_clear_layout_tabs.match_utterance = lambda text: (
+    _tab_layout_name(text, 'clear layout tabs') or _tab_layout_name(text, 'clear layout tab'))
 
 
 @command("list layouts",

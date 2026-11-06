@@ -590,7 +590,8 @@ class TestApplyAndCloseSnapshot:
     tests/fixtures/settings_apply_and_close_snapshot.json was captured from
     the PRE-refactor _apply_and_close monolith, calling it on a freshly
     constructed window (default widget state, empty starting config) and
-    dumping the resulting config dict. If the refactor changes what gets
+    dumping the resulting config dict; refreshed for current defaults in 1144.
+    If a refactor changes what gets
     written for the same inputs, this test catches it.
     """
 
@@ -599,131 +600,7 @@ class TestApplyAndCloseSnapshot:
 
         snapshot_path = Path(__file__).parent / "fixtures" / "settings_apply_and_close_snapshot.json"
         expected = json.loads(snapshot_path.read_text())
-        # 08d (2026-09-13) delta, applied here because the fixture predates it
-        # and is outside 08d's allowed files: the dead streaming_hotkey is no
-        # longer written; the keys the app always read are now written with
-        # their dictation.py defaults. Regenerate the fixture to fold this in.
-        expected.pop('streaming_hotkey', None)
-        expected.update({
-            'memo_hotkey': 'ctrl+alt+m', 'task_hotkey': 'ctrl+alt+t', 'correction_hotkey': 'ctrl+alt+r',
-            'hotkeys': {'capture_correction': 'ctrl+alt+x'},
-            'continuous_commit_hotkey': 'ctrl+space', 'continuous_commit_trigger': 'silence',
-        })
-        expected.pop('ava_mode_enabled', None)
-        expected.setdefault('ava_command_session', {}).pop('enabled', None)
-        for key in (
-            'key', 'miss_limit', 'queue_depth_cap', 'inactivity_timeout_s',
-            'ready_cue_dir', 'ready_cue_enabled', 'shortlist_size',
-        ):
-            expected['ava_command_session'].pop(key, None)
-        # 400: unmatched command interpretation is on by default.
-        expected['ava_command_session']['interpret_misses'] = True
-        # Queue 57 delta: command_mode.tts_char_limit gained a Settings
-        # control, so Apply now writes its effective value (default 50).
-        expected.setdefault('command_mode', {})['tts_char_limit'] = 50
-        # Queue 62 delta: the five remaining config-only command_mode keys
-        # gained controls, so Apply writes their engine fallback values.
-        expected['command_mode'].update({
-            'utterance_silence_s': 1.0, 'dictate_utterance_silence_s': 0.65,
-            'exit_earcon': True, 'abort_phrases': [], 'command_matching_enabled': False,
-        })
-        # Queue 59 delta: the Ava / Cloud page writes the web-search opt-in
-        # (off: Cloud AI is off in the default config, so it cannot apply).
-        expected.setdefault('cloud_llm', {})['web_search'] = False
-        # Queue 69 delta: the dictation-lane cancel window gained controls, so
-        # Apply writes its default (3.0 s, curated everyday words exempt).
-        expected['command_mode'].update({'cancel_window_s': 3.0, 'cancel_window_all_commands': False})
-        # Queue 75 delta: the dictation preview's idle fade gained controls, so
-        # Apply writes their defaults (fade after 5 s to 25% opacity).
-        expected['command_mode'].update({'preview_idle_delay_s': 5.0, 'preview_idle_opacity': 0.25})
-        # Queue 93 delta: the Advanced page gained the command-word escape
-        # hatch, so Apply writes it. Empty is OFF and is the default -- no
-        # prefix word is hard-coded. The page writes the whole `intent`
-        # section so the config-file-only shadow_enabled survives a save;
-        # with an empty starting config there is nothing to preserve.
-        expected['intent'] = {'command_prefix': ''}
-        # Queue 116 delta: the Modes page gained the emergency stop's word
-        # list beside the existing exit phrases, so Apply writes it. Empty is
-        # what a fresh window produces, and empty means "keep the built-in
-        # 'halt' / 'cease'" -- Apply cannot switch the stop off by accident.
-        expected['command_mode']['stop_phrases'] = []
-        # Queue 103 delta: the Sounds page gained the spoken-notices control,
-        # so Apply writes its default. "questions" means the session speaks
-        # only when it is waiting on an answer; what it has already done is
-        # left to the chip. The page writes the whole `feedback` section so
-        # any future sibling key survives a save; with an empty starting
-        # config there is nothing to preserve.
-        expected['tts'].update({'feedback_level': 'brief', 'enabled': True})  # 372: one speech-level control replaces notices.
-        # Queue 129 delta: the General page gained the light/dark/system
-        # theme, so Apply writes its default. The page writes the whole `ui`
-        # section so a future sibling key survives a save; with an empty
-        # starting config there is nothing to preserve.
-        expected['ui'] = {'theme': 'dark'}
-        # Queue 187 delta: the Music page now writes its library section.
-        # An empty starting config has no folders, playlists, albums or
-        # artists to preserve, so Apply writes the empty mapping.
-        expected['music_library'] = {}
-        # Queue 176 delta: the General page's Accessibility section gained the
-        # two Ava-captions controls, so Apply writes their defaults. Both are
-        # OFF -- captions are a mode the user opts into, and Ava keeps her
-        # voice until someone asks for silence. The page writes the whole
-        # `accessibility` section so the caption panel's own dragged position
-        # survives a save; with an empty starting config there is nothing to
-        # preserve.
-        expected['accessibility'] = {'ava_captions': False, 'ava_mute_audio': False}
-        # Queue 158 delta: the Advanced page exposes the two-stage
-        # hands-free duck values. The schema defaults mirror dictation.py's
-        # live fallback values and are persisted with the ordinary ducking
-        # pair, without dropping any existing ducking sibling.
-        expected['ducking'].update({
-            'hands_free_enabled': True,
-            'hands_free_level': 0.15,
-            'hands_free_idle_level': 0.8,
-        })
-        # Current post-284 snapshot: retain only live keys and current defaults.
-        # 448: derive Compact quietly on save; do not initialize either legacy switch.
-        expected.pop('listening_indicator_enabled', None)
-        expected['ui']['listening_display'] = 'compact'
-        expected['ui']['live_surface'] = {'show_idle_mark': False}
-        # The speech-pace control shares this section with the two opted-out
-        # caption controls; Apply must retain all three defaults.
-        expected['accessibility'] = {
-            'speech_pace': 'standard', 'ava_captions': False,
-            'ava_mute_audio': False,
-        }
-        # The wake-profile editor persists an empty list on a fresh profile.
-        expected['wake_profiles'] = []
-        expected['ava_command_session']['keep_warm'] = False
-        expected['command_packs'].pop('mouse', None)
-        expected['command_packs']['word'] = True
-        expected['tts']['engine'] = 'winrt'  # 372: local voice is the default.
-        expected['ducking'].pop('enabled', None)
-        expected['launch_at_login'] = False
-        expected['start_hidden'] = False
-        expected['scroll'] = {'target_foreground': True}  # 790: new Shortcuts toggle, default on
-        expected['tasks'] = {'todoist': {'enabled': False, 'api_token': ''}}        # 284: dead controls are deliberately not persisted.
-        for key in ('pitch', 'use_for_agent_responses', 'use_for_confirmations',
-                    'use_for_warnings', 'use_for_status_updates',
-                    'use_for_dictation_readback', 'use_for_errors'):
-            expected.get('tts', {}).pop(key, None)
-        expected.get('audio_coordinator', {}).pop('enabled', None)
-        for key in ('backend', 'allow_cloud_fallback'):
-            expected.get('smart_corrections', {}).pop(key, None)
-
-        # 285: separate Tools own their preferences; Settings must not initialize them.
-        for key in ('tasks', 'music_library', 'gesture'):
-            expected.pop(key, None)
-        expected.pop('command_packs', None)  # Ava master persists via its consent-aware setter.
-        expected['alarms'] = {key: value for key, value in expected['alarms'].items()
-                              if key in ('complete_hotkey', 'dismiss_hotkey')}
-        # 300: Help now owns both explicit, default-off diagnostics choices.
-        expected['diagnostics'] = {'stage_timing': False, 'write_jsonl': False}
-        # Current Dictation and Ava rows persist their explicit defaults.
-        expected['command_mode']['dictation_literal_commands_only'] = True
-        expected['hands_free'] = {'send_mode': 'staged'}
-        expected['ava'] = {'conversation_log_enabled': False}
-        expected['home'] = {'show_recent_words': True}  # 887: landed 826b privacy control.
-        expected['device'] = 'auto'  # 941: 940 preserves Auto when CUDA is unavailable.
+        # 1144: regenerated fixture includes all landed settings/default changes.
         stub = _StubApp()
         win = _SettingsWindow(stub)
         win._apply_and_close()

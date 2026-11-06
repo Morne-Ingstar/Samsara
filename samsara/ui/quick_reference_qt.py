@@ -357,7 +357,9 @@ def _resolve_formatting_tokens(app) -> dict:
         if repl.strip() == "•":
             return "bullet point"
         symbols = {'"': 'straight quote "', "(": "opening parenthesis (", ")": "closing parenthesis )",
-                   "*": "asterisk *", "**": "double asterisk **"}
+                   "*": "asterisk *", "**": "double asterisk **",
+                   "?": "question mark ?", "!": "exclamation mark !", ".": "period .",
+                   ",": "comma ,", ";": "semicolon ;", ":": "colon :"}  # PLACEHOLDER COPY (1144)
         return symbols.get(repl, repr(repl))
 
     grouped: dict[str, list[str]] = {}

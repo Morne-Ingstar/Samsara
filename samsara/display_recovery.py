@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from math import isfinite
+from samsara.config_defaults import cfg_get
 
 
 def _unit(value, default):
@@ -46,7 +47,7 @@ def location(app, *, full: bool) -> str:
             side = "bottom" if _unit(custom.get("cy"), .96) >= .5 else "top"
             t = _unit(custom.get("cx"), .04)
         else:
-            position = str(config.get("listening_indicator_position", "bottom-left"))
+            position = str(cfg_get(config, "listening_indicator_position"))
             side, _, horizontal = position.partition("-")
             t = {"left": 0.0, "center": .5, "right": 1.0}.get(horizontal, 0.0)
     vertical = "top" if side == "top" else "bottom"

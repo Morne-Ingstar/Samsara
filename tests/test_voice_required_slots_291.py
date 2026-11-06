@@ -45,6 +45,11 @@ REQUIRED_VOICE_PHRASES = {
     "reword selection",
     "rephrase selection",
     "select previous",
+    # 1144: current Cockpit, favorites, messaging and layout declarations.
+    'skip cockpit item', 'choose cockpit target', 'move cockpit item',
+    'set cockpit deadline', 'complete cockpit item', 'set cockpit priority',
+    'favorites font size', 'favorites window size', 'remove favorite', 'rename favorite',
+    'trust slack conversation', 'slack message', 'clear layout tabs', 'save this tab to layout',
 }
 
 # 345b's controller identities have required tokens, but are never voice slots.
@@ -53,6 +58,7 @@ REQUIRED_TYPED_PHRASES = {
     "read window",
     'send', 'interact focus', 'interact minimize', 'interact maximize',
     'interact move', 'interact snap', 'interact close',
+    'approve cockpit memo batch',  # 1144: typed approval tokens, never spoken slots.
 }
 
 
@@ -75,7 +81,8 @@ def voice_executor():
     assert set(entries) == REQUIRED_VOICE_PHRASES
     assert all(entry.voice_triggerable for entry in entries.values())
     assert all(not required[phrase].voice_triggerable
-               for phrase in REQUIRED_TYPED_PHRASES if phrase.startswith('interact '))
+               for phrase in REQUIRED_TYPED_PHRASES
+               if phrase.startswith('interact ') or phrase == 'approve cockpit memo batch')
     assert required['send'].param_schema['monitor'] == {'type': 'monitor', 'required': True}
     return executor, entries, registry
 
@@ -84,6 +91,9 @@ def voice_executor():
 def live_voice_registry(voice_executor, monkeypatch):
     """Restore the production metadata removed by the test registry fixture."""
     executor, entries, registry = voice_executor
+    from plugins.commands import windows
+    # 1144: saved-layout commands match only names in the inert layout store.
+    monkeypatch.setattr(windows, '_load_all_layouts', lambda: {'foo': {'windows': []}})
     monkeypatch.setattr(plugin_commands, "_REGISTRY", dict(registry))
     executor._matcher.set_enabled_packs({entry.pack for entry in entries.values()})
     return executor, entries

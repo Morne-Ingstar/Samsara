@@ -20,7 +20,8 @@ CORPUS = json.loads((ROOT/'tools/plain_speech_corpus.json').read_text(encoding='
 @pytest.mark.parametrize('forced', [False, True])
 @pytest.mark.parametrize('text', [
     'save the whales is their campaign slogan',
-    'volume down the street has increased since construction began'])
+    'volume down the street has increased since construction began',
+    'show favorites for today', 'hide favorites for today'])
 def test_ordinary_sentences_are_misses_and_preserve_text(rig, text, forced):
     executor, app, calls = rig
     result = executor.process_text(text, force_commands=forced)
@@ -164,13 +165,18 @@ def test_all_200_corpus_rows_before_and_after(rig, monkeypatch):
     assert len(before) == len(after) == 200
     for old, new in zip(before, after, strict=True):
         if new['tag'] == 'exact':
-            assert new['ids'] == old['ids'] == [new['expected']['canonical_id']]
+            if new['expected']['canonical_id'] in {'builtin.close_window', 'builtin.close_tab'}:
+                # 1144: 1031d intentionally asks before closing an unknown window.
+                assert new['state'] == old['state'] == 'queued'
+                assert new['ids'] == old['ids'] == []
+            else:
+                assert new['ids'] == old['ids'] == [new['expected']['canonical_id']]
         if new['tag'] == 'dictation':
             assert not any(not value for value in new['argument_bearing'])
         if old['argument_bearing'] and all(old['argument_bearing']):
             assert new['calls'] == old['calls']
-    # 823 / 888a: the landed selection inventory adds one legacy prefix match.
-    assert sum(bool(r['calls']) for r in before if r['tag'] == 'dictation') == 14
+    # 1144: 1031d's close-window confirmation removes one legacy prefix effect.
+    assert sum(bool(r['calls']) for r in before if r['tag'] == 'dictation') == 13
     assert sum(bool(r['calls']) for r in after if r['tag'] == 'dictation') == 3
 
 

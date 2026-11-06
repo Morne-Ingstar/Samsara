@@ -9351,18 +9351,10 @@
         "hide favorites",
         "hide quick list"
       ],
-      "args": [
-        {
-          "name": "remainder",
-          "required": false,
-          "type": "text"
-        }
-      ],
+      "args": [],
       "canonical_id": "favorites.hide_favorites",
       "description": "Closes the quick list.",
-      "examples": [
-        "hide favorites"
-      ],
+      "examples": [],
       "kind": "plugin",
       "object": "favorites",
       "pack": "core",
@@ -9440,18 +9432,10 @@
         "show favorites",
         "show quick list"
       ],
-      "args": [
-        {
-          "name": "remainder",
-          "required": false,
-          "type": "text"
-        }
-      ],
+      "args": [],
       "canonical_id": "favorites.show_favorites",
       "description": "Shows numbered files, folders, shortcuts and websites.",
-      "examples": [
-        "show favorites"
-      ],
+      "examples": [],
       "kind": "plugin",
       "object": "favorites",
       "pack": "core",
@@ -25492,7 +25476,7 @@
       "plugin": "windows",
       "precondition": "Connect a second monitor first. Monitor numbers run from left to right.",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1337",
+      "source": "plugins/commands/windows.py:1339",
       "undoable": false,
       "undoable_source": "undeclared: no verified recovery",
       "verb": "cursor",
@@ -25522,7 +25506,7 @@
       "plugin": "windows",
       "precondition": "Save a layout named writing first. Confirmation may be required.",
       "risk": "destructive",
-      "source": "plugins/commands/windows.py:1245",
+      "source": "plugins/commands/windows.py:1247",
       "undoable": false,
       "undoable_source": "declared: no undo",
       "verb": "delete",
@@ -25544,7 +25528,7 @@
       "plugin": "windows",
       "precondition": "",
       "risk": "read",
-      "source": "plugins/commands/windows.py:1265",
+      "source": "plugins/commands/windows.py:1267",
       "undoable": false,
       "undoable_source": "not needed: read only",
       "verb": "find",
@@ -25572,7 +25556,7 @@
       "plugin": "windows",
       "precondition": "Firefox must be running. Reports matching window positions in the log.",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1304",
+      "source": "plugins/commands/windows.py:1306",
       "undoable": false,
       "undoable_source": "undeclared: no verified recovery",
       "verb": "find",
@@ -25594,7 +25578,7 @@
       "plugin": "windows",
       "precondition": "",
       "risk": "read",
-      "source": "plugins/commands/windows.py:1230",
+      "source": "plugins/commands/windows.py:1232",
       "undoable": false,
       "undoable_source": "not needed: read only",
       "verb": "list",
@@ -25639,7 +25623,7 @@
       "plugin": "windows",
       "precondition": "",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1284",
+      "source": "plugins/commands/windows.py:1286",
       "undoable": false,
       "undoable_source": "undeclared: no verified recovery",
       "verb": "rescue",
@@ -25798,7 +25782,7 @@
       "plugin": "windows",
       "precondition": "Firefox must be running. Places its window in the top-left quarter of its screen.",
       "risk": "ui",
-      "source": "plugins/commands/windows.py:1485",
+      "source": "plugins/commands/windows.py:1487",
       "undoable": false,
       "undoable_source": "undeclared: no verified recovery",
       "verb": "snap",

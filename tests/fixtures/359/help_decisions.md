@@ -176,3 +176,18 @@
 | `ollama.safety_gate_enabled` | DROP | The setting is self-explanatory or configured outside Settings. |
 | `music_library` | DROP | The setting is self-explanatory or configured outside Settings. |
 | `diagnostics.watch_code_changes` | DROP | The setting is self-explanatory or configured outside Settings. |
+
+<!-- 1144: explicit decisions for settings added since this inventory. -->
+| `smart_actions.personal_append_files` | DROP | Exact personal note targets for reviewed Smart Actions tools; directory grants alone confer no append authority. |
+| `messaging.slack` | DROP | Explicit Slack account/contact IDs and token environment-variable name; config only. |
+| `messaging.trusted_slack` | DROP | Exact account/recipient/conversation scopes approved by trust slack conversation. |
+| `favorites.font_size` | DROP | Favorites HUD A−/A+ controls and favorites font size voice command. |
+| `favorites.width` | DROP | Resizable Favorites HUD and favorites window size voice command. |
+| `favorites.height` | DROP | Resizable Favorites HUD and favorites window size voice command. |
+| `notifications_level` | DROP | The notifications choice explains which notices appear. |
+| `dictation.drop_playback_preroll` | DROP | Experimental render-correlated pre-roll filter for owner testing; off by default. |
+| `game_mode.enabled` | DROP | The game-mode control explains CPU dictation while gaming. |
+| `game_mode.cpu_model` | DROP | The game-mode CPU model choice is configured outside Settings. |
+| `game_mode.detect` | DROP | The game-mode automatic/manual choice is configured outside Settings. |
+| `diagnostics.keep_incident_holds` | DROP | Configuration-file opt-in; Help Diagnostics provides count, Open folder and Clear only. |
+| `diagnostics.incident_holds_max` | DROP | Configuration-file limit from one to five recordings; no Settings preference row. |

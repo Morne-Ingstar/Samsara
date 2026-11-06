@@ -146,10 +146,7 @@ def test_every_required_voice_slot_has_the_same_policy_decision_as_typed(live, m
     executor, app, _windows, _monitors = live
     remainder, typed = VOICE_SLOTS[phrase]
     expected_route = ep.Route.EXACT
-    if phrase == 'clear layout tabs':
-        # 1155: the tabs-to-tab wash makes this command use its grammar fallback.
-        app.config['commands']['grammar_tier'] = True
-        expected_route = ep.Route.GRAMMAR
+    # 1144 n07: clear layout tabs now retains EXACT, without grammar fallback.
     entry = executor._registry_entry(phrase)
     scope = entry.scope
     if scope is not None:
@@ -164,6 +161,48 @@ def test_every_required_voice_slot_has_the_same_policy_decision_as_typed(live, m
     assert captured['args']['remainder'] == expected_remainder
     assert _decision(executor, app, phrase, captured['args']) == _decision(executor, app, phrase, typed)
     assert not isinstance(_decision(executor, app, phrase, typed), ep.Denied)
+
+
+@pytest.mark.parametrize('prefix', ['clear layout tabs', 'clear layout tab'])
+def test_clear_layout_tabs_keeps_exact_route_and_only_clears_named_tabs(live, monkeypatch, prefix):
+    """1144: both the spoken plural and washed singular reach the real handler."""
+    executor, app, windows, _monitors = live
+    layouts = {
+        'work desk': {'windows': [{'app': 'editor'}], 'browser_tabs': ['https://example.com/']},
+        'other': {'windows': [], 'browser_tabs': ['https://example.org/']},
+    }
+    saved, invocations = [], []
+    monkeypatch.setattr(windows, '_load_all_layouts', lambda: layouts)
+    monkeypatch.setattr(windows, '_save_all_layouts', saved.append)
+    execute = executor.execute_canonical
+
+    def capture(command_id, app_instance=None, **kwargs):
+        invocations.append((command_id, kwargs))
+        return execute(command_id, app_instance, **kwargs)
+
+    monkeypatch.setattr(executor, 'execute_canonical', capture)
+    text = f'{prefix} Work Desk'
+    assert windows.handle_clear_layout_tabs.match_utterance(text) == 'work desk'
+    result = executor.process_text(text, app, force_commands=True)
+
+    assert result.state is DispatchState.COMPLETED
+    assert len(invocations) == 1
+    command_id, invocation = invocations[0]
+    assert command_id == 'clear layout tabs'
+    assert invocation['route'] is ep.Route.EXACT
+    assert invocation['args'] == {'remainder': 'work desk'}
+    assert saved == [{
+        'work desk': {'windows': [{'app': 'editor'}], 'browser_tabs': []},
+        'other': {'windows': [], 'browser_tabs': ['https://example.org/']},
+    }]
+
+
+@pytest.mark.parametrize('prefix', ['clear layout tabs', 'clear layout tab'])
+def test_clear_layout_tabs_still_requires_one_complete_saved_name(live, prefix):
+    """1144: accepting the washed prefix must not loosen saved-name matching."""
+    _executor, _app, windows, _monitors = live
+    for remainder in ('', 'Missing', 'Foo later', 'Foo and Other'):
+        assert windows.handle_clear_layout_tabs.match_utterance(f'{prefix} {remainder}') is None
 
 
 @pytest.mark.parametrize('phrase', CONTROLLER_SLOTS)

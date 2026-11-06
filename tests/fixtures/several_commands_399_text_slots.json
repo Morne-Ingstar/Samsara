@@ -288,9 +288,16 @@
   },
   "cockpit.use_todays_memos_for_cockpit": {
     "calls": [],
-    "detail": {},
-    "generated_by": "890",
-    "state": "miss",
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "use today's memos for cockpit",
+      "reason": "pack_disabled",
+      "state": "rejected"
+    },
+    "generated_by": "1144",
+    "state": "rejected",
     "text": "use todays memos for cockpit alpha and volume down"
   },
   "cockpit.why_cockpit_item": {
@@ -797,6 +804,32 @@
     "state": "miss",
     "text": "read the code alpha and volume down"
   },
+  "mic_score_voice.check_my_mic": {
+    "calls": [
+      [
+        "check my mic",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "check my mic",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "check my mic alpha and volume down"
+  },
   "music.play": {
     "calls": [
       [
@@ -840,6 +873,84 @@
     "detail": {},
     "state": "completed",
     "text": "play playlist alpha and volume down"
+  },
+  "private_messages.send_outlook_email": {
+    "calls": [
+      [
+        "send outlook email",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "send outlook email",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "send outlook email alpha and volume down"
+  },
+  "private_messages.slack_message": {
+    "calls": [
+      [
+        "slack message",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "slack message",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "slack message alpha and volume down"
+  },
+  "private_messages.trust_slack_conversation": {
+    "calls": [
+      [
+        "trust slack conversation",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "trust slack conversation",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "trust slack conversation alpha and volume down"
   },
   "quick_ask.ask": {
     "calls": [],
@@ -3172,6 +3283,32 @@
     "state": "rejected",
     "text": "window twenty two alpha and volume down"
   },
+  "windows.clear_layout_tabs": {
+    "calls": [
+      [
+        "clear layout tabs",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "clear layout tabs",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "clear layout tabs alpha and volume down"
+  },
   "windows.delete_layout": {
     "calls": [],
     "detail": {
@@ -3202,6 +3339,32 @@
     "detail": {},
     "state": "completed",
     "text": "save layout alpha and volume down"
+  },
+  "windows.save_this_tab_to_layout": {
+    "calls": [
+      [
+        "save this tab to layout",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "save this tab to layout",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "save this tab to layout alpha and volume down"
   },
   "windows.snap": {
     "calls": [
