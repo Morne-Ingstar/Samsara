@@ -50,7 +50,18 @@ class ReportMessageWindow(MessageHoverWindow):
             self.setWindowFlag(Qt.WindowType.WindowDoesNotAcceptFocus, passive)
             self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
 
+    @property
+    def notice(self):
+        # Include question identity in the voice bridge's queued-click check.
+        return self.owner._chip_feedback
+
+    def _dismissible_question(self):
+        return self.owner._question_alive() and callable(getattr(self.notice, 'dismiss', None))
+
     def _report(self):
+        if self._dismissible_question():
+            self.notice.dismiss()
+            return
         if getattr(self.owner._chip_feedback, 'owner', '') == 'dictation_retry':
             callback = getattr(self.owner, '_dictation_retry_callback', None)
             if callback:
@@ -69,8 +80,10 @@ class ReportMessageWindow(MessageHoverWindow):
     def paintEvent(self, event):
         chip = self.owner._active_chip()
         retry = getattr(self.owner._chip_feedback, 'owner', '') == 'dictation_retry'
-        self.report.setText('Try again' if retry else 'Report')
-        self.report.setAccessibleName('Try again' if retry else 'Report this problem')
-        self.report.setVisible(bool(chip and (retry or chip[1] in ("error", "warning"))))
+        dismiss = self._dismissible_question()
+        self.report.setText('Dismiss' if dismiss else 'Try again' if retry else 'Report')
+        self.report.setAccessibleName('Dismiss question' if dismiss else 'Try again' if retry else 'Report this problem')
+        self.report.setToolTip('Cancel this question' if dismiss else '')  # PLACEHOLDER COPY (1173)
+        self.report.setVisible(bool(chip and (dismiss or retry or chip[1] in ("error", "warning"))))
         self.sync_history()
         super().paintEvent(event)

@@ -94,7 +94,8 @@ def visible_actions(app):
                                          (weakref.ref(action), weakref.ref(window)), "menu"))
             continue
         for button in window.findChildren(QAbstractButton):
-            if button.isVisible() and button.isEnabled() and not button.visibleRegion().isEmpty():
+            if (button.window() is window and button.isVisible() and button.isEnabled()
+                    and not button.visibleRegion().isEmpty()):
                 label = button_label(button)
                 if label:
                     result.append(Action((id(button), *_context(button, window)), label, weakref.ref(button)))

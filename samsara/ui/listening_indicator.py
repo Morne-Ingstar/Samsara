@@ -1372,6 +1372,11 @@ class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QW
         from samsara.ui.compact_result_paint import paint_chip
         paint_chip(self, painter, rect, label, kind, _chip_fill, _CHIP_PAD_X)
 
+    def _report_width(self):
+        if self._question_alive() and callable(getattr(self._chip_feedback, 'dismiss', None)):
+            return 76
+        return super()._report_width()
+
     def dismiss_error(self, *, next_action=False):
         from samsara.clipboard_recovery import IMAGE_MESSAGE, BITMAP_MESSAGE, open_choices
         app = getattr(self, '_clipboard_recovery_app', None)

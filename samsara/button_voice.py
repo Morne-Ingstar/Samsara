@@ -125,7 +125,7 @@ def consume_before_pending(app, text, signals, *, self_hear, capture_path):
                 and question.opened
                 and ava_pending._live(app, question)
                 and ava_pending.time.monotonic() < question.deadline
-                and dispatch_visible_action(text)):
+                and dispatch_visible_action("click dismiss" if normalize_label(text) == "dismiss" else text)):
             return True
         # Keep answer classification, source checks and retirement in their
         # original owner. No answer, deadline or confirmation is manufactured.

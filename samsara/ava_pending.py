@@ -93,7 +93,8 @@ def _feedback(app, label, question=None):
         feedback = Feedback(FeedbackKind.QUESTION if question else FeedbackKind.INFORMATION,
             FeedbackPurpose.QUESTION if question else FeedbackPurpose.RESULT,
             owner="ava_question" if question else "", resolves="" if question else "ava_question",
-            alive=(lambda: getattr(app, "_ava_question", None) is question) if question else None)
+            alive=(lambda: getattr(app, "_ava_question", None) is question) if question else None,
+            dismiss=(lambda: dismiss_question(app, question)) if question else None)
         if question and isinstance(question.runner, policy._ConfirmationListener):
             from samsara.live_surface.feedback import producer_feedback
             feedback = producer_feedback(app, "pending")
@@ -125,6 +126,24 @@ def _live(app, q):
     return (getattr(app, "_ava_question", None) is q and q.runner.eligible()
             and (q.operation is None or policy.pending_operation() is q.operation)
             and (q.operation is not None or policy.pending_operation() is None))
+
+
+def dismiss_question(app, question):
+    """Retire only this question, without approving or running its action."""
+    with ownership_lock(app):
+        if getattr(app, "_ava_question", None) is not question or question.kind == 'edit':
+            return False
+        if not _live(app, question) or time.monotonic() >= question.deadline:
+            _expire(app, question)
+            return False
+        _clear(app, question, "Ava question cancelled.")
+        expired = getattr(question.runner, "expired", None)
+        if callable(expired):
+            expired()
+        if question.operation is not None:
+            policy._release_slot(question.operation)
+            question.operation.cancel(app, "dismissed", chip=False)
+        return True
 
 
 def _expire(app, q):
@@ -250,6 +269,12 @@ def consume(app, text, *, capture_path=None, acknowledgement=None, source=policy
             return True
         if q.kind == 'edit':
             return _consume_edit(app, q, text, source, capture_path)
+        # Toggle speech uses the visible control and its audio gate (1150).
+        # Other answer lanes already own their capture/source checks.
+        if (capture_path != 'toggle_command'
+                and (text or '').strip().rstrip('.!?').casefold() in {'dismiss', 'click dismiss'}):
+            dismiss_question(app, q)
+            return True
         if policy.is_stop_utterance(text):
             if q.kind == "teaching":
                 _expire(app, q)

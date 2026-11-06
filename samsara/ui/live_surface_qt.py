@@ -205,8 +205,8 @@ class _FeedbackBand(QWidget):
         self.label.setFont(theme.qfont(theme.TYPE_BODY))
         self.label.setAccessibleName("Live surface feedback")
         self.dismiss = QPushButton("Dismiss", self)
-        self.dismiss.setAccessibleName("Dismiss suggestion")
-        self.dismiss.setToolTip("Cancel this suggestion")
+        self.dismiss.setAccessibleName("Dismiss question")  # PLACEHOLDER COPY (1173)
+        self.dismiss.setToolTip("Cancel this question")
         self.dismiss.clicked.connect(self.question_dismissed.emit)
         self.dismiss.hide()
         self.report = QPushButton("Report", self)
@@ -228,7 +228,7 @@ class _FeedbackBand(QWidget):
         return None if self._report_width() or self.notice and self.notice.owner.startswith('policy:') else 2
 
     def _dismiss_width(self):
-        return 76 if self.notice and self.notice.purpose is FeedbackPurpose.QUESTION and self.notice.owner.startswith("suggestion:") else 0
+        return 76 if self.notice and self.notice.purpose is FeedbackPurpose.QUESTION and (self.notice.owner == "ava_question" or self.notice.owner.startswith("suggestion:")) else 0
 
     def set_notice(self, notice):
         self.notice = notice
