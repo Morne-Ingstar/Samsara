@@ -92,8 +92,10 @@ def show(app):
         from PySide6.QtCore import Qt
         from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QTextBrowser, QVBoxLayout
         from samsara.ui import theme
+        class ProposedChangeDialog(QDialog):
+            """App-owned dialog admitted by the bounded spoken-button discovery."""
         close()
-        window = QDialog()
+        window = ProposedChangeDialog()
         window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         # PLACEHOLDER COPY (1137)
         window.setWindowTitle("Proposed change")

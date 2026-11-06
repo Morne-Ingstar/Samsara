@@ -167,6 +167,9 @@ def schedule_feedback(app, label, kind, ttl_ms, *, source="", detail=None):
     if context is not None and context[0] is app:
         _, source, detail = context
     feedback = producer_feedback(app, kind, source, detail)
+    if feedback.owner in (MOUSE_HOTKEY_OWNER, WINDOWS_WARNING_OWNER):
+        # Invalidate a queued recovery clear even before the new warning is painted.
+        vars(app).setdefault('_feedback_owner_versions', {})[feedback.owner] = object()
     from samsara.dictation_history import link_for
     feedback = replace(feedback, history=link_for(app, label))
     from samsara.consent_feedback import pending_label
@@ -221,11 +224,26 @@ def alias_handoff(app, detail):
             _HANDOFF_CONTEXT.value = previous
 
 
+def clear_compact_feedback(indicator, owner):
+    """A matching producer resolution bypasses dwell; routine clears do not."""
+    indicator._waiting_outcomes.remove(lambda waiting: (waiting[3] and waiting[3].owner == owner)
+        if owner else getattr(getattr(waiting[3], 'purpose', None), 'value', None) in ('running', 'question'))
+    if not owner or indicator._chip_feedback and indicator._chip_feedback.owner == owner:
+        if owner:
+            indicator._chip_label = indicator._chip_kind = indicator._chip_deadline = None
+        indicator.clear_outcome()
+
+
 def schedule_owner_clear(app, owner):
-    """Clear the notice owned by ``owner`` only; a newer different notice stays."""
+    """Resolve this owner's condition, unless a newer warning was scheduled."""
     indicator = getattr(app, "listening_indicator", None)
     if callable(getattr(type(indicator), "clear_feedback", None)):
-        app._schedule_ui(indicator.clear_feedback, owner)
+        versions = vars(app).setdefault('_feedback_owner_versions', {})
+        version = versions.get(owner)
+        def clear_if_current():
+            if versions.get(owner) is version:
+                indicator.clear_feedback(owner)
+        app._schedule_ui(clear_if_current)
 
 
 def schedule_hold_clear(app):

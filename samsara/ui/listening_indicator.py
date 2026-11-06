@@ -1039,10 +1039,8 @@ class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QW
                                  purpose=getattr(self._chip_feedback, 'purpose', 'result'))
 
     def clear_feedback(self, owner):
-        self._waiting_outcomes.remove(lambda waiting: (waiting[3] and waiting[3].owner == owner)
-            if owner else getattr(getattr(waiting[3], 'purpose', None), 'value', None) in ('running', 'question'))
-        if not owner or self._chip_feedback and self._chip_feedback.owner == owner:
-            self.clear_outcome()
+        from samsara.live_surface.feedback import clear_compact_feedback
+        clear_compact_feedback(self, owner)
 
     def clear_outcome(self):
         """Remove the transient chip (the device-lost chip is unaffected)."""
@@ -1166,7 +1164,7 @@ class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QW
         bg, fg, label, mark = self._resolve_base_colors()
         ava = 'ava' in str(self._session_mode_name or self._mode_text).casefold()
         if getattr(self, '_game_mode', False) and not self._thinking and not ava:
-            label += ' Â· Game mode'
+            label += ' \u00b7 Game mode'
         return bg, fg, label, mark
 
     def _resolve_base_colors(self):

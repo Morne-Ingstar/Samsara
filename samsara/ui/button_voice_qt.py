@@ -25,6 +25,7 @@ SURFACE_MODULES = frozenset({
     "samsara.ui.ava_search_panel_qt", "samsara.ui.ava_consent_qt",
     "samsara.ui.correction_picker_qt", "samsara.bug_report.preview_qt",
     "samsara.bug_report.compact_qt", "samsara.ui.settings_qt",
+    "samsara.ava_edit.draft_review",
 })
 
 

@@ -302,7 +302,7 @@ class LiveSurfaceModel:
             if self._question is not None and (not event.owner or event.owner == self._question.owner):
                 if event.notice in (NoticeKind.NONE, self._question.kind):
                     self._question = None
-            if (not event.owner or event.owner == self._notice.owner) and event.notice in (NoticeKind.NONE, self._notice.kind) and not self._message_protected(now):
+            if (not event.owner or event.owner == self._notice.owner) and event.notice in (NoticeKind.NONE, self._notice.kind) and (event.owner or not self._message_protected(now)):
                 self._notice = Notice(NoticeKind.NONE, "", None)
             if event.notice in (NoticeKind.NONE, NoticeKind.RESULT) and not event.owner:
                 self._clear_receipt()
