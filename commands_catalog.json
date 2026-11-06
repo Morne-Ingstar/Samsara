@@ -14258,6 +14258,541 @@
     },
     {
       "aliases": [
+        "cancel file transcription"
+      ],
+      "args": [],
+      "canonical_id": "samsara_features.cancel_file_transcription",
+      "description": "Requests cancellation of the current file transcription without delivering partial output.",
+      "examples": [
+        "cancel file transcription"
+      ],
+      "kind": "plugin",
+      "object": "file_transcription",
+      "pack": "core",
+      "plugin": "samsara_features",
+      "precondition": "Requests cancellation in the existing file-transcription dialog; does not undo already delivered output.",
+      "risk": "ui",
+      "source": "plugins/commands/samsara_features.py:364",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "cancel",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "copy selected text",
+        "copy text"
+      ],
+      "args": [],
+      "canonical_id": "samsara_features.copy_selected_text",
+      "description": "Copies the current selection in the focused window or text field.",
+      "examples": [
+        "copy selected text",
+        "copy text"
+      ],
+      "kind": "plugin",
+      "object": "selected_text",
+      "pack": "core",
+      "plugin": "samsara_features",
+      "precondition": "Select text in the focused field or window first, including History details or memo text.",
+      "risk": "ui",
+      "source": "plugins/commands/samsara_features.py:213",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "copy",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "load older history entries"
+      ],
+      "args": [],
+      "canonical_id": "samsara_features.load_older_history_entries",
+      "description": "Loads the next older page in the visible History view.",
+      "examples": [
+        "load older history entries"
+      ],
+      "kind": "plugin",
+      "object": "older_history_entries",
+      "pack": "core",
+      "plugin": "samsara_features",
+      "precondition": "Open History first; keeps its current search and loads the next older page.",
+      "risk": "ui",
+      "source": "plugins/commands/samsara_features.py:206",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "load",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "mute ava voice"
+      ],
+      "args": [],
+      "canonical_id": "samsara_features.mute_ava_voice",
+      "description": "Mutes Ava's spoken replies while preserving captions and command feedback.",
+      "examples": [
+        "mute Ava voice"
+      ],
+      "kind": "plugin",
+      "object": "ava_voice",
+      "pack": "core",
+      "plugin": "samsara_features",
+      "precondition": "Mutes subsequent Ava speech; captions and command feedback keep their existing settings.",
+      "risk": "ui",
+      "source": "plugins/commands/samsara_features.py:86",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "mute",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "pin command",
+        "pin selected command"
+      ],
+      "args": [],
+      "canonical_id": "samsara_features.pin_selected_command",
+      "description": "Pins the selected Command Reference command without unpinning an existing pin.",
+      "examples": [
+        "pin selected command",
+        "pin command"
+      ],
+      "kind": "plugin",
+      "object": "selected_command",
+      "pack": "core",
+      "plugin": "samsara_features",
+      "precondition": "Select a command in visible Commands or Command Reference first; an existing pin stays pinned.",
+      "risk": "ui",
+      "source": "plugins/commands/samsara_features.py:329",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "pin",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "play last memo"
+      ],
+      "args": [],
+      "canonical_id": "samsara_features.play_last_memo",
+      "description": "Plays the newest saved memo using the Memos page's player.",
+      "examples": [
+        "play last memo"
+      ],
+      "kind": "plugin",
+      "object": "last_memo",
+      "pack": "core",
+      "plugin": "samsara_features",
+      "precondition": "Needs a saved memo with retained playable audio; opens Memos and selects the newest memo.",
+      "risk": "ui",
+      "source": "plugins/commands/samsara_features.py:249",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "play",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "play memo"
+      ],
+      "args": [],
+      "canonical_id": "samsara_features.play_memo",
+      "description": "Plays the visible selected memo, or the newest memo when none is selected.",
+      "examples": [
+        "play memo"
+      ],
+      "kind": "plugin",
+      "object": "memo",
+      "pack": "core",
+      "plugin": "samsara_features",
+      "precondition": "Plays the visible selected memo or the newest memo; needs retained audio.",
+      "risk": "ui",
+      "source": "plugins/commands/samsara_features.py:263",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "play",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "play selected memo"
+      ],
+      "args": [],
+      "canonical_id": "samsara_features.play_selected_memo",
+      "description": "Plays the memo selected on the visible Memos page.",
+      "examples": [
+        "play selected memo"
+      ],
+      "kind": "plugin",
+      "object": "selected_memo",
+      "pack": "core",
+      "plugin": "samsara_features",
+      "precondition": "Select a playable memo in the visible Memos page first.",
+      "risk": "ui",
+      "source": "plugins/commands/samsara_features.py:256",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "play",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "microphone recalibrate",
+        "recalibrate mic",
+        "recalibrate microphone",
+        "recalibrate my mic",
+        "recalibrate my microphone"
+      ],
+      "args": [],
+      "canonical_id": "samsara_features.recalibrate_my_microphone",
+      "description": "Recalibrates the microphone through the existing tray action.",
+      "examples": [
+        "recalibrate my microphone",
+        "recalibrate mic",
+        "microphone recalibrate"
+      ],
+      "kind": "plugin",
+      "object": "my_microphone",
+      "pack": "core",
+      "plugin": "samsara_features",
+      "precondition": "Uses the existing microphone recalibration action; the other mic and microphone variants are aliases.",
+      "risk": "ui",
+      "source": "plugins/commands/samsara_features.py:336",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "recalibrate",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "release stuck buttons"
+      ],
+      "args": [],
+      "canonical_id": "samsara_features.release_stuck_buttons",
+      "description": "Releases Samsara's held mouse buttons, command keys and key-macro keys.",
+      "examples": [
+        "release stuck buttons"
+      ],
+      "kind": "plugin",
+      "object": "stuck_buttons",
+      "pack": "core",
+      "plugin": "samsara_features",
+      "precondition": "Releases Samsara-held mouse buttons, command keys and key-macro keys.",
+      "risk": "ui",
+      "source": "plugins/commands/samsara_features.py:351",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "release",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "release stuck mouse buttons"
+      ],
+      "args": [],
+      "canonical_id": "samsara_features.release_stuck_mouse_buttons",
+      "description": "Releases mouse buttons held by Samsara using the existing recovery action.",
+      "examples": [
+        "release stuck mouse buttons"
+      ],
+      "kind": "plugin",
+      "object": "stuck_mouse_buttons",
+      "pack": "core",
+      "plugin": "samsara_features",
+      "precondition": "Releases mouse buttons held by Samsara.",
+      "risk": "ui",
+      "source": "plugins/commands/samsara_features.py:344",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "release",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "reload samsara commands"
+      ],
+      "args": [],
+      "canonical_id": "samsara_features.reload_samsara_commands",
+      "description": "Reloads commands.json after a manual edit using the existing command loader.",
+      "examples": [
+        "reload samsara commands"
+      ],
+      "kind": "plugin",
+      "object": "samsara_commands",
+      "pack": "core",
+      "plugin": "samsara_features",
+      "precondition": "Use after manually editing commands.json; the normal command editor already reloads after saving.",
+      "risk": "ui",
+      "source": "plugins/commands/samsara_features.py:288",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "reload",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "search samsara commands for"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "samsara_features.search_samsara_commands_for",
+      "description": "Opens Commands and filters its catalogue by your words.",
+      "examples": [
+        "search samsara commands for volume"
+      ],
+      "kind": "plugin",
+      "object": "samsara_commands_for",
+      "pack": "core",
+      "plugin": "samsara_features",
+      "precondition": "Use Command mode; opens Commands with that search.",
+      "risk": "ui",
+      "source": "plugins/commands/samsara_features.py:142",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "search",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "search samsara history for"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "samsara_features.search_samsara_history_for",
+      "description": "Opens History and searches all saved history for your words.",
+      "examples": [
+        "search samsara history for project notes"
+      ],
+      "kind": "plugin",
+      "object": "samsara_history_for",
+      "pack": "core",
+      "plugin": "samsara_features",
+      "precondition": "Use Command mode; searches all history. Search words are data, never another command.",
+      "risk": "ui",
+      "source": "plugins/commands/samsara_features.py:128",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "search",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "search saved snippets for"
+      ],
+      "args": [
+        {
+          "name": "remainder",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "canonical_id": "samsara_features.search_saved_snippets_for",
+      "description": "Opens Snippets and filters the saved snippets by your words.",
+      "examples": [
+        "search saved snippets for meeting"
+      ],
+      "kind": "plugin",
+      "object": "saved_snippets_for",
+      "pack": "core",
+      "plugin": "samsara_features",
+      "precondition": "Use Command mode; opens Snippets with that search.",
+      "risk": "ui",
+      "source": "plugins/commands/samsara_features.py:156",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "search",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "select todays memos"
+      ],
+      "args": [],
+      "canonical_id": "samsara_features.select_todays_memos",
+      "description": "Selects today's saved memos for review without approving or sending them.",
+      "examples": [
+        "select today's memos"
+      ],
+      "kind": "plugin",
+      "object": "todays_memos",
+      "pack": "core",
+      "plugin": "samsara_features",
+      "precondition": "Selects today for review only; never approves or sends the batch.",
+      "risk": "ui",
+      "source": "plugins/commands/samsara_features.py:281",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "select",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "show dictionary corrections"
+      ],
+      "args": [],
+      "canonical_id": "samsara_features.show_dictionary_corrections",
+      "description": "Opens Dictionary on its Corrections tab without changing any entries.",
+      "examples": [
+        "show dictionary corrections"
+      ],
+      "kind": "plugin",
+      "object": "dictionary_corrections",
+      "pack": "core",
+      "plugin": "samsara_features",
+      "precondition": "Opens Dictionary on Corrections without editing an entry.",
+      "risk": "ui",
+      "source": "plugins/commands/samsara_features.py:297",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "show",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "show latest history entry"
+      ],
+      "args": [],
+      "canonical_id": "samsara_features.show_latest_history_entry",
+      "description": "Opens History and selects its newest entry after the refresh completes.",
+      "examples": [
+        "show latest history entry"
+      ],
+      "kind": "plugin",
+      "object": "latest_history_entry",
+      "pack": "core",
+      "plugin": "samsara_features",
+      "precondition": "Opens History, clears its search and filters, and selects the newest loaded entry.",
+      "risk": "ui",
+      "source": "plugins/commands/samsara_features.py:199",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "show",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "show on screen messages",
+        "show onscreen messages"
+      ],
+      "args": [],
+      "canonical_id": "samsara_features.show_onscreen_messages",
+      "description": "Opens the existing review of on-screen messages and drafts.",
+      "examples": [
+        "show on-screen messages"
+      ],
+      "kind": "plugin",
+      "object": "onscreen_messages",
+      "pack": "core",
+      "plugin": "samsara_features",
+      "precondition": "Use Command mode, or hands-free with exact commands enabled; opens the message review.",
+      "risk": "ui",
+      "source": "plugins/commands/samsara_features.py:68",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "show",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "show vocabulary"
+      ],
+      "args": [],
+      "canonical_id": "samsara_features.show_vocabulary",
+      "description": "Opens Vocabulary with its guide to adding words by voice expanded.",
+      "examples": [
+        "show vocabulary"
+      ],
+      "kind": "plugin",
+      "object": "vocabulary",
+      "pack": "core",
+      "plugin": "samsara_features",
+      "precondition": "Opens Vocabulary and expands its guide to adding words by voice.",
+      "risk": "ui",
+      "source": "plugins/commands/samsara_features.py:309",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "show",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "unmute ava voice"
+      ],
+      "args": [],
+      "canonical_id": "samsara_features.unmute_ava_voice",
+      "description": "Restores Ava's spoken replies using the configured speech engine.",
+      "examples": [
+        "unmute Ava voice"
+      ],
+      "kind": "plugin",
+      "object": "ava_voice",
+      "pack": "core",
+      "plugin": "samsara_features",
+      "precondition": "Restores Ava speech using the configured speech engine.",
+      "risk": "ui",
+      "source": "plugins/commands/samsara_features.py:93",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "unmute",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "use continuous dictation"
+      ],
+      "args": [],
+      "canonical_id": "samsara_features.use_continuous_dictation",
+      "description": "Selects Continuous using the same capture-mode action as the tray.",
+      "examples": [
+        "use continuous dictation"
+      ],
+      "kind": "plugin",
+      "object": "continuous_dictation",
+      "pack": "core",
+      "plugin": "samsara_features",
+      "precondition": "Uses the tray mode switch; Continuous starts listening when the model is ready.",
+      "risk": "ui",
+      "source": "plugins/commands/samsara_features.py:100",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "use",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "use hold to talk"
+      ],
+      "args": [],
+      "canonical_id": "samsara_features.use_hold_to_talk",
+      "description": "Selects Hold to Talk using the same capture-mode action as the tray.",
+      "examples": [
+        "use hold to talk"
+      ],
+      "kind": "plugin",
+      "object": "hold_to_talk",
+      "pack": "core",
+      "plugin": "samsara_features",
+      "precondition": "Uses the tray mode switch; continuous capture stops through its normal finalization.",
+      "risk": "ui",
+      "source": "plugins/commands/samsara_features.py:107",
+      "undoable": false,
+      "undoable_source": "undeclared: no verified recovery",
+      "verb": "use",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "capture my screen",
         "record a gif",
         "record my screen",
@@ -17674,18 +18209,22 @@
     },
     {
       "aliases": [
+        "pause memo",
         "stop memo",
         "stop video memo"
       ],
       "args": [],
       "canonical_id": "video_memo.stop_memo",
-      "description": "Finishes and saves the video memo currently being recorded.",
-      "examples": [],
+      "description": "Stops memo playback or finishes and saves an active video memo.",
+      "examples": [
+        "stop memo",
+        "pause memo"
+      ],
       "kind": "plugin",
       "object": "memo",
       "pack": "utilities",
       "plugin": "video_memo",
-      "precondition": "",
+      "precondition": "Stops the built-in memo audio player even after leaving Memos. Playing again starts at the beginning; external video players are separate.",
       "risk": "write",
       "source": "plugins/commands/video_memo.py:258",
       "undoable": true,

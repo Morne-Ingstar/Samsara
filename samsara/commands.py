@@ -1108,6 +1108,10 @@ class CommandExecutor:
         return result
 
     def _grammar_chain(self, text, match_text, context, app, generation):
+        # 1160: a search consumes its whole query, including command-like words.
+        query, _ = self._matcher.match(text, context)
+        if query is not None and getattr(query.handler, 'query_argument', False):
+            return None
         from . import grammar
         request_serial = getattr(self, '_grammar_request_serial', 0)
         records, by_id = self._grammar_catalog()

@@ -255,13 +255,16 @@ def start_video_memo(app, remainder):
     return _controller(app).start()
 
 
-@command("stop memo", aliases=["stop video memo"], pack="utilities",
+@command("stop memo", aliases=["stop video memo", "pause memo"], pack="utilities",
          risk_class="reversible", reversible=True,
-         side_effects=["camera", "audio", "file"])
+         side_effects=["camera", "audio", "file"], whole_utterance=True)
 def stop_video_memo(app, remainder):
-    """Finishes and saves the video memo currently being recorded."""  # PLACEHOLDER COPY (531)
+    """Stops memo playback or finishes and saves an active video memo."""  # PLACEHOLDER COPY (1160)
     controller = getattr(app, "_video_memo_controller", None)
-    return bool(controller and controller.finish())
+    if controller is not None and controller.active:
+        return bool(controller.finish())
+    from plugins.commands.samsara_features import stop_memo
+    return stop_memo(app)
 
 
 __all__ = ["VideoMemoController", "start_video_memo", "stop_video_memo"]

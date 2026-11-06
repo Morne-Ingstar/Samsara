@@ -2,6 +2,31 @@
 
 # PLACEHOLDER COPY (978): prerequisites describe the actual command boundaries.
 HELP = {
+    # PLACEHOLDER COPY (1160): approved routes reuse existing local actions.
+    'show onscreen messages': (['show on-screen messages'], 'Use Command mode, or hands-free with exact commands enabled; opens the message review.'),
+    'mute ava voice': (['mute Ava voice'], 'Mutes subsequent Ava speech; captions and command feedback keep their existing settings.'),
+    'unmute ava voice': (['unmute Ava voice'], 'Restores Ava speech using the configured speech engine.'),
+    'use continuous dictation': (['use continuous dictation'], 'Uses the tray mode switch; Continuous starts listening when the model is ready.'),
+    'use hold to talk': (['use hold to talk'], 'Uses the tray mode switch; continuous capture stops through its normal finalization.'),
+    'search samsara history for': (['search samsara history for project notes'], 'Use Command mode; searches all history. Search words are data, never another command.'),
+    'search samsara commands for': (['search samsara commands for volume'], 'Use Command mode; opens Commands with that search.'),
+    'search saved snippets for': (['search saved snippets for meeting'], 'Use Command mode; opens Snippets with that search.'),
+    'show latest history entry': (['show latest history entry'], 'Opens History, clears its search and filters, and selects the newest loaded entry.'),
+    'load older history entries': (['load older history entries'], 'Open History first; keeps its current search and loads the next older page.'),
+    'copy selected text': (['copy selected text', 'copy text'], 'Select text in the focused field or window first, including History details or memo text.'),
+    'play last memo': (['play last memo'], 'Needs a saved memo with retained playable audio; opens Memos and selects the newest memo.'),
+    'play selected memo': (['play selected memo'], 'Select a playable memo in the visible Memos page first.'),
+    'play memo': (['play memo'], 'Plays the visible selected memo or the newest memo; needs retained audio.'),
+    'stop memo': (['stop memo', 'pause memo'], 'Stops the built-in memo audio player even after leaving Memos. Playing again starts at the beginning; external video players are separate.'),
+    'select todays memos': (["select today's memos"], 'Selects today for review only; never approves or sends the batch.'),
+    'reload samsara commands': (['reload samsara commands'], 'Use after manually editing commands.json; the normal command editor already reloads after saving.'),
+    'show dictionary corrections': (['show dictionary corrections'], 'Opens Dictionary on Corrections without editing an entry.'),
+    'show vocabulary': (['show vocabulary'], 'Opens Vocabulary and expands its guide to adding words by voice.'),
+    'pin selected command': (['pin selected command', 'pin command'], 'Select a command in visible Commands or Command Reference first; an existing pin stays pinned.'),
+    'recalibrate my microphone': (['recalibrate my microphone', 'recalibrate mic', 'microphone recalibrate'], 'Uses the existing microphone recalibration action; the other mic and microphone variants are aliases.'),
+    'release stuck mouse buttons': (['release stuck mouse buttons'], 'Releases mouse buttons held by Samsara.'),
+    'release stuck buttons': (['release stuck buttons'], 'Releases Samsara-held mouse buttons, command keys and key-macro keys.'),
+    'cancel file transcription': (['cancel file transcription'], 'Requests cancellation in the existing file-transcription dialog; does not undo already delivered output.'),
     # PLACEHOLDER COPY (1031c): exact configured destinations; no guessed contacts.
     'slack message': (['slack message Pat saying I will be there at six'],
         'Configure one exact Slack individual DM named Pat first. New conversations ask once; trusted conversations use a one-second grace.'),

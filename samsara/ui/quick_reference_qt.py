@@ -501,6 +501,7 @@ class _QuickReferenceWindow(QMainWindow):
         ft_state = _resolve_formatting_tokens(self.app)
         self._body_layout.addWidget(self._build_formatting_section(ft_state))
         self._body_layout.addWidget(self._build_media_players_section(records))
+        self._body_layout.addWidget(self._build_samsara_actions_section(records))
         self._body_layout.addStretch()
 
     # ------------------------------------------------------------------
@@ -722,6 +723,35 @@ class _QuickReferenceWindow(QMainWindow):
         note = QLabel('Use Command mode. Named controls work in the background. '
                       'VLC subtitles off requires its Web interface. '
                       'Enable packs in Settings > Commands > Command packs.')
+        note.setWordWrap(True)
+        lay.addWidget(note)
+        return card
+
+    def _build_samsara_actions_section(self, records) -> QFrame:
+        # PLACEHOLDER COPY (1160): phrases and prerequisites come from the catalogue.
+        from samsara import command_catalog
+        from samsara.command_packs import get_enabled_packs
+        card, lay = self._section_card('Samsara actions')
+        enabled = get_enabled_packs(getattr(self.app, 'config', None) or {})
+        actions = [row for row in records or [] if (row.get('plugin') == 'samsara_features'
+                   or row.get('canonical_id') == 'video_memo.stop_memo')
+                   and row.get('pack') in enabled]
+        for record in actions:
+            phrases = record.get('examples') or [command_catalog.canonical_phrase(record)]
+            spoken = QLabel(' / '.join(phrases))
+            spoken.setWordWrap(True)
+            spoken.setStyleSheet(f'color:{theme.TEXT_PRIMARY};font-size:{theme.FONT_SIZE_HEADING}px;font-weight:600;')
+            lay.addWidget(spoken)
+            description = QLabel(record['description'])
+            description.setWordWrap(True)
+            description.setStyleSheet(f'color:{theme.TEXT_SECONDARY};font-size:{theme.FONT_SIZE_BODY}px;')
+            lay.addWidget(description)
+            lay.addSpacing(8)
+        note = QLabel('Use Command mode for searches. Other phrases also work in hands-free '
+                      'when exact commands are enabled and the draft allows a command. '
+                      'Selected-item actions need the corresponding page open. '
+                      'Pause memo stops playback; playing again starts at the beginning.'
+                      if actions else 'Samsara action guidance is unavailable.')
         note.setWordWrap(True)
         lay.addWidget(note)
         return card
