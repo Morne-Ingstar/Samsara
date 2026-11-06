@@ -108,40 +108,48 @@ def test_stall_hold_survives_until_two_consecutive_up_samples(env, binding, capl
         monitor.tick()
         assert app.recording
         monitor.tick()
+        if binding == 'mouse5':
+            # 1164: two quick polls cannot end Mouse 5; a delivered hook up can.
+            assert app.recording
+            app._on_mouse_button(binding, False)
     assert app.calls == ['start', 'stop'] and not app.recording
     monitor.tick()
     assert app.calls.count('stop') == 1
-    assert caplog.text.count('hold ended by backstop poll, hook stalled') == 1
+    assert caplog.text.count('hold ended by backstop poll, hook stalled') == (binding != 'mouse5')
     assert all(call.args == (binding,) for call in env.sample.call_args_list)
 
 
 @pytest.mark.parametrize('injected', [False, True])
 def test_hook_up_cannot_end_stalled_hold_even_before_first_poll(env, injected):
     app = start(env)
+    monitor = app._hold_backstop
     slow(app)
     fire(app, injected=injected)
-    assert app.recording and app._hold_down_mouse and app.calls == ['start']
+    # 1164: delivered hook release wins immediately, even during a short stall.
+    assert not app.recording and not app._hold_down_mouse and app.calls == ['start', 'stop']
     env.sample.assert_not_called()  # callback path never reads the native state
     env.down['value'] = False
-    app._hold_backstop.tick()
+    monitor.tick()
     fire(app, injected=injected)  # first up sample still needs confirmation
-    assert app.recording
-    app._hold_backstop.tick()
+    assert not app.recording
+    monitor.tick()
     assert app.calls == ['start', 'stop']
 
 
 def test_reinstall_fallback_does_not_stop_hold_and_injected_up_does_not_disarm(env):
     app = start(env)
+    monitor = app._hold_backstop
     app._mouse_hook._begin_recovery('hook stalled')
     assert app.recording and app._main_hotkey_source == 'mouse'
     assert app._main_hotkey_override  # ordinary fallback remains available
     fire(app, injected=True)  # 1032 recovery happens before delivering the up
     assert not app._mouse_hook.recovering
-    app._hold_backstop.tick()
-    assert app.recording and app._hold_backstop.unhealthy_since is not None
+    monitor.tick()
+    # 1164: hook up settles the take; stale polls cannot deliver another stop.
+    assert not app.recording and monitor.stop.is_set()
     env.down['value'] = False
-    app._hold_backstop.tick()
-    app._hold_backstop.tick()
+    monitor.tick()
+    monitor.tick()
     assert app.calls == ['start', 'stop']
 
 
@@ -171,7 +179,7 @@ def test_healthy_hardware_callback_stops_polling_and_normal_up_stops_capture(env
     assert monitor.unhealthy_since is None
     env.sample.reset_mock()
     monitor.tick()
-    env.sample.assert_not_called()
+    env.sample.assert_called_once_with('mouse5')  # 1164: calibrate the held button off-hook.
     fire(app)
     assert app.calls == ['start', 'stop']
 
@@ -252,7 +260,8 @@ def test_no_native_poll_in_idle_toggle_healthy_hold_or_after_cancellation(env):
     assert len(env.workers) == 1
     monitor = hold._hold_backstop
     monitor.tick()
-    env.sample.assert_not_called()
+    env.sample.assert_called_once_with('mouse5')  # 1164: verify down before trusting up.
+    env.sample.reset_mock()
     hold.recording = False
     slow(hold)
     monitor.tick()

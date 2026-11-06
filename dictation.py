@@ -430,7 +430,7 @@ from samsara.smart_corrections import (
 )
 from samsara.formatting_tokens import apply_formatting_tokens_if_enabled
 from samsara import autostart
-from samsara import config_defaults, listening_display, tutorial_capture, speech_presence, failure_reasons
+from samsara import config_defaults, listening_display, tutorial_capture, speech_presence, failure_reasons, hold_backstop
 from samsara.onboarding import display_placement
 from samsara import injection_safety
 from samsara import diagnostics
@@ -10276,7 +10276,6 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         self.play_sound('capture_started', use_winsound=True)
         self.start_recording(streaming=False, play_earcon=False)
         return bool(self.recording)
-
     def stop_recording(self):
         """Stop recording and transcribe.
 
@@ -10290,6 +10289,8 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         is itself a no-op when nothing was ducked, so this is always safe
         to call unconditionally.
         """
+        if hold_backstop.resume_mouse5_release(self):
+            return
         mode = (
             "command" if getattr(self, "command_mode_recording", False)
             else "ava" if getattr(self, "ava_mode_recording", False)
@@ -10297,7 +10298,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         )
         stage_timing = StageTiming.create(
             "hold", mode,
-            enabled=(getattr(self, "_stage_timing_enabled", False) and self.recording
+            enabled=(getattr(self, "_stage_timing_enabled", False) and (self.recording or hold_backstop.final_mouse5_release(self))
                      and getattr(self, "_streaming_session", None) is None),
         )
         stage_timing.mark("last_voice", last_voice_source="key_release")
@@ -10316,7 +10317,6 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                     finally:
                         if not stage_timing.handed_off:
                             stage_timing.complete(outcome=stage_timing.outcome or "discarded")
-
     def _take_recording_ownership(self):
         """Consume immutable capture provenance before background transcription."""
         token, self._capture_provenance = getattr(self, '_capture_provenance', None), None
@@ -10342,7 +10342,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
     def _stop_recording_impl(self, stage_timing=None):
         """Stop recording and transcribe"""
         from samsara import kept_session_draft, tutorial_capture
-        if not self.recording:
+        if not self.recording and not hold_backstop.final_mouse5_release(self):
             return
 
         memo_recording = bool(getattr(self, '_memo_recording', False))
@@ -10359,7 +10359,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
 
         tutorial_owner = getattr(self, '_tutorial_capture_token', None)
         ownership = self._take_recording_ownership()
-        capture_end_ns = time.perf_counter_ns()
+        capture_end_ns = hold_backstop.capture_end_ns(self)
         park_hold_requested = bool(
             self._live_surface_hold_parking_enabled()
             and getattr(self, '_hold_park_requested', False)

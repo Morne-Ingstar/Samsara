@@ -1202,6 +1202,8 @@ class HotkeyCluster:
         STARTING). Every guard logs what it saw.
         """
         mode = self.config.get('mode', 'hold')
+        if hold_backstop.debounce_mouse5(self, pressed):
+            return
         if pressed:
             from samsara.speech_readiness import show, status
             if not self.snoozed and status(self):
@@ -1280,11 +1282,13 @@ class HotkeyCluster:
             self._main_hotkey_source = 'key'
         if mode == 'hold' and self.recording:
             self._main_hotkey_source = 'key'
+            release = hold_backstop.begin_mouse5_release(self)
             def _deferred_stop():
                 try:
-                    self.stop_recording()
+                    hold_backstop.stop_mouse5(self, release)
                 finally:
-                    _finish_main_hotkey_stop(self)
+                    if hold_backstop.finish_mouse5_stop(self, release):
+                        _finish_main_hotkey_stop(self)
 
             logger.debug("[HOTKEY] Main hotkey (mouse) released, stopping recording")
             flight_recorder.record(
