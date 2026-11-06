@@ -427,13 +427,14 @@ def test_settings_status_is_in_real_compute_row_and_updates(qapp, monkeypatch, r
         qapp.processEvents()
         label = window._widgets['game_runtime_status']
         assert label.isVisible()
-        assert window._rows_by_widget['adv_device'].isAncestorOf(label)
-        assert label.text() == 'Right now: small on CUDA'
+        # 1152b: live engine now belongs to Game mode's heading/toggle section.
+        assert window._rows_by_widget['game_enabled'].isAncestorOf(label)
+        assert label.text() == 'Currently running: Small model \u00b7 NVIDIA GPU'
         app._game_mode.set_manual(True)
         app._game_mode.prepare()
         app._game_mode.reconcile()
         label.findChild(QTimer).timeout.emit()
-        assert label.text() == 'Right now: base.en on CPU (game mode)'
+        assert label.text() == 'Currently running: Base model (English) \u00b7 CPU'
         assert window._widgets['adv_device'].currentText() == 'CUDA (NVIDIA GPU)'
     finally:
         window.close()
