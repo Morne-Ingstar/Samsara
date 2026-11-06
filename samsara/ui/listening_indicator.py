@@ -1274,7 +1274,7 @@ class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QW
         from samsara.ui.result_message_rendering import result_width
         screen = self._resolve_custom_screen()
         limit = max(1, screen.availableGeometry().width()-16) if screen else 820
-        return min(820, limit, result_width(label, self._chip_font()) + 2 * _CHIP_PAD_X + self._report_width())
+        return min(820, limit, max((result_width(line, self._chip_font()) for line in label.splitlines()), default=0) + 2 * _CHIP_PAD_X + self._report_width())
 
     def _layout(self):
         """(total_w, total_h, pill_rect|None, chip_rect|None) in widget coords.

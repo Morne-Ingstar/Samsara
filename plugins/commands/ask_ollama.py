@@ -1132,8 +1132,13 @@ def _action_outcome(app, name: str, result) -> TurnOutcome:
         return TurnOutcome("action", "refused", reason="declined", name=name)
     reason = str(result.detail.get('reason') or ('failed' if state is DispatchState.FAILED else ''))
     if state is DispatchState.FAILED:
-        speak_as(app, f"{name} failed.", source="SAMSARA")
-        return TurnOutcome("action", "failed", reason=reason or "failed", name=name)
+        # 1137: distinguish observed failure from an unverified delivery.
+        unknown = result.detail.get('delivery_unverified') or reason in {
+            'delivery_unknown', 'outcome_unknown', 'unverified'}
+        ava_capability_protocol.refusal(app,
+            'execution_unknown' if unknown else 'execution_failed',
+            action=name, local_reason=reason.replace('_', ' '))
+        return TurnOutcome("action", "failed", reason='execution_unknown' if unknown else reason or "failed", name=name)
     if reason == "stale":
         # The user cancelled: the refusal is the cancellation, not news.
         return TurnOutcome("action", "stale", reason=reason, name=name)
@@ -1146,6 +1151,8 @@ def _outcome_chip(app, outcome: "TurnOutcome | None"):
     decide" (_answered_chip). A refusal or a failure is NEVER a success."""
     if outcome is None or outcome.kind == "conversation":
         return None
+    if outcome.kind == "edit" and outcome.state == "queued":
+        return None  # 1137: the editor owns the target-bound Apply/Discard question.
     name = outcome.name or "that"
     if outcome.state == "completed":
         return (f"Ava {_CHIP_CHECK} {name}", "success")
@@ -1154,6 +1161,9 @@ def _outcome_chip(app, outcome: "TurnOutcome | None"):
     if outcome.state == "stale":
         return ("Ava: cancelled", "accent")
     if outcome.state == "failed":
+        if outcome.reason == 'execution_unknown':
+            # PLACEHOLDER COPY (1137)
+            return (f"{_CHIP_CROSS} Ava: couldn't verify {name}", "error")
         return (f"{_CHIP_CROSS} Ava: {name} failed", "error")
     return (f"{_CHIP_CROSS} Ava: {name} refused ({outcome.reason})", "error")
 
@@ -1939,36 +1949,10 @@ _REFUSED_ACTION_TAG = re.compile(
     r"^\s*(?:ACTION2?|APP|SCHEDULE|EXECUTE)\s+", re.I | re.M)
 
 
-def _conversational_refusal(app, request, command_name, generation):
-    """One speech-only retry after the closed-world ACTION gate has refused."""
-    if not execution_policy.is_current(app, generation) or _disabled_since_request(app):
-        return TurnOutcome("action", "stale", reason="stale", name=command_name)
-    goal = catalog_question_goal(request or "") or request or command_name
-    matches = _catalog_matches(app, goal)[:3]
-    closest = "; ".join(
-        f"{command_catalog.canonical_phrase(record)}: {record.get('description') or 'Command'}"
-        for _score, _phrase, record in matches) or "none"
-    prompt = (f"The user said: {request or ''}\n"
-              f"Your proposed ACTION {command_name!r} was refused because it is not in "
-              "the offered command menu. Answer the user in plain words. "
-              f"If useful, mention these real commands: {closest}")
-    system = (_persona_base(cloud=True) + "\nThis is a speech-only answer. "
-              "Do not propose, stage, or execute an action. Never output ACTION, "
-              "APP, SCHEDULE, EXECUTE, or CONFIRM tags. Answer in 1 to 3 sentences.")
-    reply = ask_model(prompt, app, system=system, allow_search=False)
-    if not execution_policy.is_current(app, generation) or _disabled_since_request(app):
-        return TurnOutcome("action", "stale", reason="stale", name=command_name)
-    if reply.ok and not _REFUSED_ACTION_TAG.search(reply.text):
-        answer = _strip_tags(reply.text)
-        if answer:
-            speak_as(app, answer, source="AVA")
-            return TurnOutcome("conversation", "spoken", reason="action_refused_conversational")
-    if asks_to_run_action(request or ""):
-        speak_as(app, f"I couldn't find a command for that. Say 'what can I say to "
-              f"{command_name}' and I'll list what's close.", source="SAMSARA")
-    else:
-        _answer_catalog(app, catalog_question_goal(request or "") or request or command_name)
-    return TurnOutcome("conversation", "spoken", reason="action_refused_conversational")
+def _conversational_refusal(app, request, command_name, generation, context=None):
+    """Keep legacy speech-only recovery separate from live capability outcomes."""
+    return ava_capability_protocol.conversational_refusal(
+        app, request, command_name, generation, context=context)
 
 
 def handle_response(app, response, original_text=None, *, generation=None, capabilities=None):
@@ -2035,7 +2019,8 @@ def handle_response(app, response, original_text=None, *, generation=None, capab
         if not execution_policy.command_exists(command_name, app=app,
                                                executor=executor):
             logger.info("[AVA-GATE] %r is not a command at all -- invented", command_name[:40])
-            return _conversational_refusal(app, original_text, command_name, generation)
+            return _conversational_refusal(app, original_text, command_name, generation,
+                                          getattr(response, 'context', None))
 
         # The menu is the model's complete authority for this turn.  A
         # command absent from it must not reach the executor, even when it is
@@ -2051,7 +2036,8 @@ def handle_response(app, response, original_text=None, *, generation=None, capab
                 app, Invocation(command_name, route=Route.MODEL, generation=generation,
                                 source_text=original_text or ""),
                 execution_policy.Denied("not_offered", detail=status))
-            return _conversational_refusal(app, original_text, command_name, generation)
+            return _conversational_refusal(app, original_text, command_name, generation,
+                                          getattr(response, 'context', None))
 
         # --- Queue 125, gate 2: an app-naming command must name the app the
         # user said. This is the one that stops "Bring up Blender" ->

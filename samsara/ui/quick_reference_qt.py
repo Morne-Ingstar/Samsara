@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
 from samsara.constants import DEFAULT_WAKE_PHRASE, DEFAULT_WAKE_PHRASE_OPTIONS
 from samsara.ui import qt_runtime
 from samsara.ui import theme
-from samsara import config_schema
+from samsara import command_catalog, config_schema
 from samsara import formatting_tokens as ft
 from samsara import session_modes
 from samsara.session_modes import SessionMode, resolve_ava_invocations
@@ -313,19 +313,46 @@ def _resolve_session_phrases(app) -> dict:
 
 _MODE_DESCRIPTIONS = {
     SessionMode.COMMAND: "Legacy command-only lane retained for compatibility.",
-    SessionMode.DICTATE: 'HANDS FREE: ordinary speech is buffered dictation; exact navigation commands execute immediately. Say "end" to paste and continue.',
+    # PLACEHOLDER COPY (1137)
+    SessionMode.DICTATE: 'HANDS FREE: ordinary speech is buffered dictation; exact navigation commands execute immediately. '
+        '{commit_help} {submit_help} '
+        'For selection edits, switch to Ava or command mode, then ask for the change. '
+        'In hands-free dictation, ordinary speech stays in your draft. '
+        'Draft cleanup and apply or discard for a waiting edit still work.',
     SessionMode.AVA: 'Everything you say goes to the local AI agent as natural language. Say "submit that" / "the text" to attach anything you just dictated.',
 }
 
 
-def _resolve_modes_overview(app) -> dict:
+def _dictate_description(app, records=None):
+    """Resolve spoken words from the active session rules and command catalog."""
+    if records is None:
+        records = _resolve_guidance_catalog(app)
+    commit = session_modes.DICTATE_COMMIT_PHRASE
+    aliases = sorted({phrase for record in records for phrase in record['aliases']
+                      if phrase != commit and session_modes.is_dictate_commit(phrase)})
+    # PLACEHOLDER COPY (1137): identical default wording, using verified phrases.
+    commit_help = f'Say "{commit}"'
+    if commit == session_modes.DEFAULT_DICTATE_COMMIT_PHRASE:
+        commit_help += ' (the default)'
+    if aliases:
+        commit_help += ' or ' + ' or '.join(f'"{phrase}"' for phrase in aliases)
+    commit_help += ' to paste your draft into the text box.'
+    submit = next((command_catalog.canonical_phrase(record) for record in records
+                   if record['canonical_id'] == 'builtin.submit'), None)
+    submit_help = (f'Say "{submit}" to paste it and press Enter to send.' if submit else
+                   'Paste-and-send command guidance is unavailable.')
+    return _MODE_DESCRIPTIONS[SessionMode.DICTATE].format(
+        commit_help=commit_help, submit_help=submit_help)
+
+
+def _resolve_modes_overview(app, records=None) -> dict:
     """Section 3: Modes at a glance. Descriptions are prose about code
     behavior (session_modes.py's own SessionMode/docstrings), not a
     resolvable config value -- only the enabled flag is live-read."""
     cfg = getattr(app, "config", None) or {}
     cm_cfg = cfg.get("command_mode", {}) or {}
     cm_enabled = bool(cm_cfg.get("enabled", _schema_default("command_mode.enabled", False)))
-    dictate_desc = _MODE_DESCRIPTIONS[SessionMode.DICTATE]
+    dictate_desc = _dictate_description(app, records)
     extra = sorted(getattr(session_modes, "_DICTATE_COMMIT_HOMOPHONES", set()) - {session_modes.DICTATE_COMMIT_PHRASE})
     if extra:
         dictate_desc += " An isolated " + " / ".join(f'"{w}"' for w in extra) + " commits too."
@@ -378,8 +405,8 @@ def _resolve_formatting_tokens(app) -> dict:
     return {"enabled": enabled, "tokens": rows}
 
 
-def _resolve_command_catalog(app):
-    """Read one fresh catalogue snapshot for all guidance in this refresh."""
+def _resolve_guidance_catalog(app):
+    """Use the same live-registry/JSON catalogue as Command Reference (1150)."""
     from samsara import command_catalog
     matcher = getattr(getattr(app, "command_executor", None), "_matcher", None)
     rows = None
@@ -388,7 +415,16 @@ def _resolve_command_catalog(app):
             rows = matcher.list_commands()
         except Exception as exc:
             logger.debug("Visible-control guidance registry unavailable: %s", exc)
-    return command_catalog.guidance_catalog(rows)
+    return command_catalog.guidance_catalog(rows) or []
+
+
+def _resolve_button_voice_prefix(app, records=None):
+    if records is None:
+        records = _resolve_guidance_catalog(app)
+    for record in records:
+        if record["canonical_id"] == "show_numbers.click":
+            return command_catalog.canonical_phrase(record)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -495,8 +531,8 @@ class _QuickReferenceWindow(QMainWindow):
         self._body_layout.addWidget(self._build_hotkeys_section())
         self._body_layout.addWidget(self._build_hands_free_session_section())
         self._body_layout.addWidget(self._build_session_section())
-        self._body_layout.addWidget(self._build_modes_section())
-        records = _resolve_command_catalog(self.app)
+        records = _resolve_guidance_catalog(self.app)
+        self._body_layout.addWidget(self._build_modes_section(records))
         self._body_layout.addWidget(self._build_button_voice_section(records))
         ft_state = _resolve_formatting_tokens(self.app)
         self._body_layout.addWidget(self._build_formatting_section(ft_state))
@@ -554,12 +590,10 @@ class _QuickReferenceWindow(QMainWindow):
             self._row(lay, row["label"], row["value"], row["enabled"])
         return card
 
-    def _build_button_voice_section(self, records) -> QFrame:
-        from samsara import command_catalog
+    def _build_button_voice_section(self, records=None) -> QFrame:
         from samsara.button_voice import CAPTION_DISMISS_LABEL, phrases_for_label, source_phrases
         from samsara.button_voice_reference import CONTROL_LABELS
-        prefix = next((command_catalog.canonical_phrase(record) for record in records or []
-                       if record["canonical_id"] == "show_numbers.click"), None)
+        prefix = _resolve_button_voice_prefix(self.app, records)
         prefix_hint = (
             f"Short words and ordinary phrases use '{prefix}' to keep them distinct from dictation. "
             if prefix else "Command catalogue unavailable; explicit control guidance is unavailable. ")
@@ -671,8 +705,8 @@ class _QuickReferenceWindow(QMainWindow):
         self._row(lay, "Undo phrase", scratch["phrase"], scratch["enabled"])
         return card
 
-    def _build_modes_section(self) -> QFrame:
-        state = _resolve_modes_overview(self.app)
+    def _build_modes_section(self, records=None) -> QFrame:
+        state = _resolve_modes_overview(self.app, records)
         card, lay = self._section_card("Modes at a Glance")
         enabled = state["enabled"]
         for mode in state["modes"]:

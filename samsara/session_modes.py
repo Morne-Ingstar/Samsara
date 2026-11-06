@@ -2511,11 +2511,11 @@ class SessionModeManager(UtteranceUndoMixin):
         self, text: str, signals: Optional[UtteranceSignals] = None,
     ) -> DispatchOutcome:
         from samsara.numbered_picks import dispatch_session_pick
-        from samsara.ava_edit import intent, session as edits
+        from samsara.ava_edit import intent, session as edits, draft_review
         app = getattr(self._agent_dispatch_fn, "__self__", None)
         if app is not None and passes_switch_anti_hallucination_gate(signals) and (intent.draft_cleanup_scope(text) is not None
                                 or (edits.pending() is not None and
-                                    (intent.is_apply_utterance(text) or intent.is_discard_utterance(text)))):
+                                    (intent.is_apply_utterance(text) or intent.is_discard_utterance(text) or draft_review.is_preview(app, text)))):
             if edits.handle_utterance(app, text):
                 return DispatchOutcome(kind="ava_edit_handled")
         if self.mode is SessionMode.COMMAND:

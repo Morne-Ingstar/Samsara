@@ -97,16 +97,46 @@ def _chip(app, outcome_kind: str, detail: "dict | None" = None) -> None:
         return
     try:
         from samsara.session_modes import chip_ttl_ms, outcome_chip  # noqa: PLC0415
-        chip = outcome_chip(outcome_kind, detail or {})
+        staged = pending()
+        detail = dict(detail or {})
+        if outcome_kind in {"edit_proposed", "edit_refused"} and staged:
+            detail.setdefault("target", _target_label(staged.bound_target, staged.request,
+                staged.selection_target, staged.draft_target))
+        chip = outcome_chip(outcome_kind, detail)
         if chip is None:
             return
         label, chip_kind = chip
-        staged = pending()
         if outcome_kind == "edit_proposed" and staged and staged.draft_target is not None:
-            label = label.split(" - ", 1)[0].replace("proposed edit:", "Proposed edit:")
+            from samsara.ava_edit import draft_review
+            def show_draft_status():
+                if pending() is staged:
+                    show(draft_review.status(app, detail['target'], detail.get('changes') or 0),
+                         chip_kind, chip_ttl_ms(outcome_kind, chip_kind))
+            if qt_runtime.is_alive():
+                qt_runtime.post(show_draft_status)
+            else:
+                show_draft_status()
+            return
         show(label, chip_kind, chip_ttl_ms(outcome_kind, chip_kind))
     except Exception as exc:
         logger.debug(f"[AVA-EDIT] chip failed: {exc}")
+
+
+def _target_label(bound, request, selection_target=None, draft_target=None):
+    """Name only the target the editor actually bound, never router prose."""
+    # PLACEHOLDER COPY (1137)
+    requested = getattr(request, 'target', None)
+    if bound is not None:
+        if requested == 'last_sentence':
+            return 'your last sentence'
+        if requested == 'last_dictation':
+            return 'what you just said'
+        if getattr(bound, 'selection', None) is not None or bound.kind == 'selection':
+            return 'your selection'
+        return 'your draft' if bound.kind == 'draft' else 'what you just said'
+    if selection_target is not None:
+        return 'your selection'
+    return 'your draft' if draft_target is not None else ''
 
 
 def _say(app, text: str) -> None:
@@ -133,11 +163,15 @@ def pending() -> "PendingProposal | None":
         if _pending is not None and _pending.expired():
             logger.info("[AVA-EDIT] staged proposal expired unanswered")
             _pending = None
+            from samsara.ava_edit import draft_review
+            draft_review.close()
         return _pending
 
 
 def clear() -> None:
     global _pending, _worker_app
+    from samsara.ava_edit import draft_review
+    draft_review.close()
     with _lock:
         if _worker_app is not None:
             _worker_app._ava_edit_epoch = getattr(_worker_app, '_ava_edit_epoch', 0) + 1
@@ -274,7 +308,8 @@ def _stage_owned(app, proposal: Proposal, *, selection_target=None, selection_mo
     Returns True when a proposal is now staged and waiting for the word.
     """
     if not proposal.ok:
-        _chip(app, "edit_refused", {"reason": proposal.reason})
+        _chip(app, "edit_refused", {"reason": proposal.reason,
+            "target": _target_label(bound_target, request, selection_target, draft_target)})
         _say(app, proposal.describe())
         logger.info(f"[AVA-EDIT] not staged: {proposal.reason}")
         return False
@@ -474,6 +509,9 @@ def handle_utterance(app, text: str) -> bool:
             return False
 
         if pending() is not None:
+            from samsara.ava_edit import draft_review
+            if draft_review.is_preview(app, text):
+                return draft_review.show(app)
             if intent.is_apply_utterance(text):
                 preview = getattr(app, "_dictate_preview", None)
                 if preview is not None:

@@ -156,10 +156,110 @@ def assert_button_labels(widget, clean, clear):
         assert widget.rect().contains(button.geometry()) if button.parentWidget() is widget else button.parentWidget().rect().contains(button.geometry())
 
 
-def test_draft_proposal_status_omits_button_instructions(app):
+def test_draft_proposal_status_omits_button_instructions(app, qapp, monkeypatch):
+    """1137, owner override 2026-11-05: show how to view, accept and reject.
+
+    Keep this historical node name so gate comparisons retain the existing ID.
+    Mention real visible controls on Full; Compact must have voice directions.
+    """
+    _assert_draft_status(app, qapp, monkeypatch, "Compact")
+
+
+def test_draft_proposal_status_names_only_visible_controls(app, qapp, monkeypatch):
+    _assert_draft_status(app, qapp, monkeypatch, "Full")
+
+
+def _assert_draft_status(app, qapp, monkeypatch, display):
+    from samsara import command_catalog
+    from PySide6.QtWidgets import QWidget, QPushButton, QVBoxLayout
+    records = [dict(canonical_id=f"selection_edit.{key}", phrase=value)
+               for key, value in (("show_the_change", "inspect proposed edit"),
+                                  ("apply", "apply the edit"), ("discard", "discard the edit"))]
+    monkeypatch.setattr(command_catalog, "guidance_catalog", lambda *_: records)
+    full = None
+    if display == "Full":
+        full = QWidget()
+        layout = QVBoxLayout(full)
+        full._clean_up, full._clear = QPushButton("Accept?"), QPushButton("Cancel")
+        layout.addWidget(full._clean_up); layout.addWidget(full._clear)
+        full.show()
+        app.live_surface = SimpleNamespace(widget=full)
     messages = []
     app._show_outcome_chip = lambda text, *_: messages.append(text)
+    try:
+        session.handle_utterance(app, "clean up")
+        text = messages[-1]
+        assert "your draft" in text and f"{session.pending().proposal.change_count} change" in text
+        assert "inspect proposed edit to view" in text
+        assert "apply the edit" in text and "discard the edit" in text
+        assert "accept" in text.casefold() and "reject" in text.casefold()
+        assert app._session_mode_manager.dictate_pending_buffer == SOURCE
+        if full:
+            assert "click Accept? / Cancel" in text
+            assert len(text.splitlines()) == 2
+            full.hide()
+            session._chip(app, "edit_proposed", {"changes": 1})
+            assert "click" not in messages[-1]
+        else:
+            assert "click" not in text and len(text.splitlines()) == 1
+    finally:
+        if full:
+            full.close()
+
+
+@pytest.mark.parametrize("answer", ["Cancel", "Accept?", "expire"])
+def test_show_change_is_registered_read_only_and_keeps_pending_owner(app, qapp, monkeypatch, answer):
+    """1137: the advertised preview opens the proposal without accepting it."""
+    from samsara import command_catalog, plugin_commands
+    from samsara.ava_edit import draft_review
+    from samsara.ui import qt_runtime
+    from PySide6.QtWidgets import QTextBrowser, QPushButton
+    monkeypatch.setattr(plugin_commands, "_REGISTRY", {})
+    monkeypatch.setattr(plugin_commands, "_MODULE_ENTRIES", {})
+    draft_review.register_commands("plugins.commands.selection_edit")
+    registered = plugin_commands._REGISTRY["show the change"]
+    assert registered["risk_class"] == "ui" and not registered["ai_visible"]
+    records = [dict(canonical_id=f"selection_edit.{key}", phrase=value)
+               for key, value in (("show_the_change", registered["phrase"]),
+                                  ("apply", "apply"), ("discard", "discard"))]
+    monkeypatch.setattr(command_catalog, "guidance_catalog", lambda *_: records)
+    monkeypatch.setattr(qt_runtime, "is_alive", lambda: True)
+    monkeypatch.setattr(qt_runtime, "post", lambda fn: fn())
     session.handle_utterance(app, "clean up")
-    assert messages[-1].startswith("Proposed edit: ")
-    assert "Accept" not in messages[-1] and "Cancel" not in messages[-1]
-    assert " - " not in messages[-1]
+    staged, question = session.pending(), app._ava_question
+    assert not session.handle_utterance(app, '"show the change"')
+    assert not session.handle_utterance(app, "We should show the change tomorrow")
+    assert registered["func"](app, "")
+    window = app._ava_edit_preview
+    assert [body.toPlainText() for body in window.findChildren(QTextBrowser)] == [SOURCE, RESULT]
+    assert session.pending() is staged and app._ava_question is question
+    assert app._session_mode_manager.dictate_pending_buffer == SOURCE
+    # Preview controls and expiry retire exactly the same bound proposal.
+    if answer == "expire":
+        staged.created_at -= session.PROPOSAL_TTL_S + 1
+        assert session.pending() is None
+    else:
+        next(button for button in window.findChildren(QPushButton) if button.text() == answer).click()
+    assert session.pending() is None and not window.isVisible()
+    assert app._session_mode_manager.dictate_pending_buffer == (RESULT if answer == "Accept?" else SOURCE)
+
+
+def test_pending_preview_is_routed_in_hands_free_and_stays_literal_otherwise(app, monkeypatch):
+    """1137: only a whole, grounded preview phrase for a waiting proposal fires."""
+    from samsara import command_catalog
+    from samsara.ava_edit import draft_review
+    from samsara.session_modes import UtteranceSignals
+    monkeypatch.setattr(command_catalog, "guidance_catalog", lambda *_: [
+        dict(canonical_id="selection_edit.show_the_change", phrase="inspect proposed edit")])
+    viewed = []
+    monkeypatch.setattr(draft_review, "show", lambda owner: viewed.append(session.pending()) or True)
+    app._session_mode_manager._agent_dispatch_fn = SimpleNamespace(__self__=app)
+    signals = UtteranceSignals(has_contiguous_speech=True, transcript_confident=True, compression_ratios=(1.0,))
+    session.handle_utterance(app, "clean up")
+    staged = session.pending()
+    assert app._session_mode_manager._dispatch_in_mode("inspect proposed edit", signals).kind == "ava_edit_handled"
+    assert viewed == [staged] and session.pending() is staged
+    session.clear()
+    app._session_mode_manager._dispatch_in_mode("inspect proposed edit", signals)
+    assert viewed == [staged]
+    assert app._session_mode_manager.dictate_pending_buffer.endswith("inspect proposed edit")

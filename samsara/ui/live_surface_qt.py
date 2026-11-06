@@ -266,7 +266,7 @@ class _FeedbackBand(QWidget):
         return max(36 if self._action_width() else 0, message_height(self._message, self.label.font(), width-(42 if self.chip else 24)-self._action_width(), max_lines=self._max_lines()))
 
     def desired_width(self):
-        return self.label.fontMetrics().horizontalAdvance(self.notice.message) + 42 + self._action_width() if self.notice else 0
+        return max((self.label.fontMetrics().horizontalAdvance(line) for line in self.notice.message.splitlines()), default=0) + 42 + self._action_width() if self.notice else 0
 
     def restyle(self):
         self.dismiss.setFont(theme.qfont(theme.TYPE_MIN))

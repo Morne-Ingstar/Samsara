@@ -432,6 +432,9 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
     if kind == "edit_proposed":
         n = detail.get("changes") or 0
         unit = "change" if n == 1 else "changes"
+        # PLACEHOLDER COPY (1137): target is supplied by the local editor.
+        if detail.get("target"):
+            return (f"Proposed edit to {detail['target']}:\n{n} {unit} - say apply or discard", "pending")
         return (f"proposed edit: {n} {unit} - say apply", "pending")
     if kind == "edit_applied":
         n = detail.get("changes") or 0
@@ -441,6 +444,9 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
         return ("edit dropped", "warning")
     if kind == "edit_refused":
         reason = str(detail.get("reason") or "")[:_REASON_MAX]
+        # PLACEHOLDER COPY (1137)
+        if detail.get("target"):
+            return (f"No edit to {detail['target']}" + (f" {CHIP_DASH} {reason}" if reason else ""), "warning")
         return ((f"no edit {CHIP_DASH} {reason}" if reason else "no edit"), "warning")
 
     if kind == "ava_dispatched":
