@@ -13,8 +13,8 @@ def register_commands(module_name):
         return show(app) if not _remainder or is_preview(app, _remainder) else False
 
     show_change.__module__ = module_name
-    # PLACEHOLDER COPY (1137)
-    show_change.__doc__ = "Show the proposed edit without changing your draft."
+    # PLACEHOLDER COPY (1176)
+    show_change.__doc__ = "Shows the proposed edit without changing your draft."
     command("show the change", pack="core", ai_visible=False, risk_class="ui",
             ai_composable=False, side_effects=["ui"], preconditions=[],
             voice_triggerable=True, param_schema={}, reversible=False,

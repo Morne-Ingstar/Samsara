@@ -10453,15 +10453,9 @@
         "keep that",
         "save that dictation"
       ],
-      "args": [
-        {
-          "name": "text",
-          "required": false,
-          "type": "text"
-        }
-      ],
+      "args": [],
       "canonical_id": "kept_dictations.keep_that",
-      "description": "Save audio and text in History > Kept, even with automatic keeping off.",
+      "description": "Saves audio and text in History > Kept, even with automatic keeping off.",
       "examples": [],
       "kind": "plugin",
       "object": "that",
@@ -16099,7 +16093,7 @@
       ],
       "args": [],
       "canonical_id": "selection_edit.show_the_change",
-      "description": "Show the proposed edit without changing your draft.",
+      "description": "Shows the proposed edit without changing your draft.",
       "examples": [],
       "kind": "plugin",
       "object": "the_change",

@@ -573,6 +573,7 @@ _NO_ARGUMENT_PHRASES = frozenset({
     "pause", "next", "previous music", "mute",
     "stop speaking",  # 1155: reads the tail only to reject it.
     "show favorites", "hide favorites",  # 1144: remainder is only a refusal guard.
+    "keep that",  # 1176: remainder is only a refusal guard.
     # 820: these controls reject tails; the window number is in the phrase.
     "cancel", "confirm close", "keep it open",
     *(f"close {number}" for number in range(1, 100)),
