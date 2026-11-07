@@ -117,6 +117,10 @@ docs/SAMSARA_CONVERSATION_EXPORT_*.md
 # Real voice recordings used as long-dictation regression fixtures -- must
 # never enter git history (public repo). See tests/test_long_dictation_quality.py.
 tests/fixtures/audio/
+# 1181: additional defence; recorder/replay also reject every in-repo data path.
+**/SamsaraCorpus/
+/voice_corpus_data/
+/tests/fixtures/voice_corpus/
 # 2026-09-10 checkpoint: local artifacts, never commit
 perf_artifacts/sv_models/
 *.zip
