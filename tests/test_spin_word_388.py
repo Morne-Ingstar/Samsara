@@ -1,4 +1,6 @@
-"""388: real pixel/motion/accessibility checks and measured Home geometry."""
+"""388: real pixel/motion/accessibility checks and measured Home geometry.
+
+1178 decision: 1149 / 86edb66e: "an easy way to stop Ava reading - say stop or click Stop and she stops at once; Repeat button, tray controls and a one-time hint". Only caption text dismisses, leaving speech buttons usable."""
 import time
 import os
 from pathlib import Path
@@ -159,8 +161,8 @@ def test_feedback_and_caption_copy(qapp):
     assert config_schema.FEEDBACK_LEVEL_CHOICES["silent"][1] == "Visual feedback only."
     assert all(0 < len(text) <= 90 for _, text in config_schema.FEEDBACK_LEVEL_CHOICES.values())
     panel = ava_captions_qt._CaptionsWindow(_app())
-    assert panel._hint.text() == "Click anywhere to dismiss " + chr(0xB7) + " Drag to move"
-    assert panel._hint.accessibleName() == "Click anywhere on the caption to dismiss it. Drag it to move it."
+    assert panel._hint.text() == "Click text to dismiss " + chr(0xB7) + " Drag to move"
+    assert panel._hint.accessibleName() == "Click the caption text to dismiss it. Drag it to move it."
     assert "Click to dismiss  |  drag to move" not in Path(ava_captions_qt.__file__).read_text()
     panel.hide()
     panel.deleteLater()

@@ -2,7 +2,9 @@
 Duplicate appearances and earcon previews collapse to a single editor;
 alarm record fields are owned by the Alarms manager. 284 repairs/deletions
 and 276 startup additions are explicitly reconciled. No external files needed.
-"""
+
+
+1178 decision: 1040 / f03a1be1: "how long you can pause is one slider"; 1031f / e6ca0f58 removes the old blanket cancel window; 1152b / a03a4fc5 adds a Game mode section; 1149 / 86edb66e adds speech controls; 1161 / 9a05a16a adds Kept controls."""
 from collections import Counter
 import copy
 import json
@@ -14,7 +16,7 @@ from tests.test_settings_pages import _StubApp, _schema_defaults
 AUDITED_KEYS = set([
     "accessibility.ava_captions",
     "accessibility.ava_mute_audio",
-    "accessibility.speech_pace",
+    "accessibility.speech_pause_s",
     "add_trailing_space",
     "alarms.complete_hotkey",
     "alarms.dismiss_hotkey",
@@ -55,10 +57,7 @@ AUDITED_KEYS = set([
     "command_hotkey",
     "command_mode.abort_phrases",
     "command_mode.button",
-    "command_mode.cancel_window_all_commands",
-    "command_mode.cancel_window_s",
     "command_mode.command_matching_enabled",
-    "command_mode.dictate_utterance_silence_s",
     "command_mode.enabled",
     "command_mode.enter_debounce_ms",
     "command_mode.exit_earcon",
@@ -119,7 +118,6 @@ AUDITED_KEYS = set([
     "memo_hotkey",
     "microphone",
     "microphone_name",
-    "min_speech_duration",
     "mode",
     "model_size",
     "music_library",
@@ -127,7 +125,6 @@ AUDITED_KEYS = set([
     "output_device_hostapi",
     "output_device_name",
     "performance_mode",
-    "silence_threshold",
     "smart_corrections.enabled",
     "smart_corrections.modes.hotkey",
     "smart_corrections.modes.streaming",
@@ -151,10 +148,8 @@ AUDITED_KEYS = set([
     "undo_hotkey",
     "updates.automatic_checks",
     "wake_word_config.audio.speech_threshold",
-    "wake_word_config.audio.wake_command_timeout",
     "wake_word_config.oww_threshold",
     "wake_word_config.phrase",
-    "wake_word_config.quick_silence_timeout",
     "wake_word_enabled",
     "wake_word_hotkey"
 ])
@@ -176,7 +171,7 @@ def window(qapp, monkeypatch, qt_widget_scope):
 
 
 def test_every_audited_key_has_one_reachable_editor(window):
-    assert len(AUDITED_KEYS) == 144  # 1074: Demo pacing leaves Settings.
+    assert len(AUDITED_KEYS) == 137  # 1074: Demo pacing leaves Settings.
     bindings = window.config_row_inventory()
     # 827c: the connection switch has one reachable home on Integrations.
     assert [(page, widget) for key, page, widget in bindings
@@ -206,7 +201,9 @@ def test_every_schema_key_has_one_home_or_an_explicit_ui_less_reason(window):
                 continue
         if spec.get('settings_ui') is False:
             assert spec.get('ui_less_reason', '').strip(), key
-            assert counts[key] == 0, (key, 'UI-less key has a Settings row')
+            # 1040: settings_ui=False excludes the generic editor; the
+            # custom pause slider is still the single visible editor.
+            assert counts[key] == (1 if key == 'accessibility.speech_pause_s' else 0), (key, 'UI-less key has a Settings row')
         else:
             assert 'ui_less_reason' not in spec, (key, 'missing explicit opt-out')
             if counts[key] != 1:
@@ -217,7 +214,7 @@ def test_every_schema_key_has_one_home_or_an_explicit_ui_less_reason(window):
 def test_six_pages_keep_approved_base_budgets(window):
     assert settings_qt._TAB_NAMES == ['General', 'Dictation', 'Audio', 'Ava', 'Shortcuts', 'Help']
     # 1073: Indicator position and Speech volume join their main sections.
-    for name, count in {'General': 9, 'Dictation': 10, 'Audio': 12, 'Shortcuts': 11}.items():
+    for name, count in {'General': 9, 'Dictation': 12, 'Audio': 12, 'Shortcuts': 11}.items():
         assert len(window._pages[name].base_rows) == count
     # 1073: Indicator position leaves Advanced; Idle preview stays for 1076.
     assert sum(row.page_name == 'General' and row.disclosure is window._pages['General'].advanced

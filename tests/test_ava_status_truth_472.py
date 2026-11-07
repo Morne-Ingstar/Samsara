@@ -1,4 +1,6 @@
-"""Truthful Ava status and grouped Settings, without a live app or provider."""
+"""Truthful Ava status and grouped Settings, without a live app or provider.
+
+1178 decision: 1074 / 0836e727: "cloud key and model sit under the cloud provider"."""
 import copy
 import threading
 from types import SimpleNamespace
@@ -222,7 +224,7 @@ def test_ava_rows_grouping_and_search(qapp, route):
         page = window._pages['Ava']
         rows = [page.base.itemAt(i).widget() for i in range(page.base.count())]
         rows = [row for row in rows if isinstance(row, SettingRow)]
-        assert [r.widget_keys[0] for r in rows[:4]] == ['providerRoute', 'cloud_provider', 'ava_cmd_model', 'ava_mode_key']
+        assert [r.widget_keys[0] for r in rows[:6]] == ['providerRoute', 'cloud_provider', 'cloud_api_key', 'cloud_model', 'ava_cmd_model', 'ava_mode_key']
         assert window._rows_by_widget['cloud_provider'].isVisible() == (route == 'cloud')
         assert window._rows_by_widget['ava_cmd_model'].isVisible() == (route == 'local')
         route_control = window._widgets['providerRoute']

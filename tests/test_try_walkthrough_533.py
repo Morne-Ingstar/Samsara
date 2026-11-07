@@ -1,4 +1,6 @@
-"""533: actual tutorial navigation, immediate trials and unchanged save safety."""
+"""533: actual tutorial navigation, immediate trials and unchanged save safety.
+
+1178 decision: 1040 / f03a1be1: "how long you can pause is one slider in Settings - Standard, Relaxed and Unhurried are stops on it". Check the real slider hit target, accessible name and focus transfer instead of removed buttons."""
 from copy import deepcopy
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -311,8 +313,10 @@ def test_all_states_fit_real_tutorial_without_scrollbars(build, qapp, scale):
             if label.isVisible() and label.text():
                 needed = label.heightForWidth(label.width()) if label.hasHeightForWidth() else label.fontMetrics().height()
                 assert label.height() >= needed, (stage, label.text())
-        for control in page.level.buttons + page.pace.buttons:
+        for control in page.level.buttons:
             assert control.height() >= 44 and control.accessibleName() == control.text()
+    assert page.pace.slider.height() >= 44
+    assert page.pace.slider.accessibleName() == 'How long you can pause'
     page.suggest([1.2])
     for _ in range(8):
         qapp.processEvents()
@@ -397,7 +401,7 @@ def test_busy_or_hidden_focused_control_parks_on_next(build, qapp, control):
         target = page.voice_id
     elif control == 'pace':
         page.show_stage(2)
-        target = page.pace.buttons[0]
+        target = page.pace.slider
     else:
         target = page.level.buttons[2]
     target.setFocus()

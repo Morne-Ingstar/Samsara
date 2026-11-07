@@ -7,7 +7,11 @@ process_transcription/clean_text/smart_correct/formatting-tokens entirely.
 The fix reuses that SAME pipeline (see dictation.py's _inject_fn, wired as
 SessionModeManager's inject_fn) exactly once over the complete accumulated
 text at commit -- never per natural-pause chunk.
-"""
+
+
+1178 decision: ENVIRONMENT: request the opt-in bound_submit_target fixture; use synthetic composer identity/revision and keep real effect-policy validation.
+
+1178 decision: ENVIRONMENT: formatting fixtures explicitly describe a normal editor, so address-bar detection must not import UIA/COM. Original formatting/history/paste checks remain."""
 
 import threading
 from types import SimpleNamespace
@@ -135,6 +139,7 @@ def _buffered_dictation_app(config_overrides=None):
     }
     if config_overrides:
         app.config.update(config_overrides)
+    app._verbatim_address_bar = lambda: False
     app._paste_preserving_clipboard = Mock(return_value=(True, True))
     app.add_to_history = Mock()
     app._log_history = Mock()
@@ -348,3 +353,6 @@ def test_the_end_and_weekend_remain_ordinary_dictated_text():
     app._paste_preserving_clipboard.assert_not_called()
     assert "the end" in manager.dictate_pending_buffer.lower()
     assert "weekend" in manager.dictate_pending_buffer.lower()
+
+
+pytestmark = pytest.mark.usefixtures('bound_submit_target')

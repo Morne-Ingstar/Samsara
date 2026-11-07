@@ -5,7 +5,9 @@ SamsaraTrayQt._rebuild_menu() is exercised directly against a real QMenu
 -- confirms every previously-existing action callback is still present
 after the reorganization, and that the new grouping (top-level daily-use,
 Tools submenu, Developer submenu) matches spec.
-"""
+
+
+1178 decision: 1024 / 04d4538e: Something wrong opens Help through context_help_qt.open_help and SettingsQt.show_page. Exercise that same public controller method with an existing real Help page."""
 import math
 import types
 from unittest.mock import Mock
@@ -130,14 +132,14 @@ class TestSomethingWrongOpensSupportTab:
         window = settings_qt._SettingsWindow(settings_app)
         try:
             app = _make_app()
-            app._settings_qt = SimpleNamespace(_window=window)
+            app._settings_qt = SimpleNamespace(_window=window, show_page=lambda name: window.show_tab(name))
             t = SamsaraTrayQt(app)
             t._rebuild_menu()
             action = next(a for a in t._menu.actions() if a.text() == "Something wrong?")
 
             action.trigger()
 
-            app.open_settings.assert_called_once_with()
+            app.open_settings.assert_not_called()
             assert window._stack.currentIndex() == settings_qt._TAB_NAMES.index("Help")
             assert window.findChild(tray_qt.QObject, "reportBugButton") is not None
         finally:

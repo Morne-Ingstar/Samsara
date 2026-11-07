@@ -2,7 +2,9 @@
 
 App methods run only with the ordinary no-bootstrap gate adapter. No model,
 microphone, real OS input, live profile, or recorded user text is needed.
-"""
+
+
+1178 decision: 1009 vocabulary delivery: terms travel via bounded hotwords. Fallback must retain the entire original audio, decode settings and immutable caller parameters, with the production vocabulary envelope."""
 from types import SimpleNamespace
 from unittest.mock import Mock
 import os
@@ -139,7 +141,10 @@ def test_unmatched_short_pass_redecodes_complete_original_audio(decode_app, cand
     assert app.model.transcribe.call_count == 2
     for call in app.model.transcribe.call_args_list:
         assert call.args[0] is audio
-    assert app.model.transcribe.call_args.kwargs == params
+    from samsara.vocabulary_decode import vocabulary_params
+    expected, _ = vocabulary_params(app, params)
+    assert app.model.transcribe.call_args.kwargs == expected
+    assert params == {'beam_size': 3, 'temperature': [0.0, 0.2], 'language': 'en'}
 
 
 @pytest.mark.parametrize('lazy', [False, True])

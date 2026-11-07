@@ -12,7 +12,9 @@ These tests catch the ways a split goes wrong silently:
   * a page whose save fn stopped writing keys it wrote before the split
     (pinned from the pre-split file, enumerated against the schema);
   * moved code whose repo-relative paths re-based onto samsara/ui/settings/.
-"""
+
+
+1178 decision: 1040 / f03a1be1: "how long you can pause is one slider"; 1031f / e6ca0f58 removes the old blanket cancel window; 1152b / a03a4fc5 adds a Game mode section; 1149 / 86edb66e adds speech controls; 1161 / 9a05a16a adds Kept controls."""
 
 import ast
 import inspect
@@ -61,7 +63,7 @@ def test_dictation_rows_supply_distinct_plain_language_help(qapp):
         for _title, description, names, config in specs:
             row = window._rows_by_widget[names.split(',')[0]]
             assert row.description == description
-            assert row.config_keys == tuple(config.split(','))
+            assert row.config_keys == tuple(filter(None, config.split(',')))
         assert window._rows_by_widget['wake_profiles'] in rows
         assert any(row.help is None for row in rows)
         assert any(row.help is not None for row in rows)
@@ -119,7 +121,6 @@ KEYS_BEFORE_SPLIT = {
         'command_mode.suppress_button', 'command_mode.tts_char_limit',   # queue 57: now has a control
         'command_mode.command_matching_enabled', 'command_mode.exit_earcon',   # queue 62: now have controls
         'command_mode.utterance_silence_s',
-        'command_mode.cancel_window_s', 'command_mode.cancel_window_all_commands',   # queue 69
         'command_mode.preview_idle_delay_s', 'command_mode.preview_idle_opacity',    # queue 75
         'command_mode.preview_position',  # 03956c8
         'command_mode.stop_phrases',   # queue 116: the emergency stop's words

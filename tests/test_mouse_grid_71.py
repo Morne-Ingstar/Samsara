@@ -1,8 +1,4 @@
-"""Queue 71 -- the mouse grid: geometry, chaining, scoping, actions.
-
-Never imports dictation and never shows a window: the Qt post is captured, the
-pointer and the mouse buttons are faked, and the geometry is pure.
-"""
+'Queue 71 -- the mouse grid: geometry, chaining, scoping, actions.\n\nNever imports dictation and never shows a window: the Qt post is captured, the\npointer and the mouse buttons are faked, and the geometry is pure.\n\n\n1178 decision: 1031b / 871a1034: the grid resolves a bound target before activation. ENVIRONMENT: supply an inert UIA service with a navigation target and stable activation revision; real cursor policy still selects and binds it. No desktop/COM calls.\n\n1178 decision: ENVIRONMENT: reinstall the actual click command after the registry-isolation fixture clears registrations. Keep real command identity and bound activation authorization.'
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -43,6 +39,8 @@ def app():
 @pytest.fixture
 def driven(monkeypatch):
     """Grid wired to fakes: records pointer moves, clicks and Qt posts."""
+    from samsara import plugin_commands
+    plugin_commands._reinstall_module_commands(sn)
     log = SimpleNamespace(moves=[], clicks=[], posts=0)
     monkeypatch.setattr(sn, "_move_pointer", lambda x, y: log.moves.append((x, y)))
     monkeypatch.setattr(sn, "_grid_click", lambda action: log.clicks.append(action))
@@ -51,6 +49,22 @@ def driven(monkeypatch):
     monkeypatch.setattr(sn, "_report_chip", lambda *a, **k: None)
     monkeypatch.setattr(sn, "_monitor_rects_physical", lambda: mg.order_monitors(PHYSICAL))
     monkeypatch.setattr(sn, "_window_rect_physical", lambda hwnd: (300, 200, 1300, 900))
+    from samsara import uia, execution_policy, effect_policy
+    node = SimpleNamespace(hwnd=1, foreground_hwnd=0, generation=1, index=0,
+        name='Settings', control_type='ButtonControl', enabled=True,
+        offscreen=False, rect=(0, -1080, 6400, 2160), depth=1)
+    def act(selected, verb, revision):
+        assert selected is node and revision == 'synthetic-revision'
+        log.clicks.append({'physical_click': 'click', 'double_click': 'double',
+                           'right_click': 'right'}[verb])
+        return True
+    service = SimpleNamespace(snapshot=lambda **kw: SimpleNamespace(nodes=[node]),
+        activation_revision=lambda selected: 'synthetic-revision', act_bound=act)
+    monkeypatch.setattr(uia, 'get_service', lambda: service)
+    monkeypatch.setattr(execution_policy, 'foreground_window_identity', lambda: {
+        'hwnd': 1, 'pid': 7, 'process': 'editor.exe', 'title_hash': 'fixture'})
+    monkeypatch.setattr(effect_policy, 'resolve_submit_target', lambda app=None:
+        effect_policy.SubmitTarget('editor', 1, 'editor.exe', 'composer', 'revision'))
     return log
 
 

@@ -2,7 +2,9 @@
 
 Only bind capture methods from the bootstrap AST; never import dictation or
 attach devices, global hotkeys, or the running app's log handler.
-"""
+
+
+1178 decision: 1127 / 65d0591d: "one name per feature - Wake word, Hands-free and Hold to talk - everywhere in the app"."""
 import ast
 import time
 from dataclasses import replace
@@ -247,7 +249,7 @@ def test_surface_never_offers_an_insert_button_for_recording_pending_or_delivere
             # Finish2 R4 permits the separate waiting-draft action, hidden here.
             assert all(button.text() != "Insert text" for button in widget.findChildren(type(widget._clear)) if button.isVisible())
         # The receipt keeps its lane and result in separate header labels.
-        assert widget._lane.text() == "Hold"
+        assert widget._lane.text() == "Hold to talk"
         assert widget._state.text() == "inserted"
     finally:
         widget.deleteLater()

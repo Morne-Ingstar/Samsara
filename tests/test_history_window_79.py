@@ -4,7 +4,9 @@ rendering, contrast, and the recovery-first behaviour.
 Never touches the owner's data: every store is a tmp SQLite file, QSettings is
 replaced with an in-memory fake, and the clipboard is a fake (the running app
 and the owner both use the real one). Does not import dictation.
-"""
+
+
+1178 decision: 1161 / 9a05a16a: "Keep this dictation - save the recording of a dictation that came out wrong so it can be checked later". History shares a host with Kept. Scope history/data labels to their actual child; settle nested layouts before pixels."""
 
 import io
 import re
@@ -199,6 +201,7 @@ def _pixel_in_view(view, widget, x, y):
 
 def test_status_line_has_no_background_strip(qapp, main_window):
     _win, view, _app, _ids = main_window
+    _pump(qapp, 100)  # Settle the 1161 History/Kept stacked host before pixel sampling.
     status = view._status_lbl
     assert status.text().startswith(f"{len(view._rows_by_item_id)} entries")
     bg = theme.BG1.lower()
@@ -211,7 +214,7 @@ def test_no_label_or_checkbox_in_the_view_paints_its_own_box(qapp, main_window):
     image = view.grab().toImage()
     bg = theme.BG1.lower()
     checked = 0
-    for widget in _find(view, QLabel, QCheckBox):
+    for widget in _find(view._header.parentWidget(), QLabel, QCheckBox):
         if not widget.isVisibleTo(view) or widget.objectName() == "historyPill":
             continue
         if widget.parentWidget() is not None and widget.parentWidget().objectName() == "historyDetail":
@@ -335,7 +338,7 @@ def test_markup_apostrophes_and_non_ascii_render_literally(qapp, main_window):
         if view._list.itemWidget(view._list.item(i)) is row:
             view._list.setCurrentRow(i)
     assert view._detail.toPlainText() == TRICKY
-    for label in view.findChildren(QLabel):
+    for label in view._list.findChildren(QLabel):
         assert label.textFormat() == Qt.TextFormat.PlainText, label.objectName()
 
 

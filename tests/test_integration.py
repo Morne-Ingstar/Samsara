@@ -1,7 +1,4 @@
-"""
-Integration tests for the full transcription pipeline.
-Tests the flow from audio input to text output.
-"""
+'\nIntegration tests for the full transcription pipeline.\nTests the flow from audio input to text output.\n\n\n1178 decision: ENVIRONMENT: request the opt-in bound_submit_target fixture; use synthetic composer identity/revision and keep real effect-policy validation.\n\n1178 decision: ENVIRONMENT: construct the minimal pipeline app directly; these tests exercise transcription/history, not removed bootstrap dependencies or native desktop hotkeys.\n\n1178 decision: ENVIRONMENT: pyautogui is imported locally by clipboard delivery, not a handlers module attribute. Patch the actual desktop-input boundary.'
 import pytest
 import json
 import sys
@@ -45,7 +42,7 @@ class TestTranscriptionPipeline:
 
     def test_transcription_to_dictation_flow(self, sample_config, tmp_path):
         """Test full flow: transcription -> text processing -> paste"""
-        from tests.test_dictation_app import create_test_app
+        from tests.test_integration import _pipeline_app as create_test_app
 
         app = create_test_app(sample_config, tmp_path)
 
@@ -62,7 +59,7 @@ class TestTranscriptionPipeline:
     def test_number_conversion_in_pipeline(self, sample_config, tmp_path):
         """Test number conversion in transcription pipeline"""
         sample_config['format_numbers'] = True
-        from tests.test_dictation_app import create_test_app
+        from tests.test_integration import _pipeline_app as create_test_app
 
         app = create_test_app(sample_config, tmp_path)
 
@@ -334,7 +331,7 @@ class TestHistoryIntegration:
 
     def test_command_added_to_history(self, sample_config, tmp_path):
         """Test that commands are added to history"""
-        from tests.test_dictation_app import create_test_app
+        from tests.test_integration import _pipeline_app as create_test_app
 
         app = create_test_app(sample_config, tmp_path)
         app.save_history = Mock()
@@ -366,7 +363,7 @@ class TestFullCommandExecution:
         """Test complete text insertion command flow"""
         from samsara.commands import CommandExecutor
 
-        with patch('time.sleep'):
+        with patch('time.sleep'), patch('pyautogui.hotkey'):
             executor = CommandExecutor(temp_commands_file)
 
             result, was_command = executor.process_text("period", force_commands=True)
@@ -382,3 +379,16 @@ class TestFullCommandExecution:
 
         assert was_command is True
         mock_subprocess.assert_called_once()
+
+
+pytestmark = pytest.mark.usefixtures('bound_submit_target')
+
+
+def _pipeline_app(config, tmp_path):
+    from dictation import DictationApp
+    app = DictationApp.__new__(DictationApp)
+    app.config = config
+    app.config_path = tmp_path / 'config.json'
+    app.history = []
+    app.max_history = 100
+    return app

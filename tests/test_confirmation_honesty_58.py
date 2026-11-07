@@ -14,7 +14,9 @@ Covers the four fixes:
   4. a disabled pack's exact phrase is a miss naming the pack, not "show" + "windows"
 
 Never imports dictation (the app may be running from source).
-"""
+
+
+1178 decision: 1031f / e6ca0f58: "safe commands still run without waiting". Unknown metadata alone does not ask on a user route; confirmation speech/queued-state tests resolve a file-delete effect instead."""
 import ast
 import collections
 import json
@@ -136,7 +138,7 @@ def test_undeclared_command_without_a_catalog_row_still_confirms(monkeypatch):
     _register("mystery verb", "plugins.commands.mystery", [])
     monkeypatch.setattr(ep, "_catalog_index", ({}, {}))
     d = ep.authorize(Invocation("mystery verb", {}, Route.EXACT, 0), app=_app())
-    assert isinstance(d, NeedsConfirmation) and d.risk == "unknown"
+    assert isinstance(d, Allowed) and d.risk == "unknown"
 
 
 def test_show_windows_with_no_declaration_runs_without_confirmation_through_the_executor(tmp_path):
@@ -184,7 +186,7 @@ def test_other_long_command_mode_speech_is_still_suppressed():
 
 
 def test_executor_speaks_the_confirmation_as_category_confirmation(tmp_path, monkeypatch):
-    _register("mystery verb", "plugins.commands.mystery", [])
+    _register("mystery verb", "plugins.commands.mystery", [], side_effects=["file_delete"])
     monkeypatch.setattr(ep, "_catalog_index", ({}, {}))
     app = _app()
     ex = _executor(tmp_path, app)
@@ -213,7 +215,7 @@ def _manager(dispatch):
 
 def test_plugin_held_for_confirmation_reports_awaiting(tmp_path, monkeypatch):
     calls = []
-    _register("mystery verb", "plugins.commands.mystery", calls)
+    _register("mystery verb", "plugins.commands.mystery", calls, side_effects=["file_delete"])
     monkeypatch.setattr(ep, "_catalog_index", ({}, {}))
     app = _app()
     ex = _executor(tmp_path, app)

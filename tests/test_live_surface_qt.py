@@ -1,4 +1,6 @@
-"""Geometry and passive-window proof for package C."""
+"""Geometry and passive-window proof for package C.
+
+1178 decision: 1127 / 65d0591d: "one name per feature - Wake word, Hands-free and Hold to talk - everywhere in the app"."""
 from __future__ import annotations
 
 import pytest
@@ -231,7 +233,7 @@ def test_reduced_motion_reads_system_and_keeps_static_recording_text(qapp, monke
     assert w._mark.capture == 'recording' and w._mark.rotation == 0
     assert not w._spin_timer.isActive()
     # Finish2 R1 names the capture lane before its activity.
-    assert w._state.isVisible() and w._lane.text() == 'Hold' and w._state.text() == 'recording'
+    assert w._state.isVisible() and w._lane.text() == 'Hold to talk' and w._state.text() == 'recording'
     w.hide(); w.deleteLater()
 
 

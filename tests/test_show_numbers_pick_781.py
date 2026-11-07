@@ -1,8 +1,4 @@
-"""781: visible labels own whole picks; hidden labels never eat dictation.
-
-Run dictation imports through the maintained no-bootstrap gate. All utterances
-and controls here are synthetic; mouse/Qt/bridge/timer boundaries are inert.
-"""
+'781: visible labels own whole picks; hidden labels never eat dictation.\n\nRun dictation imports through the maintained no-bootstrap gate. All utterances\nand controls here are synthetic; mouse/Qt/bridge/timer boundaries are inert.\n\n\n1178 decision: 1031b / 871a1034: clicks are bound to locally resolved controls and revisions; consequential/unresolved activations ask once and never retry an unknown result. 1144 / 33a3ae70 requires DOM activation bindings. Supply an inert UIA service and input hints; retain real dispatch/authorization, modifier checks, single-use approval and failure retirement.\n\n1178 decision: ENVIRONMENT: the session adapter forwards the executor confirmation flag, exactly as production dispatch does; a queued protected effect cannot masquerade as executed.'
 import threading
 from types import SimpleNamespace
 
@@ -10,7 +6,7 @@ import pytest
 
 from dictation import DictationApp
 from plugins.commands import click_by_name, show_numbers as sn
-from samsara import command_scope, execution_policy, plugin_commands
+from samsara import command_scope, execution_policy, plugin_commands, effect_policy
 from samsara.command_registry import CommandMatcher, DispatchState
 from samsara.commands import CommandExecutor
 from samsara.numbered_picks import parse_pick, pick_remainder
@@ -38,6 +34,11 @@ BAD = UtteranceSignals(has_contiguous_speech=False, compression_ratios=(1.2,))
 @pytest.fixture
 def rig(monkeypatch):
     click_by_name.cancel()
+    from plugins.commands import ask_ollama
+    from samsara import click_effect_policy
+    from samsara.uia import ControlProxy
+    ask_ollama.clear_pending_action()
+    click_effect_policy._request.value = None
     plugin_commands._reinstall_module_commands(sn)
     for name, value in {'_elements': [], '_dom_active': False, '_dom_hint_count': 0,
                         '_dismiss_timer': None, '_overlay_window': None,
@@ -61,6 +62,7 @@ def rig(monkeypatch):
         return state.click_ok
 
     def dom_click(number, action, **kwargs):
+        assert kwargs['binding'] == f'synthetic-{number-1}'
         state.dom_clicks.append((number, action, kwargs['modifiers']))
         return state.click_ok
 
@@ -85,19 +87,48 @@ def rig(monkeypatch):
     ex._matcher.freeze()
     app.command_executor = ex
     state.app, state.executor = app, ex
-    state.controls = [object() for _ in range(5)]
+    # Inert local UIA adapter: real policy binds control/revision/foreground.
+    state.keys = frozenset()
+    def modifiers(keys, run):
+        state.keys = keys
+        try:
+            run()
+        finally:
+            state.keys = frozenset()
+    monkeypatch.setattr(sn, '_apply_modifier_keys', modifiers)
+    def act(node, verb, revision):
+        assert revision == 'synthetic-revision'
+        modifier = {'physical_click': 'single', 'double_click': 'double',
+                    'right_click': 'right'}[verb]
+        state.clicks.append((state.controls[node.index], modifier, state.keys))
+        return state.click_ok
+    service = SimpleNamespace(activation_revision=lambda node: 'synthetic-revision',
+                              act_bound=act)
+    def control(index):
+        node = SimpleNamespace(hwnd=101, foreground_hwnd=0, generation=1,
+            index=index, name='Settings', control_type='ButtonControl')
+        return ControlProxy(service, node)
+    state.control = control
+    state.controls = [control(i) for i in range(5)]
+    monkeypatch.setattr(execution_policy, 'foreground_window_identity', lambda: {
+        'hwnd': 101, 'pid': 7, 'process': 'editor.exe', 'title_hash': 'fixture'})
+    monkeypatch.setattr(effect_policy, 'resolve_submit_target', lambda app=None:
+        effect_policy.SubmitTarget('editor', 101, 'editor.exe', 'composer', 'revision'))
+    monkeypatch.setattr(execution_policy, 'listen_for_confirmation', lambda *args: None)
 
     def show(backend='uia'):
         sn._elements[:] = state.controls if backend == 'uia' else []
         sn._dom_active = backend == 'dom'
         sn._dom_hint_count = 5 if backend == 'dom' else 0
+        sn._dom_effect_hints = [{'kind': 'input', 'binding': f'synthetic-{i}'} for i in range(5)] if backend == 'dom' else []
         sn._schedule_dismiss_timer(app)
 
     def manager(mode=SessionMode.DICTATE, *, buffered=True):
         def dispatch(text):
             result = ex.process_text(text, app, force_commands=True)
             return CommandDispatchResult(matched=result.claimed, phrase=result.phrase,
-                                         state=result.state)
+                                         state=result.state,
+                                         awaiting_confirmation=bool(result.detail.get("awaiting_confirmation")))
 
         result = SessionModeManager(
             abort_phrases=['cancel', 'abort', 'stop listening'],
@@ -118,6 +149,9 @@ def rig(monkeypatch):
     state.show, state.manager = show, manager
     yield state
     sn._cancel_dismiss_timer()
+    ask_ollama.clear_pending_action()
+    click_effect_policy._request.value = None
+    sn._dom_effect_hints = []
     click_by_name.cancel()
 
 
@@ -159,11 +193,20 @@ def test_hidden_picks_are_exactly_the_original_hands_free_dictation(rig, phrase,
 def test_modifiers_reach_the_existing_click_path(rig, phrase, modifier, keys, backend):
     manager = rig.manager()
     rig.show(backend)
-    assert manager.dispatch_utterance(phrase, GOOD).kind == 'hands_free_command_executed'
+    outcome = manager.dispatch_utterance(phrase, GOOD)
+    if backend == 'dom' and modifier != 'single':
+        assert outcome.kind == 'command_awaiting_confirmation'
+        assert not rig.dom_clicks
+        op = execution_policy.pending_operation()
+        assert op is not None
+        assert op.approve(app=rig.app)
+        assert not op.approve(app=rig.app)
+    else:
+        assert outcome.kind == 'hands_free_command_executed'
     if backend == 'uia':
         assert rig.clicks == [(rig.controls[4], modifier, keys)]
     else:
-        action = {'single': 'click', 'double': 'doubleclick', 'right': 'rightclick'}[modifier]
+        action = 'click'  # 1031b: one confirmed DOM activation, even for double/right.
         assert rig.dom_clicks == [(5, action, {key + 'Key': key in keys
                                              for key in ('ctrl', 'shift', 'alt')})]
 
@@ -183,16 +226,22 @@ def test_overlay_never_extracts_a_number_from_prose(rig, phrase):
 def test_each_unsuccessful_pick_restarts_thirty_seconds(rig, backend, failure):
     manager = rig.manager()
     rig.show(backend)
-    for now in (25, 50):
+    for now in ((25, 50) if failure == 'out_of_range' else (25,)):
         previous = sn._dismiss_timer
         rig.now = now
         rig.click_ok = failure != 'stale'
         phrase = 'pick 9' if failure == 'out_of_range' else 'pick 5'
-        assert manager.dispatch_utterance(phrase, GOOD).kind == 'hands_free_command_executed'
+        outcome = manager.dispatch_utterance(phrase, GOOD)
+        assert outcome.kind == ('hands_free_command_failed' if backend == 'dom' and failure == 'stale' else 'hands_free_command_executed')
         assert previous.cancelled
-        assert sn._dismiss_timer.deadline == now + 30
-        assert sn.is_overlay_active()
-    sn._dismiss_timer.callback()
+        if failure == 'out_of_range':
+            assert sn._dismiss_timer.deadline == now + 30
+            assert sn.is_overlay_active()
+        else:
+            assert sn._dismiss_timer is None and not sn.is_overlay_active()
+            assert len(rig.clicks) + len(rig.dom_clicks) == 1
+    if failure == 'out_of_range':
+        sn._dismiss_timer.callback()
     assert not sn.is_overlay_active()
 
 
@@ -285,7 +334,7 @@ def test_mouse_grid_keeps_its_existing_bare_number_grammar(rig, monkeypatch):
 
 @pytest.mark.parametrize('phrase,number', [('pick seven', 7), ('number twelve', 12)])
 def test_reviewed_alias_runs_registered_pick_handler_and_clicks(rig, phrase, number):
-    rig.controls.extend(object() for _ in range(7))
+    rig.controls.extend(rig.control(i) for i in range(5, 12))
     rig.show()
     result = rig.executor.process_text(phrase, rig.app, force_commands=True)
     assert result.phrase == 'pick number'

@@ -1,4 +1,6 @@
-"""Readable status lifetimes through the real Full and Compact entry points."""
+"""Readable status lifetimes through the real Full and Compact entry points.
+
+1178 decision: 1141 / 371affbd: "one-off error messages on the listening display fade a few seconds after they are shown; a waiting problem still gets its full reading time and is never lost". Check both sides of expiry and promotion of the waiting receipt."""
 from types import SimpleNamespace
 
 import pytest
@@ -64,7 +66,7 @@ def test_exact_shared_formula(length, expected):
     # 1140: a one-off warning times out (4-12 s); errors stay until dismissed.
     warning = max(4000, min(12000, 2500 + 60 * max(0, length - 20)))
     for kind in ('success', 'accent', 'warning', 'error'):
-        want = {'warning': warning, 'error': None}.get(kind, expected)
+        want = {'warning': warning, 'error': warning}.get(kind, expected)
         assert message_duration_ms('x' * length, kind, 1) == want
 
 
@@ -111,13 +113,13 @@ def test_error_interrupts_and_lower_priority_waits(display):
     d = display
     d.show('typed')
     d.clock[0] = .1; d.show('Synthetic error', 'error')
-    assert d.text() == 'Synthetic error' and d.deadline() is None
+    assert d.text() == 'Synthetic error' and d.deadline() == 4.1
     d.clock[0] = .2; d.show('Captured')
-    d.clock[0] = 600; d.expire()
+    d.clock[0] = 4.099; d.expire()
     assert d.text() == 'Synthetic error'
-    d.i.dismiss_error(); d.flush()
-    assert d.text() == 'Captured' and d.deadline() == 602.5
-    d.clock[0] = 602.5; d.expire()
+    d.clock[0] = 4.1; d.expire()
+    assert d.text() == 'Captured' and d.deadline() == 6.6
+    d.clock[0] = 6.6; d.expire()
     assert d.text() == ''
 
 
@@ -257,7 +259,7 @@ def test_history_footer_coalesces_and_defers_refresh(qapp, monkeypatch):
         assert window._status_lbl.text() == 'Synthetic failure'
         clock[0] = 600
         window._restore_status()
-        assert window._status_lbl.text() == 'Synthetic failure'  # 1038
+        assert window._status_lbl.text() != 'Synthetic failure'  # 1141: one-off error expires.
         window._toast.dismiss(); window._restore_status()
         assert window._status_lbl.text() != 'Synthetic failure'
     finally:

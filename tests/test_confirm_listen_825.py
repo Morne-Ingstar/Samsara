@@ -1,4 +1,4 @@
-"""825f: ordinary policy confirmations reuse the local question microphone lease."""
+'825f: ordinary policy confirmations reuse the local question microphone lease.\n\n1178 decision: 1031f / e6ca0f58: "commands that send, delete or change something ask first". The fake risky action now resolves the protected clear-draft method; a method name alone cannot invent a protected effect.\n\n1178 decision: 1031f / e6ca0f58: bound consent stays visible with the exact local question and its 30-second operation lifetime on Full and Compact. This replaces the old generic six-second reply prompt; answers, expiry, target refusal and lease cleanup remain real.'
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,6 +15,8 @@ from samsara.command_registry import DispatchState
 ROOT = Path(__file__).resolve().parents[1]
 COMMANDS = json.loads((ROOT / 'commands.json').read_text(encoding='utf-8'))['commands']
 REAL_SPEAK = ava.speak
+CONFIRM_LABEL = ('Risky action?\nSay yes to confirm or no to cancel. '
+                 'No answer cancels within 30 s. Cancel before it runs.')
 
 
 @pytest.fixture
@@ -23,7 +25,7 @@ def rig(tmp_path, monkeypatch):
     monkeypatch.setattr(plugin_commands, '_REGISTRY', {})
     path = tmp_path / 'commands.json'
     path.write_text(json.dumps({'commands': {
-        'risky action': {'type': 'method', 'method': 'risky_action'},
+        'risky action': {'type': 'method', 'method': 'clear_dictation_draft'},
         'other command': {'type': 'method', 'method': 'show_tutorial'},
     }}), encoding='utf-8')
     executor = CommandExecutor(path, plugins_dir=tmp_path / 'none')
@@ -34,6 +36,8 @@ def rig(tmp_path, monkeypatch):
         _ensure_wake_consumer=Mock(), _release_wake_consumer=Mock(),
         _schedule_ui=lambda fn, *a: fn(*a), listening_indicator=Mock(),
         risky_action=Mock(), show_tutorial=Mock())
+
+    app.clear_dictation_draft = app.risky_action
 
     def speak(_app, text, **kw):
         spoken.append(text)
@@ -65,10 +69,10 @@ def stage(rig):
     assert 'Say yes to confirm or no to cancel.' in rig.spoken[-1]
     rig.app._ensure_wake_consumer.assert_not_called()
     rig.callbacks[-1]()
-    assert q.opened and q.deadline == rig.now[0] + 6
+    assert q.opened and q.deadline == pytest.approx(rig.now[0] + 30, abs=.1)
     rig.app._ensure_wake_consumer.assert_called_once_with('ava_question')
     assert (rig.app.app_state, rig.app.wake_word_triggered) == ('command_window', True)
-    assert rig.app.listening_indicator.show_outcome.call_args.args[0] == 'Say yes or no'
+    assert rig.app.listening_indicator.show_outcome.call_args.args[0] == CONFIRM_LABEL
     return q
 
 
@@ -77,7 +81,7 @@ def assert_cleared(rig):
     assert policy.pending_operation() is None
     rig.app._release_wake_consumer.assert_called_with('ava_question')
     assert (rig.app.app_state, rig.app.wake_word_triggered) == ('asleep', False)
-    assert rig.app.listening_indicator.show_outcome.call_args.args[0] != 'Say yes or no'
+    assert rig.app.listening_indicator.show_outcome.call_args.args[0] != CONFIRM_LABEL
 
 
 @pytest.mark.parametrize('lane', ['wake', 'command_key', 'ava_hold', None])
@@ -160,7 +164,7 @@ def test_no_cancels_and_clears(rig):
 
 def test_timeout_speaks_cancelled_and_late_callback_cannot_reopen(rig):
     q = stage(rig)
-    rig.now[0] += 6.01
+    rig.now[0] = q.deadline + .01
     ava_pending._tick(rig.app, q)
     assert rig.spoken[-1] == 'Cancelled.'
     rig.app.risky_action.assert_not_called()
@@ -291,9 +295,9 @@ def test_real_displays_clear_the_question(rig, qapp, choice, answer):
             controller.drain()
         qapp.processEvents()
         label = controller.view().notice.message if controller else indicator._chip_label
-        assert label == 'Say yes or no'
+        assert label == CONFIRM_LABEL
         if answer == 'timeout':
-            rig.now[0] += 7
+            rig.now[0] = rig.app._ava_question.deadline + .01
             ava_pending._tick(rig.app, rig.app._ava_question)
         else:
             ava_pending.consume(rig.app, answer)
@@ -301,7 +305,7 @@ def test_real_displays_clear_the_question(rig, qapp, choice, answer):
             controller.drain()
         qapp.processEvents()
         label = controller.view().notice.message if controller else indicator._chip_label
-        assert label != 'Say yes or no'
+        assert label != CONFIRM_LABEL
         assert rig.app._ava_question is None and policy.pending_operation() is None
     finally:
         widget.close()

@@ -7,7 +7,11 @@ Record: operation id, generation, argument hash, bound target versions and a
 one. "yes" is accepted only as a complete utterance while the record is live;
 a quoted yes, a yes inside a longer sentence, a stale yes (deadline passed or
 generation bumped) and a model-emitted yes are rejected. "wait" extends once.
-"""
+
+
+1178 decision: ENVIRONMENT: request the opt-in bound_submit_target fixture; use synthetic composer identity/revision and keep real effect-policy validation.
+
+1178 decision: 1031e / 4b08749c: "model and macro routes inherit the effect policy". Ordinary policy-admitted schedules start directly; setup consent cannot approve repeated external effects. Keep model-emitted yes refusal against a real live protected operation and keep local schedule-template assertions."""
 import collections
 import json
 import sys
@@ -160,9 +164,11 @@ class TestRecord:
             original_text="repeat switch window", generation=7)
         record = ask_ollama.get_pending_action()
         op = ep.pending_operation()
-        assert outcome.state == "queued"
-        assert record["type"] == "schedule" and record["op"] is op
-        assert op is not None and op.generation == 7
+        assert outcome.state == "completed"
+        assert record is None and op is None
+        assert len(started) == 1 and started[0]["command"] == "switch window"
+        started.clear()
+        op = _propose_delete(app, executor)
 
         real_exists = ask_ollama.execution_policy.command_exists
         monkeypatch.setattr(ask_ollama.execution_policy, "command_exists",
@@ -180,7 +186,7 @@ class TestRecord:
 
         ask_ollama.handle_ava_confirm(app)
         assert op.approved is True and ep.pending_operation() is None
-        assert len(started) == 1 and started[0]["command"] == "switch window"
+        assert started == []
 
 
 # ---------------------------------------------------------------------------
@@ -305,12 +311,13 @@ class TestWording:
                        if isinstance(s, str))
 
     def test_schedule_prompt_is_a_template(self, app, monkeypatch):
-        said = []
+        said, started = [], []
+        monkeypatch.setattr(ask_ollama, "_start_schedule", lambda app_, task: started.append(task))
         monkeypatch.setattr(ask_ollama, "speak", lambda app_, text: said.append(text))
         ask_ollama.handle_response(app, "CONFIRM Trust me, this is fine.\nSCHEDULE 30 switch window",
                                    original_text="keep switching", generation=7)
-        record = ask_ollama.get_pending_action()
-        assert record["confirm_text"] == "Repeat switch window every 30 seconds?"
+        assert ask_ollama.get_pending_action() is None
+        assert started[0]["confirm_text"] == "Repeat switch window every 30 seconds?"
         assert said and "Trust me" not in said[0]
 
     def test_invocation_prompt_is_ignored_by_authorize(self, app, executor):
@@ -360,3 +367,16 @@ def test_hands_free_lane_answers_the_pending_question(app, executor, effects):
     assert sm.outcome_chip(outcome.kind, outcome.detail) == ("confirmed", "success")
     assert len(effects) == 1
     assert manager.dictate_pending_buffer.strip() == "yes but later"   # the draft is untouched
+
+
+pytestmark = pytest.mark.usefixtures('bound_submit_target')
+
+
+@pytest.fixture(autouse=True)
+def _unknown_but_inspected_composer(bound_submit_target, monkeypatch):
+    """Unknown destination still asks; its composer is available and bound."""
+    from dataclasses import replace
+    from samsara import effect_policy
+    resolve = effect_policy.resolve_submit_target
+    monkeypatch.setattr(effect_policy, 'resolve_submit_target',
+                        lambda app=None: replace(resolve(app), kind='unknown'))

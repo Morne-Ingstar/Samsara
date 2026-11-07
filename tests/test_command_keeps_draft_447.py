@@ -1,4 +1,8 @@
-"""447: real exact matching/dispatch with synthetic foreground and paste seams."""
+"""447: real exact matching/dispatch with synthetic foreground and paste seams.
+
+1178 decision: ENVIRONMENT: request the opt-in bound_submit_target fixture; use synthetic composer identity/revision and keep real effect-policy validation.
+
+1178 decision: 1031f / e6ca0f58: unsaved closes ask first. A queued close performs no effect and preserves the held draft; ordinary field commands still paste before their effect."""
 import json
 import sys
 import threading
@@ -191,7 +195,12 @@ def test_exact_command_pending_policy(rig, live, command, variation, record_prop
         'variation': variation, 'policy': probe.pending_policy.value,
         'outcome': kind, 'pastes': r.pastes, 'effects': len(r.effects),
     }))
-    assert len(r.effects) == 1
+    if command in {'close', 'close window'}:
+        from samsara import execution_policy
+        assert len(r.effects) == 0
+        assert execution_policy.pending_operation() is not None
+    else:
+        assert len(r.effects) == 1
     assert r.manager.mode is SessionMode.DICTATE
     if command in PASTE_FIRST and variation != 'command-only':
         assert [paste['text'] for paste in r.pastes] == [before]
@@ -397,3 +406,6 @@ def test_hold_release_still_delivers_its_own_text(rig, live, monkeypatch):
     app._paste_preserving_clipboard.assert_called_once_with('Synthetic released hold.')
     assert r.manager.dictate_pending_buffer == before
     assert not r.pastes
+
+
+pytestmark = pytest.mark.usefixtures('bound_submit_target')

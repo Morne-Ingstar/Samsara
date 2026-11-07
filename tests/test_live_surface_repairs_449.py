@@ -1,4 +1,8 @@
-"""Four Full-display repairs; synthetic speech and isolated Qt, no bootstrap."""
+"""Four Full-display repairs; synthetic speech and isolated Qt, no bootstrap.
+
+1178 decision: 1127 / 65d0591d: "one name per feature - Wake word, Hands-free and Hold to talk - everywhere in the app".
+
+1178 decision: 1038 / 571e0e37: persistent faults remain primary while the question is separately visible. 1127 lane-name changes retain historical parameter IDs."""
 from types import SimpleNamespace
 
 import pytest
@@ -89,9 +93,10 @@ def test_pending_does_not_replace_a_persistent_fault(surface):
     c, indicator, _ = surface
     c.notice(NoticeKind.ERROR, 'Persistent fault'); c.drain()
     indicator.show_outcome('Waiting for confirmation', 'pending', None); c.drain()
-    assert c.view().notice.kind is NoticeKind.PENDING
-    # 888b / 775: result errors are timed even with no caller TTL; questions replace them.
-    assert c.view().secondary_notice is None
+    assert c.view().notice.kind is NoticeKind.ERROR
+    assert c.view().notice.message == 'Persistent fault'
+    assert c.view().secondary_notice.kind is NoticeKind.PENDING
+    assert c.view().secondary_notice.message == 'Waiting for confirmation'
 
 
 @pytest.mark.parametrize('kind,ttl_ms,expires', [('success', 3000, 3.0), ('warning', 3000, 3.0),
@@ -210,9 +215,10 @@ def test_following_resumes_at_end_latest_or_a_new_utterance(surface, qapp, resum
 
 
 # G5: reuse existing mode names; do not collapse Toggle/Continuous/Hold.
-@pytest.mark.parametrize('mode,lane,activity', [('Hold', Lane.HOLD, 'recording'),
+@pytest.mark.parametrize('mode,lane,activity', [('Hold to talk', Lane.HOLD, 'recording'),
                                               ('Toggle', Lane.TOGGLE, 'recording'),
-                                              ('Continuous', Lane.CONTINUOUS, 'listening')])
+                                              ('Continuous', Lane.CONTINUOUS, 'listening')],
+                         ids=['Hold-hold-recording', 'Toggle-toggle-recording', 'Continuous-continuous-listening'])
 def test_mode_name_and_accessible_description_match_the_active_capture(surface, mode, lane, activity):
     c, indicator, _ = surface
     indicator.set_mode(mode); indicator.set_listening(True); c.drain()
@@ -240,7 +246,7 @@ def test_new_states_are_announced_without_reading_partial_speech(surface, monkey
     indicator.show_outcome('Waiting for confirmation', 'pending', None); c.drain()
     assert spoken[-1] == 'question: Waiting for confirmation'
     indicator.set_snoozed(True); c.drain()
-    assert spoken[-1] == 'Hold — Snoozed'
+    assert spoken[-1] == 'Hold to talk — Snoozed'
     indicator.set_snoozed(False); c.drain()
     token = c.begin_capture(Lane.HOLD); c.drain()
     spoken.clear()

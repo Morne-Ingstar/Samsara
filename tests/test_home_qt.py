@@ -16,7 +16,9 @@ The invariants this file exists to hold:
 Widgets are built directly against the session `qapp` fixture (the precedent
 of test_main_window_qt.py); qt_runtime is not exercised, dictation is never
 imported, and QSettings is faked so the owner's registry is untouched.
-"""
+
+
+1178 decision: ENVIRONMENT: adopt the previously excluded 1175 fixture repairs: the History/Kept host requires a layout and the speech stub requires is_speaking. Keep all Home layout assertions."""
 
 import collections
 import json
@@ -33,7 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont, QFontDatabase, QFontMetrics
-from PySide6.QtWidgets import QPushButton, QWidget
+from PySide6.QtWidgets import QPushButton, QVBoxLayout, QWidget
 from PySide6.QtTest import QTest
 
 from samsara import command_catalog, command_scope
@@ -141,7 +143,7 @@ def _app(**over):
         available_mics=[{'id': 7, 'name': 'USB mic'}],
         recording=False, snoozed=False, wake_word_active=True, continuous_active=False,
         command_mode_active=False, ava_command_session_active=False, ava_mode_active=False,
-        toggle_active=False, audio_coordinator=types.SimpleNamespace(engine=None),
+        toggle_active=False, audio_coordinator=types.SimpleNamespace(engine=None, is_speaking=False),
         _outcome_ring=collections.deque(maxlen=8),
         history_store=_Store(),
         snooze_calls=[], stop_calls=[],
@@ -759,7 +761,11 @@ class TestMissDiagnosticReadsTheRealRing:
 
 class TestVoiceHelp:
     def test_it_is_in_the_nav_on_every_screen(self, qapp, monkeypatch):
-        monkeypatch.setattr(main_window_qt, "HistoryView", lambda *a, **k: QWidget())
+        def history_host(*args, **kwargs):
+            widget = QWidget()
+            QVBoxLayout(widget)
+            return widget
+        monkeypatch.setattr(main_window_qt, "HistoryView", history_host)
         win = main_window_qt._MainWindow(_app())
         win._poll_timer.stop()
         try:

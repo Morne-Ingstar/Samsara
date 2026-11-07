@@ -19,7 +19,9 @@ description is the first sentence of its handler's docstring
 (samsara/command_catalog.py:403); a built-in's is the "description" field in
 commands.json (command_registry.py:438). So a failure here is fixed in the
 handler or in commands.json, never in commands_catalog.json.
-"""
+
+
+1178 decision: 1136 / 4091efa4: "approving a Cockpit change from Samsara now reaches Cockpit through a separate owner key"; the new approve command is the seventeenth live record."""
 import json
 import re
 import sys
@@ -187,7 +189,7 @@ def test_1124_cockpit_and_stats_live_descriptions(live_specs):
     # 1124: validate source copy while the runner owns generated catalog updates.
     records = [vars(spec) for spec in live_specs
                if spec.canonical_id.startswith(('cockpit.', 'stats.'))]
-    assert len(records) == 16
+    assert len(records) == 17
     for record in records:
         test_every_record_has_a_description(record)
         test_no_description_merely_restates_its_phrase(record)

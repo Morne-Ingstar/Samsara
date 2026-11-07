@@ -1,4 +1,6 @@
-"""Queue 244: Ava / Cloud explains web-search limits and exposes Ava Edit."""
+"""Queue 244: Ava / Cloud explains web-search limits and exposes Ava Edit.
+
+1178 decision: 1074 / 0836e727: "cloud key and model sit under the cloud provider"; demo pacing was deliberately removed from Settings. Editing enable/model/timeout still round-trip."""
 
 from copy import deepcopy
 from types import SimpleNamespace
@@ -90,7 +92,7 @@ def test_ava_edit_controls_round_trip_and_depend_on_checkbox(qapp):
     }, qapp)
     try:
         enabled = window._widgets["ava_edit_enabled"]
-        keys = ("ava_edit_timeout", "ava_edit_model", "ava_edit_demo_pacing")
+        keys = ("ava_edit_timeout", "ava_edit_model")
         options = [window._rows_by_widget[key] for key in keys]
         assert not enabled.isChecked()
         assert all(row.isHidden() for row in options)
@@ -98,21 +100,18 @@ def test_ava_edit_controls_round_trip_and_depend_on_checkbox(qapp):
         enabled.setChecked(True)
         timeout = window._widgets["ava_edit_timeout"]
         model = window._widgets["ava_edit_model"]
-        pacing = window._widgets["ava_edit_demo_pacing"]
+        assert "ava_edit_demo_pacing" not in window._widgets
         assert all(not row.isHidden() for row in options)
         assert not timeout.isHidden()
         assert not model.isHidden()
-        assert not pacing.isHidden()
 
         timeout.setValue(24.5)
         model.setCurrentIndex(1)
-        pacing.setChecked(True)
         updates = save({})
         assert updates["ava_edit"] == {
             "enabled": True,
             "timeout_seconds": 24.5,
             "model": model.currentData(),
-            "demo_pacing": "cinematic",
         }
         assert app.config["ava_edit"] == {"enabled": False}
     finally:
@@ -125,7 +124,6 @@ def test_ava_edit_save_does_not_create_untouched_keys(qapp):
             "enabled": False,
             "timeout_seconds": 19.0,
             "model": "existing-model",
-            "demo_pacing": "cinematic",
         },
     }, qapp)
     try:

@@ -1,17 +1,19 @@
-"""Tutorial delivery contract; source extraction never bootstraps dictation."""
+"""Tutorial delivery contract; source extraction never bootstraps dictation.
+
+1178 decision: 1038 / 571e0e37 preserves unread receipts before queued results. 1172 / 1bf8481f: "paced typing no longer freezes the listening display ... Stop, Escape or a new dictation cancel it cleanly". The delivery wrapper composes cancellation with the caller guard; test its behavior and every other forwarded argument."""
 from samsara.log import describe_text, safe_exception
 import ast
 import logging
 import threading
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock
 
 import pytest
 from PySide6.QtCore import QRectF
 from PySide6.QtGui import QFontMetrics
 from samsara.ui import theme, tutorial_qt
-from samsara import tutorial_capture
+from samsara import tutorial_capture, typed_delivery
 from samsara.dictionary_store import get_dictionary_store
 from samsara.ui.widgets.step_indicator import StepIndicator
 from PySide6.QtWidgets import QWidget
@@ -30,6 +32,7 @@ def method(file, name):
 def compile_method(node, **names):
     namespace = dict(describe_text=describe_text, safe_exception=safe_exception,
                      logger=logging.getLogger(__name__), tutorial_capture=tutorial_capture, **names)
+    namespace.setdefault("typed_delivery", typed_delivery)
     exec(compile(ast.Module(body=[node], type_ignores=[]), node._tutorial_source, 'exec'), namespace)
     return namespace[node.name]
 
@@ -168,7 +171,10 @@ def assert_delivered(h, app, window, callback, real_paste, expected):
     assert len(histories) == 1
     assert histories[0].kwargs['display_text'] == expected.strip()
     assert [c.args[0] for c in app.play_sound.call_args_list].count('success') == 1
-    # 888b / 775: the newer delivery receipt replaces Captured immediately.
+    # 1038: each receipt gets reading time before the queued receipt.
+    assert h.c.view().notice.message == 'Captured'
+    h.clock[0] = h.c.view().notice.expires_at
+    h.c.refresh_expired()
     assert h.c.view().notice.message == 'typed'
     deadline = h.c.view().notice.expires_at
     h.clock[0] = deadline - .001
@@ -390,11 +396,13 @@ def test_no_hook_forwards_exact_paste_arguments(feedback, confirmation):
     app = SimpleNamespace()
     assert wrapper(app, 'hello world', before_paste=guard,
                    return_delivery_confirmation=confirmation, feedback=feedback) is result
-    paste.assert_called_once_with(app, 'hello world', before_paste=guard,
+    paste.assert_called_once_with(app, 'hello world', before_paste=ANY,
         return_delivery_confirmation=confirmation, feedback=feedback,
         paste_with_preservation_fn=inject, type_text_unicode_fn=type_unicode,
         get_foreground_hwnd_fn=foreground)
     show.assert_not_called()
+    assert paste.call_args.kwargs['before_paste']()
+    guard.assert_called_once_with()
 
 
 def test_snippet_or_ava_edit_paste_cannot_consume_waiting_dictation(window):
@@ -429,5 +437,6 @@ def test_non_tutorial_target_keeps_guard_and_waiting_hook(window):
     assert app._paste_preserving_clipboard('hello world', tutorial_dictation=True,
         return_delivery_confirmation=True, before_paste=guard) == (False, False)
     callback.assert_not_called()
-    assert real_paste.call_args.kwargs['before_paste'] is guard
+    assert real_paste.call_args.kwargs['before_paste']() is False
+    guard.assert_called_once_with()
     assert app._tutorial_hooks['dictation'] is callback

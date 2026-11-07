@@ -5,7 +5,11 @@ genuinely has no candidates is a handled outcome, not a fallback; UIA vs
 DOM session state stays mutually exclusive; is_overlay_active() reflects
 either; existing UIA "click N" behavior is unaffected when no DOM session
 is active.
-"""
+
+
+1178 decision: ENVIRONMENT: routing fixtures never need a native UIA import at collection; 1148 clipboard protection remains active.
+
+1178 decision: 1031b / 871a1034 binds DOM activations and requires a question for unresolved modified clicks; one confirmed activation is never sent twice. 1144 / 33a3ae70 requires bridge bindings. Retire a failed activation session; its unknown result cannot safely be retried."""
 import sys
 import types
 from pathlib import Path
@@ -16,7 +20,7 @@ import pytest
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-for _mod in ("uiautomation", "win32api", "win32con", "win32gui", "win32process"):
+for _mod in ("win32api", "win32con", "win32gui", "win32process"):
     if _mod not in sys.modules:
         # Stub only when the real module is missing (CI). An unconditional
         # empty stub leaked into every other test collected in the same
@@ -70,7 +74,8 @@ class _FakeBridge:
     def last_hints_unavailable_reason(self):
         return self.unavailable_reason
 
-    def send_selection(self, number, action, timeout=0.8, modifiers=None):
+    def send_selection(self, number, action, timeout=0.8, modifiers=None, binding=None):
+        assert binding == f"synthetic-{number}"
         self.selection_calls.append((number, action, modifiers))
         return self.selection_ok
 
@@ -83,6 +88,17 @@ def _clean_state(monkeypatch):
     """Every test gets a fresh fake bridge and a clean module-level state
     slate, regardless of what a previous test left behind."""
     fake = _FakeBridge()
+    from samsara import effect_policy, execution_policy, plugin_commands
+    from plugins.commands import ask_ollama
+    ask_ollama.clear_pending_action()
+    plugin_commands._reinstall_module_commands(sn)
+    monkeypatch.setattr(execution_policy, 'foreground_window_identity', lambda: {
+        'hwnd': 42, 'pid': 7, 'process': 'brave.exe', 'title_hash': 'fixture'})
+    monkeypatch.setattr(effect_policy, 'resolve_submit_target', lambda app=None:
+        effect_policy.SubmitTarget('unknown', 42, 'brave.exe', 'composer', 'revision'))
+    monkeypatch.setattr(execution_policy, 'listen_for_confirmation', lambda *args: None)
+    monkeypatch.setattr(sn, '_dom_effect_hints', [
+        {'kind': 'input', 'binding': f'synthetic-{i}'} for i in range(1, 6)])
     monkeypatch.setattr(sn.browser_bridge, "get_bridge", lambda: fake)
     sn._bridge_started = False
     with sn._state_lock:
@@ -91,6 +107,7 @@ def _clean_state(monkeypatch):
         sn._dom_active = False
         sn._dom_hint_count = 0
     yield fake
+    ask_ollama.clear_pending_action()
     with sn._state_lock:
         sn._elements.clear()
     with sn._dom_lock:
@@ -303,8 +320,16 @@ def test_handle_click_dom_modifiers_mapped(_clean_state):
         sn._dom_active = True
         sn._dom_hint_count = 5
 
-    sn.handle_click(_app(), "shift click 2 right")
-    assert fake.selection_calls == [(2, "rightclick", {"ctrlKey": False, "shiftKey": True, "altKey": False})]
+    from samsara import execution_policy
+    from samsara.command_registry import DispatchState
+    app = _app()
+    result = sn.handle_click(app, "shift click 2 right")
+    assert result.state is DispatchState.QUEUED
+    assert fake.selection_calls == []
+    operation = execution_policy.pending_operation()
+    assert operation is not None and operation.approve(app=app)
+    assert not operation.approve(app=app)
+    assert fake.selection_calls == [(2, "click", {"ctrlKey": False, "shiftKey": True, "altKey": False})]
 
 
 def test_handle_click_dom_selection_failure_keeps_session(monkeypatch, _clean_state):
@@ -315,10 +340,10 @@ def test_handle_click_dom_selection_failure_keeps_session(monkeypatch, _clean_st
     fake.selection_ok = False
     spoken = _speak_capture(monkeypatch)
 
-    assert sn.handle_click(_app(), "1") is True
-    assert any("no longer available" in s for s in spoken)
+    assert sn.handle_click(_app(), "1") is False
+    assert fake.selection_calls == [(1, "click", {"ctrlKey": False, "shiftKey": False, "altKey": False})]
     with sn._dom_lock:
-        assert sn._dom_active is True
+        assert sn._dom_active is False  # Unknown activation result is retired, never retried.
 
 
 # ---------------------------------------------------------------------------

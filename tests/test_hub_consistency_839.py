@@ -1,4 +1,6 @@
-"""839: measure the four hub surfaces in their real host, in both palettes."""
+"""839: measure the four hub surfaces in their real host, in both palettes.
+
+1178 decision: 1161 / 9a05a16a adds History/Kept children; use the named page header. 1042b / c66720d1: "more than one wake word can listen at once" introduces combo popup lists; page width checks exclude those popup windows."""
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -59,7 +61,7 @@ def test_headers_widths_heights_and_destructive_style(hub, qapp, name, tab):
     if tab is not None:
         page._tabs.setCurrentIndex(tab)
     qapp.processEvents()
-    title = page.findChild(QLabel, 'hubHeaderTitle')
+    title = page._header.title
     assert title is not None and title.text() == name and title.isVisibleTo(page)
     assert page.layout().contentsMargins().top() == 24
     assert page._header.layout().contentsMargins().bottom() == 16
@@ -67,6 +69,13 @@ def test_headers_widths_heights_and_destructive_style(hub, qapp, name, tab):
     assert page._header.purpose.font().pixelSize() == theme.HUB_PURPOSE_SIZE
     for kind in (QLineEdit, QTableView, QListView):
         for control in page.findChildren(kind):
+            if kind is QListView and control.objectName() == "":
+                # 1042b: QComboBox popup views are separate native popups.
+                parent = control.parentWidget()
+                if parent is not None and parent.parentWidget() is not None:
+                    from PySide6.QtWidgets import QComboBox
+                    if isinstance(parent.parentWidget(), QComboBox):
+                        continue
             ceiling = theme.HUB_INPUT_WIDTH if kind is QLineEdit else theme.HUB_LIST_WIDTH
             assert control.maximumWidth() <= ceiling, (name, control.accessibleName())
             assert control.width() <= ceiling

@@ -10,7 +10,9 @@ the fix at two layers:
   - DictationApp.enter_command_mode / exit_command_mode / _update_mode_overlay
     -- the REAL dictation.py methods, bound onto a lightweight stub object
     (not a reimplementation -- this exercises the actual code under test).
-"""
+
+
+1178 decision: 1127 / 65d0591d: "one name per feature - Wake word, Hands-free and Hold to talk - everywhere in the app"."""
 import sys
 import threading
 from pathlib import Path
@@ -64,7 +66,7 @@ class TestListeningIndicatorSessionMode:
 
     def test_no_session_badge_falls_through_to_idle(self, indicator):
         _, _, label, _ = indicator._resolve_colors()
-        assert label == "Hold"
+        assert label == "Hold to talk"
 
 
 # ---------------------------------------------------------------------------

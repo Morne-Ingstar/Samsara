@@ -1,20 +1,4 @@
-"""Queue 63: which write-rated commands still ask before running when spoken.
-
-58 made an undeclared plugin take its commands_catalog.json rating on user
-routes, and the policy lets `write` run unasked there. The owner's review:
-
-  * must ask -- start print, record my screen, record this window, start
-    capture, undo health log. Declared risk_class="destructive" (the only
-    class the policy confirms on a spoken route; see execution_policy.authorize).
-  * must not ask -- set a timer, take a memo, windows.send, add to list,
-    complete task, complete alarm, mark here, note, remind me to, save layout,
-    voice memo. Left undeclared: they keep the catalog's `write`.
-
-The real handlers are never imported (printers, screen capture, input hooks):
-each test registers a recording stub carrying the plugin file's own decorator
-arguments, read from source, under the plugin's module name, and resolves the
-risk against the real commands_catalog.json.
-"""
+'Queue 63: which write-rated commands still ask before running when spoken.\n\n58 made an undeclared plugin take its commands_catalog.json rating on user\nroutes, and the policy lets `write` run unasked there. The owner\'s review:\n\n  * must ask -- start print, record my screen, record this window, start\n    capture, undo health log. Declared risk_class="destructive" (the only\n    class the policy confirms on a spoken route; see execution_policy.authorize).\n  * must not ask -- set a timer, take a memo, windows.send, add to list,\n    complete task, complete alarm, mark here, note, remind me to, save layout,\n    voice memo. Left undeclared: they keep the catalog\'s `write`.\n\nThe real handlers are never imported (printers, screen capture, input hooks):\neach test registers a recording stub carrying the plugin file\'s own decorator\narguments, read from source, under the plugin\'s module name, and resolves the\nrisk against the real commands_catalog.json.\n\n\n1178 decision: 1031f / e6ca0f58: printer launch, screen recording, workflow capture and voice memo are explicit immediate-effect exceptions. Undo health log still confirms. Preserve every parameterized node identity in the coverage ledger when moving rows to their current contract.\n\n1178 decision: 1178 preserves all historical parameter IDs; these historical must-ask rows now exercise the 1031f immediate exceptions and still verify that a refused invocation produces no effect.\n\n1178 decision: 1031f source declarations are ui for printer launch and write for recording/workflow; all four have immediate handling. Pin source and catalogue ratings independently.'
 import ast
 import collections
 import json
@@ -158,7 +142,7 @@ def _session(ex, app):
 
 @pytest.mark.parametrize("stem,spoken", MUST_ASK)
 def test_must_ask_commands_declare_destructive(stem, spoken):
-    assert _decorator(stem, spoken)[1].get("risk_class") == "destructive"
+    assert _decorator(stem, spoken)[1].get("risk_class") == ({"health_tracker": "destructive", "flashforge_printer": "ui"}.get(stem, "write"))
 
 
 @pytest.mark.parametrize("stem,spoken", RUNS_DIRECTLY)
@@ -167,7 +151,7 @@ def test_runs_directly_commands_classify_as_write(stem, spoken, tmp_path):
     phrase = _register_stub(stem, spoken, [])
     # `send` now correctly preserves its declared UI class; all other rows
     # retain their catalog write class. Neither class asks on a spoken route.
-    assert ep.classify(phrase)[0] == ("ui" if phrase == "send" else "write")
+    assert ep.classify(phrase)[0] == ("ui" if stem in {"windows", "flashforge_printer", "screen_gif", "workflow_capture", "voice_memo"} and phrase != "save layout" else "write")
 
 
 @pytest.mark.parametrize("stem,spoken", MUST_ASK)
@@ -181,6 +165,11 @@ def test_spoken_must_ask_command_awaits_confirmation_and_runs_only_on_yes(stem, 
 
     outcome = _session(ex, app).dispatch_utterance(phrase, GOOD)
 
+    if stem != "health_tracker":
+        assert outcome.kind == "command_executed"
+        assert calls == [(phrase, "")]
+        assert ep.pending_operation() is None
+        return
     assert outcome.kind == "command_awaiting_confirmation"
     assert calls == []
     assert app.audio_coordinator.speak.call_args.kwargs["category"] == "confirmation"
@@ -196,8 +185,13 @@ def test_must_ask_command_rejected_never_runs(stem, spoken, tmp_path):
     phrase = _register_stub(stem, spoken, calls)
     app = _app(stem, spoken)
     ex = _executor(tmp_path, app)
-    _session(ex, app).dispatch_utterance(phrase, GOOD)
-    ep.pending_operation().reject()
+    if stem == "health_tracker":
+        _session(ex, app).dispatch_utterance(phrase, GOOD)
+        ep.pending_operation().reject()
+    else:
+        # Immediate user actions still refuse a stale model invocation.
+        result = ex.execute_canonical(phrase, app, route=ep.Route.MODEL, generation=-1)
+        assert result.state is DispatchState.REJECTED
     assert calls == []
 
 
@@ -233,6 +227,6 @@ def test_catalog_rows_carry_the_declared_ratings():
     rows = {r["canonical_id"]: r for r in json.loads((ROOT / "commands_catalog.json").read_text(encoding="utf-8"))["commands"]}
     for cid in ("flashforge_printer.start_print", "screen_gif.record_my_screen", "screen_gif.record_this_window",
                 "workflow_capture.start_capture", "health_tracker.undo_health_log"):
-        assert rows[cid]["risk"] == "destructive", cid
+        assert rows[cid]["risk"] == {"health_tracker.undo_health_log": "destructive", "flashforge_printer.start_print": "ui"}.get(cid, "write"), cid
     assert rows["health_tracker.undo_health_log"]["undoable"] is False
     assert rows["quick_ask.ask"]["risk"] == "write"   # reported, not changed

@@ -1,4 +1,6 @@
-"""Real Settings geometry and native control contracts for the calm layout."""
+"""Real Settings geometry and native control contracts for the calm layout.
+
+1178 decision: 1040 / f03a1be1: "how long you can pause is one slider"; 1031f / e6ca0f58 removes the old blanket cancel window; 1152b / a03a4fc5 adds a Game mode section; 1149 / 86edb66e adds speech controls; 1161 / 9a05a16a adds Kept controls."""
 import os
 from pathlib import Path
 os.environ.setdefault('QT_QPA_FONTDIR', str(Path(os.environ.get('SystemRoot', 'C:/Windows')) / 'Fonts'))
@@ -75,7 +77,7 @@ def test_plain_rows_survive_theme_refresh(settings, qapp):
             for x, y in ((2, 2), (theme.SPACE_1//2, theme.SPACE_2-2)):
                 assert capture.pixelColor(round((origin.x()+x)*dpr), round((origin.y()+y)*dpr)) == background, row.title
             row.setAttribute(Qt.WidgetAttribute.WA_UnderMouse, False)
-            assert row.heading.font().weight() == 400
+            assert row.heading.font().weight() == (600 if row.objectName() == 'gameModeSection' else 400)
             assert not row.heading.font().underline()
 
 
@@ -88,7 +90,8 @@ def test_controls_share_one_right_edge_and_text_fits(settings, qapp, width):
         for row in settings._destination_rows:
             if row.page_name != name or not row.isVisibleTo(page):
                 continue
-            edges.append(row.value.mapTo(page.widget(), QPoint(row.value.width(), 0)).x())
+            if not row.value.isHidden():
+                edges.append(row.value.mapTo(page.widget(), QPoint(row.value.width(), 0)).x())
             for label in (row.heading, row.detail):
                 assert label.height() >= label.heightForWidth(label.width()), (name, row.title)
             assert row.value.mapTo(page.widget(), QPoint(row.value.width(), 0)).x() <= page.widget().width()
@@ -204,7 +207,7 @@ def test_groups_preserve_rows_and_hide_when_search_has_no_matching_members(setti
     from samsara.ui.settings.dictation_page import BASE, ADVANCED
     page = reveal(settings, 'Dictation', qapp)
     groups = page.findChildren(GroupHeading)
-    assert groups and len([row for row in settings._destination_rows if row.page_name == 'Dictation']) == len(BASE) + len(ADVANCED) + 1
+    assert groups and len([row for row in settings._destination_rows if row.page_name == 'Dictation']) == len(BASE) + len(ADVANCED) + 3
     settings._search_edit.setText('manual threshold')
     settings._apply_search_filter()
     settle(qapp)
@@ -255,6 +258,8 @@ def test_continuing_groups_have_one_heading_at_the_first_member(settings, qapp):
     assert len(speech) == 1
     assert speech[0].rows[0] is settings._rows_by_widget['tts_feedback_level']
     voice = [group for group in audio.findChildren(GroupHeading) if group.text() == 'Voice']
+    assert len(voice) == 2
+    voice = [group for group in voice if settings._rows_by_widget['tts_engine'] in group.rows]
     assert len(voice) == 1
     assert voice[0].rows[0] is settings._rows_by_widget['tts_engine']
     settings._search_edit.setText('Speech engine')

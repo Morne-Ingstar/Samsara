@@ -1427,6 +1427,28 @@ def qt_widget_scope(qapp, qt_deferred_delete):
 
 
 @pytest.fixture
+def bound_submit_target(monkeypatch, fake_submit_target):
+    """1178 ENVIRONMENT: an inspected synthetic editor, with real policy checks.
+
+    1031a / 49b4513f binds input to a composer revision. A missing composer
+    remains a refusal; these ordinary-editor fixtures supply the evidence.
+    Tests may replace the identity or resolver to exercise changed targets.
+    """
+    from samsara import effect_policy, execution_policy
+    monkeypatch.setattr(execution_policy, 'foreground_window_identity', lambda: {
+        'hwnd': 42, 'pid': 7, 'process': 'notepad.exe', 'title_hash': 'fixture'})
+
+    def resolve(app=None):
+        identity = execution_policy.foreground_window_identity() or {}
+        return effect_policy.SubmitTarget(
+            kind='editor', hwnd=identity.get('hwnd', 0),
+            process=identity.get('process', ''), control='synthetic-editor',
+            revision='synthetic-revision', label='the synthetic editor')
+
+    monkeypatch.setattr(effect_policy, 'resolve_submit_target', resolve)
+
+
+@pytest.fixture
 def fake_submit_target(monkeypatch, fake_delivery_target):
     """1175: synthetic command tests have no inspected desktop target.
 

@@ -1,4 +1,6 @@
-"""Everyday choices remain reachable without opening Advanced (479)."""
+"""Everyday choices remain reachable without opening Advanced (479).
+
+1178 decision: 1040 / f03a1be1: "how long you can pause is one slider"; 1031f / e6ca0f58 removes the old blanket cancel window; 1152b / a03a4fc5 adds a Game mode section; 1149 / 86edb66e adds speech controls; 1161 / 9a05a16a adds Kept controls."""
 from collections import Counter
 from unittest.mock import Mock
 
@@ -138,13 +140,13 @@ KEYS_BEFORE = {
         'tts.feedback_level tts.speed tts.voice_id tts.volume '
     ),
     'Dictation': (
-        'accessibility.speech_pace add_trailing_space auto_capitalize auto_paste cal_multiplier '
-        'cleanup_mode command_mode.abort_phrases command_mode.cancel_window_all_commands command_mode.cancel_window_s command_mode.command_matching_enabled '
-        'command_mode.dictate_utterance_silence_s command_mode.dictation_literal_commands_only command_mode.enabled command_mode.enter_debounce_ms command_mode.inactivity_timeout_s '
+        'accessibility.speech_pause_s add_trailing_space auto_capitalize auto_paste cal_multiplier '
+        'cleanup_mode command_mode.abort_phrases command_mode.command_matching_enabled '
+        'command_mode.dictation_literal_commands_only command_mode.enabled command_mode.enter_debounce_ms command_mode.inactivity_timeout_s '
         'command_mode.miss_limit command_mode.stop_phrases command_mode.utterance_silence_s compute_type continuous_commit_trigger '
-        'device format_numbers intent.command_prefix min_speech_duration model_size '
-        'performance_mode silence_threshold threshold_mode wake_word_config.audio.speech_threshold wake_word_config.audio.wake_command_timeout '
-        'wake_word_config.oww_threshold wake_word_config.phrase wake_word_config.quick_silence_timeout wake_word_enabled '
+        'device format_numbers intent.command_prefix model_size '
+        'performance_mode threshold_mode wake_word_config.audio.speech_threshold '
+        'wake_word_config.oww_threshold wake_word_config.phrase wake_word_enabled '
     ),
     'Shortcuts': (
         'alarms.complete_hotkey alarms.dismiss_hotkey cancel_hotkey command_hotkey command_mode.button '

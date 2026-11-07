@@ -1,4 +1,6 @@
-"""Hermetic Qt-thread checks of illustrative state, geometry and input."""
+"""Hermetic Qt-thread checks of illustrative state, geometry and input.
+
+1178 decision: 1127 / 65d0591d: "one name per feature - Wake word, Hands-free and Hold to talk - everywhere in the app"."""
 import pytest
 from time import monotonic
 from PySide6.QtCore import Qt, QTimer, QCoreApplication, QEvent, QAbstractAnimation
@@ -48,7 +50,7 @@ def test_state_words_use_receiver_helpers_without_creating_real_display(ui, monk
     widget = IndicatorDemo(reduced_motion=True)
     for beat in range(5):
         widget.set_frame(beat)
-        assert widget.desktop.state_words()[0] in ('Hold', 'Command')
+        assert widget.desktop.state_words()[0] in ('Hold to talk', 'Command')
     assert seen == [False] * 5
     widget.deleteLater()
 
