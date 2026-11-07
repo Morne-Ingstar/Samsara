@@ -7,10 +7,16 @@ Unknown detector evidence keeps the existing decoder guards in charge.
 from copy import copy
 from math import isfinite
 import logging
+import re
 
 
 WORD_PROBABILITY_FLOOR = .01
 SHORT_WORD_S = .133
+# 1183: wider cues select a corroboration decode, never delete a word alone.
+FRAGMENT_PROBABILITY = .2
+FRAGMENT_DURATION_S = .25
+CONFIRM_CONTEXT_S = 6.
+CONFIRM_PAD_S = .5
 
 
 def _number(value):
@@ -126,3 +132,94 @@ def screen_commit(result, audio, rate, params):
             yield from screen([segment], bounds, rate, 0., params)
 
     return screened(), info
+
+
+def _token(word):
+    return tuple(re.findall(r"\w+(?:['’]\w+)*", word.casefold()))
+
+
+def _fragment(segment, previous):
+    words = getattr(segment, 'words', None) or ()
+    anchors = getattr(previous, 'words', None) or ()
+    if len(words) != 1 or len(_token(segment.text)) != 1 or len(anchors) < 3:
+        return None
+    word, anchor = words[0], anchors[-1]
+    probability = _number(getattr(word, 'probability', None))
+    start, end, prior_end = (_number(getattr(item, key, None)) for item, key in
+                             ((word, 'start'), (word, 'end'), (anchor, 'end')))
+    if (probability is None or not 0 <= probability < FRAGMENT_PROBABILITY
+            or start is None or end is None or prior_end is None
+            or not 0 < end - start <= FRAGMENT_DURATION_S
+            or not 0 <= start - prior_end <= .1):
+        return None
+    return word, anchor
+
+
+def confirm_fragments(app, audio, segments, params, check):
+    """1183: corroborate a weak appended fragment inside a speech island.
+
+    Alignment can reuse the preceding word's last sound for another word.
+    Only one short, deterministic context decode per chunk is attempted, in
+    the existing native job/lock/deadline. It must recognize the same neighbor
+    at the same time with >=.5 probability, and omit the suspected word.
+    Failure, missing timing, uncertainty or a spoken repeat keeps the original.
+    No replacement text, volume threshold or word blacklist is involved.
+    The caller publishes accepted text before entering this optional work.
+    """
+    from samsara.vocabulary_decode import transcribe_with_vocabulary
+    from samsara.hold_final_policy import current_audit
+    from samsara.transcript_gates import gate_repetition_text
+    for index in range(1, len(segments)):
+        pair = _fragment(segments[index], segments[index - 1])
+        if pair is None:
+            continue
+        word, anchor = pair
+        rate = app.model_rate
+        start = max(0, round((word.start - CONFIRM_CONTEXT_S) * rate))
+        end = min(len(audio), round((word.end + CONFIRM_PAD_S) * rate))
+        if start >= end:
+            return segments
+        try:
+            check()
+            effective = dict(params, temperature=0., word_timestamps=True,
+                             condition_on_previous_text=False, vad_filter=False)
+            iterator, _ = transcribe_with_vocabulary(app, audio[start:end], path='hold_final', **effective)
+            confirmed = []
+            for item in iterator:
+                check()
+                confirmed.append(item)
+            check()
+        except Exception:
+            return segments
+        # Native fallback/loops are not independent confirmation of an omission.
+        if not confirmed or gate_repetition_text(''.join(s.text for s in confirmed)).changed:
+            return segments
+        for item in confirmed:
+            score = _number(getattr(item, 'avg_logprob', None))
+            silence = _number(getattr(item, 'no_speech_prob', None))
+            compression = _number(getattr(item, 'compression_ratio', None))
+            if (score is None or score < -1. or silence is None or silence > .6
+                    or compression is None or compression > 2.4
+                    or _number(getattr(item, 'temperature', None)) != 0.):
+                return segments
+        tokens = _token(''.join(s.text for s in confirmed))
+        if any(token in tokens for token in _token(word.word)):
+            return segments
+        matched = False
+        for item in confirmed:
+            for candidate in getattr(item, 'words', None) or ():
+                probability = _number(getattr(candidate, 'probability', None))
+                a, b = (_number(getattr(candidate, key, None)) for key in ('start', 'end'))
+                if (probability is not None and probability >= .5
+                        and a is not None and b is not None and 0 <= a < b <= (end - start) / rate
+                        and _token(candidate.word) == _token(anchor.word)
+                        and abs(b + start / rate - anchor.end) <= .35):
+                    matched = True
+        if matched:
+            audit = current_audit.get()
+            if audit is not None:
+                audit.drop('unsupported_speech')
+            logging.getLogger('Samsara').info('[SPEECH_ALIGN] confirmed_fragments_dropped=1')
+            return segments[:index] + segments[index + 1:]
+        return segments
+    return segments

@@ -543,12 +543,21 @@ def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None, 
                 shared = ((max(previous_chunk.start, chunk.start) / app.model_rate,
                            min(previous_chunk.end, chunk.end) / app.model_rate)
                           if previous_chunk is not None else None)
+                before_chunk = list(result.segments)
                 append_chunk(result.segments, shifted, previous_segments, shared)
-                previous_chunk, previous_segments = chunk, shifted
                 nonlocal progress
                 progress = DecodedHold(segments=list(result.segments), info=result.info,
                     failures=list(result.failures), missed=list(result.missed), warning=result.warning,
                     completed_s=chunk.core_end / app.model_rate)
+                if bounds is not None:
+                    from samsara.segment_speech_guard import confirm_fragments
+                    confirmed = confirm_fragments(app, pcm, accepted, effective, check)
+                    if len(confirmed) != len(accepted):
+                        shifted = [_offset(s, chunk.start / app.model_rate) for s in confirmed]
+                        result.segments = before_chunk
+                        append_chunk(result.segments, shifted, previous_segments, shared)
+                        progress.segments = list(result.segments)
+                previous_chunk, previous_segments = chunk, shifted
             return result
         finally:
             current_audit.reset(token)

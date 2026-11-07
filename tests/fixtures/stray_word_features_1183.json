@@ -1,0 +1,130 @@
+[
+  {
+    "samples": 349600,
+    "captured_audio_ms": 43500,
+    "speech_spans": [
+      [
+        0.0,
+        0.282
+      ],
+      [
+        1.222,
+        2.874
+      ],
+      [
+        3.782,
+        6.778
+      ],
+      [
+        7.142,
+        10.938
+      ],
+      [
+        11.078,
+        12.346
+      ],
+      [
+        13.702,
+        14.746
+      ],
+      [
+        16.678,
+        19.834
+      ],
+      [
+        20.07,
+        20.986
+      ]
+    ],
+    "segments": [
+      {
+        "start": 0.0,
+        "end": 19.34,
+        "avg_logprob": -0.3873197218546501,
+        "no_speech_prob": 0.2069091796875,
+        "temperature": 0.0,
+        "compression_ratio": 1.2079207920792079,
+        "words_count": 18,
+        "words": [
+          {
+            "start": 14.36,
+            "end": 18.24,
+            "probability": 0.9739990234375
+          },
+          {
+            "start": 18.24,
+            "end": 18.7,
+            "probability": 0.994140625
+          },
+          {
+            "start": 18.7,
+            "end": 19.34,
+            "probability": 0.99609375
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "samples": 332448,
+    "captured_audio_ms": 28100,
+    "speech_spans": [
+      [
+        5.446,
+        9.306
+      ],
+      [
+        14.182,
+        17.306
+      ],
+      [
+        17.734,
+        20.25
+      ]
+    ],
+    "segments": [
+      {
+        "start": 5.239999999999999,
+        "end": 19.7,
+        "avg_logprob": -0.4690896790960561,
+        "no_speech_prob": 0.268798828125,
+        "temperature": 0.0,
+        "compression_ratio": 1.119047619047619,
+        "words_count": 17,
+        "words": [
+          {
+            "start": 16.78,
+            "end": 18.38,
+            "probability": 0.7353515625
+          },
+          {
+            "start": 18.38,
+            "end": 19.08,
+            "probability": 0.0791015625
+          },
+          {
+            "start": 19.08,
+            "end": 19.7,
+            "probability": 0.5670166015625
+          }
+        ]
+      },
+      {
+        "start": 19.7,
+        "end": 19.84,
+        "avg_logprob": -0.865625,
+        "no_speech_prob": 0.431884765625,
+        "temperature": 0.0,
+        "compression_ratio": 0.2727272727272727,
+        "words_count": 1,
+        "words": [
+          {
+            "start": 19.7,
+            "end": 19.84,
+            "probability": 0.173583984375
+          }
+        ]
+      }
+    ]
+  }
+]
