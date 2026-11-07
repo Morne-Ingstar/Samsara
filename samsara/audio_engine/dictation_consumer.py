@@ -52,6 +52,7 @@ from samsara.constants import (
 )
 from samsara.log import get_logger
 from samsara.runtime import thread_registry
+from samsara.hold_tail_evidence import Ambient, release_limit
 
 logger = get_logger(__name__)
 _THREAD_JOIN_TIMEOUT_S = 2.0
@@ -88,6 +89,7 @@ class DictationSessionConsumer:
         self._last_capture_seq = -1
         self._streaming_capturing = False
         self._streaming_tail_audit = None
+        self._tail_ambient = None
 
     # ── Utterance lifecycle ───────────────────────────────────────────────────
 
@@ -135,6 +137,8 @@ class DictationSessionConsumer:
         capacity was lapped and truncated to the last prebuffer window.)
         """
         self._frames.clear()
+        self._tail_ambient = Ambient(time.perf_counter(), PREBUFFER_FRAMES, False)
+        self._streaming_tail_audit = None
         self._active         = True
         self._epoch_at_start = None
         self._drain_stop     = threading.Event()
@@ -161,8 +165,9 @@ class DictationSessionConsumer:
                 self._capture_onset.rewind_suppressed = 'tts_recent'
             logger.debug("[PRE] Pre-buffer skipped — TTS ended too recently")
         else:
-            self._reader.rewind(PREBUFFER_FRAMES)
+            self._tail_ambient.rewind(self._reader)
             self._prebuffer_rewound = True
+            self._tail_ambient.enabled = self._capture_not_before is None
 
         hold_capture.begin(self)
         self._capture_epoch = None
@@ -212,9 +217,13 @@ class DictationSessionConsumer:
         start = frame.t_capture - FRAME_MS / 1000.0
         kept = ((before is None or start >= before)
                 and (after is None or frame.t_capture <= after))
+        if kept and self._tail_ambient is not None:
+            self._tail_ambient.observe(frame, FRAME_MS / 1000.)
         if kept and preduck.excludes(self, frame):
             # Preserve the timeline/VAD context; never mutate the ring view.
             frame.pcm = np.zeros_like(frame.pcm)
+            if self._tail_ambient is not None:
+                self._tail_ambient.enabled = False
         if self._capture_onset is not None:
             self._capture_onset.observe(start, kept, before)
         context = getattr(self, '_speech_presence_capture', None)
@@ -270,37 +279,9 @@ class DictationSessionConsumer:
         started = time.monotonic()
         with self._frames_lock:
             next_index = len(self._frames)
-            # The first PREBUFFER_FRAMES precede the hotkey press, so they
-            # describe this microphone's current ambient level without using
-            # the utterance itself.  A fixed 0.008 threshold classifies a
-            # noisier mic's ordinary room tone as speech forever, making every
-            # release wait for the hard cap.  Adapt upward from genuine
-            # pre-press audio while preserving the configured value as a floor.
-            # Only valid when _activate_hold actually rewound the reader --
-            # when TTS was speaking (or ended too recently) that rewind is
-            # skipped, so these "first" frames are live captured speech, not
-            # ambient pre-press audio; treating them as ambient would inflate
-            # the threshold and truncate the release tail mid-word.
-            prebuffer = [
-                pcm for _seq, _epoch, pcm in self._frames[:PREBUFFER_FRAMES]
-            ] if self._capture_not_before is None and self._prebuffer_rewound else []
-            # With capture ducking these first frames are post-confirmation
-            # speech, not ambient pre-press audio. Keep the configured floor
-            # rather than estimating room noise from the user's own voice.
-
-        noise_floor = 0.0
-        if len(prebuffer) == PREBUFFER_FRAMES:
-            prebuffer_rms = [
-                float(np.sqrt(np.mean(
-                    (pcm.astype(np.float32) / 32767.0) ** 2
-                )))
-                for pcm in prebuffer
-            ]
-            # A low percentile ignores incidental pre-hotkey speech or bumps;
-            # ADAPTIVE_SPEECH_FLOOR_RATIO matches the app's existing adaptive
-            # wake-gate margin.
-            noise_floor = float(np.percentile(prebuffer_rms, 20))
-            speech_threshold = max(speech_threshold, noise_floor * ADAPTIVE_SPEECH_FLOOR_RATIO)
+            release_frame = next_index
+        speech_threshold, source, noise_floor = self._release_threshold(speech_threshold, batch=True)
+        max_tail_ms = release_limit(source, max_tail_ms)
 
         def next_rms():
             nonlocal next_index
@@ -311,8 +292,11 @@ class DictationSessionConsumer:
                     for _seq, _epoch, pcm in new_frames]
 
         result = self._wait_for_release_quiet(next_rms, speech_threshold,
-                                              silence_ms, max_tail_ms, started=started)
+                                              silence_ms, max_tail_ms,
+                                              self._drain_stop.is_set, started=started)
         reason, tail_frames = result['reason'], result['frames']
+        self._streaming_tail_audit = dict(result, release_frame=release_frame,
+            released_at=started, threshold_source=source)
 
         audio = self.drain()
         elapsed_ms = int((time.monotonic() - started) * 1000)
@@ -322,6 +306,13 @@ class DictationSessionConsumer:
             reason, elapsed_ms, tail_frames, speech_threshold, noise_floor,
         )
         return audio
+
+    def _release_threshold(self, floor, *, batch=False):
+        if self._tail_ambient is None:
+            return float(floor), 'configured_floor', 0.
+        with self._frames_lock:
+            prebuffer = self._frames[:PREBUFFER_FRAMES] if batch and self._prebuffer_rewound else ()
+        return self._tail_ambient.threshold(floor, ADAPTIVE_SPEECH_FLOOR_RATIO, prebuffer)
 
     @staticmethod
     def _wait_for_release_quiet(next_rms, threshold, silence_ms, max_tail_ms,
@@ -363,11 +354,8 @@ class DictationSessionConsumer:
         with self._streaming_lock:
             next_index = len(self._streaming_frames)
             held = list(self._streaming_frames)
-        speech_level = 0.0
-        if len(held) >= 3:
-            levels = [float(np.sqrt(np.mean(frame * frame))) for frame in held]
-            speech_level = float(np.percentile(levels, 90))
-        threshold = max(float(speech_threshold), speech_level * 0.10)
+        threshold, source, noise_floor = self._release_threshold(speech_threshold)
+        max_tail_ms = release_limit(source, max_tail_ms)
 
         def next_rms():
             nonlocal next_index
@@ -378,7 +366,7 @@ class DictationSessionConsumer:
 
         result = self._wait_for_release_quiet(next_rms, threshold, silence_ms,
                                               max_tail_ms, should_abort)
-        result['speech_level'] = speech_level
+        result.update(speech_level=0., threshold_source=source, noise_floor=noise_floor)
         # 1100: numeric evidence only; the waiter and admission policy above
         # remain authoritative. Keep the release boundary until final drain.
         self._streaming_tail_audit = dict(result, release_frame=len(held),
@@ -412,7 +400,7 @@ class DictationSessionConsumer:
             'last_active_end_ms=%d active_end_gap_ms=%d weak_floor=%.6f '
             'last_weak_end_ms=%d weak_end_gap_ms=%d last_frame_rms=%.6f '
             'last_frame_peak=%.6f cutoff_set=%d hold_seq_id=%s '
-            'release_to_stop_ms=%d last_speech_end_ms=%d cue_or_duck_overlap_ms=%d',
+            'release_to_stop_ms=%d last_speech_end_ms=%s cue_or_duck_overlap_ms=%d',
             audit['reason'], audit['release_frame'] * FRAME_MS, count * FRAME_MS,
             (count - audit['release_frame']) * FRAME_MS, audit['frames'], threshold,
             last_active * FRAME_MS, (count - last_active) * FRAME_MS, weak_floor,
@@ -420,7 +408,8 @@ class DictationSessionConsumer:
             levels[-1] if levels else 0.,
             float(np.max(np.abs(frames[-1]))) if frames else 0.,
             self._capture_not_after is not None,
-            joined['hold_seq_id'], joined['release_to_stop_ms'], joined['last_speech_end_ms'],
+            joined['hold_seq_id'], joined['release_to_stop_ms'],
+            joined['last_speech_end_ms'] if joined['last_speech_end_ms'] is not None else -1,
             joined['cue_or_duck_overlap_ms'],
         )
 
@@ -509,8 +498,9 @@ class DictationSessionConsumer:
 
             out_frames.append(pcm)
 
-        pcm_int16 = np.concatenate(out_frames)
-        return pcm_int16.astype(np.float32) / 32767.0
+        floats = [pcm.astype(np.float32) / 32767.0 for pcm in out_frames]
+        self._log_streaming_tail_capture(floats)
+        return np.concatenate(floats)
 
     def _log_seam_diagnostics(self, collected: list) -> None:
         """Debug-level, cheap, permanent seam diagnostics (hotkey word-loss
@@ -599,6 +589,7 @@ class DictationSessionConsumer:
         _streaming_frames for StreamingWorker to snapshot.
         """
         self._streaming_frames: list = []
+        self._tail_ambient = Ambient(time.perf_counter(), PREBUFFER_FRAMES, False)
         self._streaming_tail_audit = None
         self._streaming_capturing = True
         self._streaming_stop  = threading.Event()
@@ -617,7 +608,8 @@ class DictationSessionConsumer:
                 self._capture_onset.rewind_suppressed = 'tts_recent'
             logger.debug("[PRE] Streaming: pre-buffer skipped — TTS ended too recently")
         else:
-            self._reader.rewind(PREBUFFER_FRAMES)
+            self._tail_ambient.rewind(self._reader)
+            self._tail_ambient.enabled = self._capture_not_before is None
 
         hold_capture.begin(self)
         self._capture_epoch = None

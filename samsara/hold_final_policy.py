@@ -59,6 +59,10 @@ def log_audit(audit, text):
             sum(audit.dropped.values()), audit.dropped, audit.preview_tail_words, len(text or ''),
             getattr(audit, 'hold_seq_id', 'unknown'), values.get('decoded_chars', -1),
             values.get('decoded_words', -1), values.get('request_words', -1))
+        from samsara.hold_diagnostics import tail_fields
+        fields = tail_fields(audit)
+        logging.getLogger('Samsara').info('[TAIL_EVIDENCE] ' + ' '.join(
+            f'{key}={value}' for key, value in fields.items()))
 
 
 def audited_batch(decode):

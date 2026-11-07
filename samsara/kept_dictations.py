@@ -118,7 +118,7 @@ class KeptStore:
             _warning()
 
     def remember(self, audio, rate, raw, final, *, path='hold', model='', device='',
-                 status='ready', take_id=None, generation=None):
+                 status='ready', take_id=None, generation=None, tail_evidence=None):
         if audio is None or not np.asarray(audio).size or rate <= 0:
             return
         with self.lock:
@@ -133,6 +133,8 @@ class KeptStore:
                        raw_transcript=raw or '', final_text=final or '', path=path,
                        model=model, device=device, status=status, sample_rate=int(rate),
                        duration_s=len(pcm) / rate)
+            if tail_evidence:
+                row['tail_evidence'] = dict(tail_evidence)
             explicit = self.armed or (self.last is not None and self.last['metadata']['id'] == take_id
                                       and self.last.get('explicit', False))
             self.last = dict(audio=pcm, metadata=row, generation=self.generation,
@@ -141,6 +143,37 @@ class KeptStore:
             if explicit or self.config().get('enabled', False):
                 self._queue(self.last, explicit)
             return take_id
+
+    def attach_evidence(self, take_id, generation, fields):
+        """Refresh this existing take, never save audio or arm a future keep."""
+        with self.lock:
+            take = self.last
+            if (generation != self.generation or take_id in self.deleted or take is None
+                    or take['metadata']['id'] != take_id or take['expires'] < self.clock()):
+                return
+            take['metadata']['tail_evidence'] = dict(fields)
+            if take.get('explicit') or self.config().get('enabled', False):
+                if self.worker is not None:
+                    self.worker.submit(self._refresh_evidence, take_id, generation, dict(fields), take.get('explicit', False))
+
+    def _refresh_evidence(self, take_id, generation, fields, explicit):
+        try:
+            with self.lock:
+                wav = self.audio_path(take_id)
+                sidecar = wav.with_suffix('.json')
+                if (generation != self.generation or take_id in self.deleted
+                        or (not explicit and not self.config().get('enabled', False))
+                        or not wav.is_file() or not sidecar.is_file()):
+                    return
+                row = json.loads(sidecar.read_text(encoding='utf-8'))
+                if row.get('id') != take_id:
+                    return
+                row['tail_evidence'] = fields
+                temp = sidecar.with_suffix('.tmp')
+                temp.write_text(json.dumps(row, ensure_ascii=False, allow_nan=False), encoding='utf-8')
+                temp.replace(sidecar)
+        except Exception:
+            _warning()
 
     def keep(self):
         with self.lock:
@@ -211,6 +244,9 @@ def store_for(app):
 
 def capture(app, audio, raw, final, path, **kwargs):
     try:
+        if path == 'hold' and 'tail_evidence' not in kwargs:
+            from samsara.hold_diagnostics import tail_fields
+            kwargs['tail_evidence'] = tail_fields(app)
         policy = getattr(app, '_game_mode', None)
         model = (getattr(policy, '_active_name', None) if getattr(policy, 'active', False)
                  else getattr(policy, '_primary_name', None)) or app.config.get('model_size', '')
@@ -257,8 +293,10 @@ def capture_held(session, text, raw):
         audio = getattr(session, '_decode_audio', None)
         if audio is None:
             audio = getattr(session, '_stopped_audio_1042', None)
+        from samsara.hold_diagnostics import tail_fields
         session._kept_take_id = capture(session.app, audio, raw, text, 'hold', take_id=take_id,
             generation=getattr(session, '_kept_generation', None),
+            tail_evidence=tail_fields(session),
             status='ready' if text else 'audio retained')
     except Exception:
         _warning()
@@ -267,6 +305,17 @@ def capture_held(session, text, raw):
 def begin_held(session):
     try:
         session._kept_generation = store_for(session.app).generation
+    except Exception:
+        _warning()
+
+
+def attach_tail_evidence(session):
+    try:
+        take_id = getattr(session, '_kept_take_id', None)
+        store = getattr(getattr(session, 'app', None), '_kept_dictations', None)
+        if take_id is not None and store is not None:
+            from samsara.hold_diagnostics import tail_fields
+            store.attach_evidence(take_id, getattr(session, '_kept_generation', None), tail_fields(session))
     except Exception:
         _warning()
 
@@ -320,6 +369,8 @@ def held_delivery(session, text, sent, confirmed):
             last = store.last
             if last is None or last['metadata']['id'] != take_id:
                 return
+            from samsara.hold_diagnostics import tail_fields
+            last['metadata']['tail_evidence'] = tail_fields(session)
             last['metadata']['final_text'] = text if sent else ''
             last['metadata']['status'] = 'typed' if confirmed else 'sent, unconfirmed' if sent else 'not typed'
             if last.get('explicit') or store.config().get('enabled', False):

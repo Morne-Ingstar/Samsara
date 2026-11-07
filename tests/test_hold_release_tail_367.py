@@ -22,6 +22,11 @@ class _App:
 
 def test_streaming_release_keeps_speech_then_quiet_and_preserves_accumulator():
     bus = FrameBus()
+    # 1174a n1: this 700 ms tail uses trusted quiet-room history; the
+    # unavailable-room budget is now 600 ms. Keep every admission assertion.
+    from samsara.audio_engine.frame import PREBUFFER_FRAMES
+    for index in range(PREBUFFER_FRAMES):
+        bus.write(np.zeros(FRAME_SIZE, dtype=np.int16), float(index), device_epoch=0)
     consumer = DictationSessionConsumer(_Engine(bus), _App())
     assert consumer.activate_streaming()
     for _ in range(5):
@@ -47,6 +52,13 @@ def test_streaming_release_keeps_speech_then_quiet_and_preserves_accumulator():
 
 def test_streaming_release_quiet_uses_hold_speech_level():
     bus = FrameBus()
+    # 1174a: retain the noise-latency contract with proven pre-press ambient;
+    # held speech no longer supplies the silence threshold (node ID retained).
+    from samsara.audio_engine.frame import PREBUFFER_FRAMES
+    pressed = time.perf_counter()
+    for i in range(PREBUFFER_FRAMES):
+        bus.write(np.full(FRAME_SIZE, 560, dtype=np.int16),
+                  pressed - (PREBUFFER_FRAMES - 1 - i) * .1, device_epoch=0)
     consumer = DictationSessionConsumer(_Engine(bus), _App())
     assert consumer.activate_streaming()
     for _ in range(5):

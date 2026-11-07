@@ -16,6 +16,7 @@ from samsara.log import get_logger
 from samsara.vocabulary_decode import transcribe_with_vocabulary
 from samsara.runtime import thread_registry
 from samsara.hold_final_policy import audited_batch
+from samsara.hold_tail_evidence import observed_decode, observe_raw, with_decode_context, timeline_offset
 
 logger = get_logger(__name__)
 # PLACEHOLDER COPY (1125)
@@ -363,6 +364,7 @@ def _can_retry_no_speech(evidence, rate, samples, chunk, params, capture):
     return total + 1e-9 >= NO_SPEECH_RETRY_TOTAL_S and longest + 1e-9 >= NO_SPEECH_RETRY_RUN_S
 
 
+@observed_decode
 def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None, *, recovery=False, inline=None):
     from samsara.hold_final_policy import current_audit
     from samsara.speech_presence import measure
@@ -371,6 +373,7 @@ def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None, 
     from samsara.dictation_retry import MissedRange
     progress = DecodedHold()
 
+    @with_decode_context
     def decode(abandoned):
         token = current_audit.set(audit)
         result = DecodedHold()
@@ -381,7 +384,8 @@ def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None, 
             check()
             evidence = measure(audio, app.model_rate)
             from samsara.hold_diagnostics import presence
-            presence(audit, evidence, capture)
+            presence(audit, evidence, capture, origin_ms=timeline_offset(audio, app.model_rate) * 1000,
+                     partial=recovery)
             bounds = _speech_bounds(evidence, app.model_rate, len(audio), capture=capture)
             if app.config.get('dictation', {}).get('speech_presence_gate', True) is False:
                 bounds = None
@@ -405,6 +409,7 @@ def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None, 
                 effective['word_timestamps'] = len(chunks) > 1 or sparse or params.get('word_timestamps', False)
                 reason, accepted, relaxed, chunk_warning = None, [], params.get('no_speech_threshold', .6) is None, False
                 first_pass = None
+                native_raw = []
                 try:
                     for retry in (False, True):
                         check()
@@ -442,6 +447,7 @@ def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None, 
                             continue
                         missing_timing = len(chunks) > 1 and any(
                             getattr(s, 'start', None) is None or getattr(s, 'end', None) is None for s in raw)
+                        native_raw = list(raw)
                         raw = _clip_timing(raw, len(pcm) / app.model_rate)
                         screened = gate_repetition_segments(raw)
                         combined = gate_repetition_text(screened.text)
@@ -453,7 +459,7 @@ def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None, 
                         if needs_retry:
                             reason = 'repetition_loop'
                             if not retry:
-                                first_pass = (list(raw), list(accepted))
+                                first_pass = (list(raw), list(accepted), native_raw)
                                 continue
                             if combined.needs_retry:
                                 accepted = []
@@ -491,11 +497,12 @@ def _transcribe(app, audio, params, deadline, cancel, guard=None, capture=None, 
                     reason = 'chunk_decode_failed'
                 if first_pass is not None and (not accepted or reason == 'chunk_decode_failed'):
                     # A failed loop retry cannot erase safe words from attempt one.
-                    raw, fallback = first_pass
+                    raw, fallback, native_raw = first_pass
                     accepted, _ = _guard_segments(fallback, guard, effective, pcm,
                                                  chunk.start / app.model_rate, result.missed)
                     chunk_warning = True
                     reason = 'repetition_loop'
+                observe_raw(native_raw, audio, app.model_rate, chunk.start, len(pcm))
                 if chunk_warning:
                     for item in raw:
                         matching = next((s for s in accepted if s is item or getattr(s, '_original', None) is item), None)

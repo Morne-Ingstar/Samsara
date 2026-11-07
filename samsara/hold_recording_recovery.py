@@ -443,6 +443,8 @@ def complete_incident(session, text):
         from samsara.hold_diagnostics import get, prepare
         prepare(session, text)
         joined = get(session).snapshot()
+        if joined.get('possible_missing_tail') == 1:
+            reasons.add('possible_missing_tail')
         empty = not str(text or '').strip()
         failed = bool(getattr(session, '_decode_failure', None))
         empty_chunk = getattr(audit, 'empty_spoken_chunk', False) or any(
@@ -461,6 +463,8 @@ def complete_incident(session, text):
         if empty and joined['speech_present'] == 0 and not dropped and not joined['no_speech_retries']:
             reasons.difference_update(('stopped_recovery', 'decode_recovery'))
         metadata = {'timestamp': data['timestamp'], 'sample_rate': 16000,
+                    'kept_take_id': getattr(session, '_kept_take_id', None),
+                    'kept_generation': getattr(session, '_kept_generation', None),
                     'sample_count': len(audio), 'reasons': sorted(reasons), **joined,
                     'wav_source': 'native_first_attempt' if getattr(audit, 'incident_audio', None) is not None else 'stopped_capture',
                     'gate_metrics': list(data['gate']), 'decode_attempts': attempts,

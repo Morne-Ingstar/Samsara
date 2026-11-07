@@ -40,7 +40,11 @@ class Evidence:
         decoded_chars=-1, decoded_words=-1, request_chars=-1, request_words=-1,
         delivered_words=-1, delivery_abort_reason='pending', delivery_confirmed=-1,
         delivery_stage='none', cleanup_word_delta=0, formatting_word_delta=0,
-        corrections_word_delta=0, paste_abort_word_delta=0, no_speech_retries=0))
+        corrections_word_delta=0, paste_abort_word_delta=0, no_speech_retries=0,
+        release_audio_ms=None, admitted_tail_ms=None, tail_threshold=None,
+        tail_threshold_source='unknown', decoder_raw_end_ms=None,
+        decoder_accepted_end_ms=None, decoder_word_end_ms=None,
+        decoder_timeline_source='unknown', tail_vad_run_ms=0))
     lock: object = field(default_factory=threading.RLock)
     intervals: list = field(default_factory=list)
     stopped: float = None
@@ -48,6 +52,8 @@ class Evidence:
 
     def snapshot(self):
         with self.lock:
+            from samsara.hold_tail_evidence import tail_snapshot
+            self.values.update(tail_snapshot(self.values))
             spans = sorted((a, min(b, self.stopped) if self.stopped is not None else b)
                            for a, b in self.intervals)
             total, end = 0., float('-inf')
@@ -111,7 +117,7 @@ def observe_duck(operation):
 
 
 @best_effort
-def presence(owner, result, grace_ms=0):
+def presence(owner, result, grace_ms=0, *, origin_ms=0, partial=False):
     evidence = get(owner)
     if evidence is None:
         return
@@ -123,10 +129,26 @@ def presence(owner, result, grace_ms=0):
     with evidence.lock:
         evidence.values['speech_present'] = int(result.passes(grace_ms)) if result.known else -1
         probabilities = getattr(result, 'probabilities', ())
-        if result.known and probabilities:
+        import numpy as np
+        samples = getattr(result, 'samples', 0)
+        if (result.known and probabilities and samples > 0
+                and len(probabilities) == (samples + 511) // 512
+                and np.isfinite(probabilities).all() and all(0 <= p <= 1 for p in probabilities)):
             end = max((min(result.samples, (i + 1) * 512) / 16
-                       for i, p in enumerate(probabilities) if p > .1), default=0)
-            evidence.values.update(last_speech_end_ms=round(end), last_speech_source='vad_p01')
+                       for i, p in enumerate(probabilities) if p > .1), default=None)
+            end = end + origin_ms if end is not None else None
+            previous = evidence.values['last_speech_end_ms']
+            if (partial and evidence.values['last_speech_source'] == 'vad_p01' and previous is not None
+                    and (end is None or end < previous)):
+                return
+            evidence.values.update(last_speech_end_ms=round(end) if end is not None else None, last_speech_source='vad_p01')
+            run = last_run = 0
+            for i, score in enumerate(probabilities):
+                width = max(0, min(result.samples, (i + 1) * 512) - i * 512)
+                run = run + width if score > .1 else 0
+                if run:
+                    last_run = run
+            evidence.values['tail_vad_run_ms'] = last_run / 16
 
 
 def captured(consumer, frames, audit):
@@ -141,11 +163,14 @@ def captured(consumer, frames, audit):
     with evidence.lock:
         evidence.stopped = time.monotonic()
         evidence.values.update(captured_audio_ms=len(frames) * FRAME_MS,
+            release_audio_ms=audit['release_frame'] * FRAME_MS,
+            admitted_tail_ms=max(0, len(frames) - audit['release_frame']) * FRAME_MS,
+            tail_threshold=audit['threshold'], tail_threshold_source=audit.get('threshold_source', 'unknown'),
             release_to_stop_ms=round(max(0., evidence.stopped - audit['released_at']) * 1000),
             cutoff_set=int(consumer._capture_not_after is not None))
         if evidence.values['last_speech_source'] != 'vad_p01':
-            evidence.values.update(last_speech_end_ms=max(
-                (i + 1 for i, level in enumerate(levels) if level >= audit['threshold']), default=0) * FRAME_MS,
+            end = max((i + 1 for i, level in enumerate(levels) if level >= audit['threshold']), default=None)
+            evidence.values.update(last_speech_end_ms=end * FRAME_MS if end is not None else None,
                 last_speech_source='energy_tail_floor')
     if _active is not None and _active[1] is evidence:
         _active = None
@@ -157,6 +182,22 @@ def decoded(session, text):
     with evidence.lock:
         evidence.values.update(decoded_chars=len(text or ''), decoded_words=words(text),
                                request_chars=len(text or ''), request_words=words(text))
+    from samsara.kept_dictations import attach_tail_evidence
+    attach_tail_evidence(session)
+
+
+def tail_fields(owner):
+    """A JSON-safe numeric/enumerated snapshot for the existing take only."""
+    evidence = get(owner)
+    if evidence is None:
+        return {}
+    values = evidence.snapshot()
+    names = ('hold_seq_id', 'captured_audio_ms', 'release_audio_ms', 'admitted_tail_ms',
+        'tail_threshold', 'tail_threshold_source', 'last_speech_end_ms', 'last_speech_source',
+        'decoder_raw_end_ms', 'decoder_accepted_end_ms', 'decoder_word_end_ms',
+        'decoder_timeline_source', 'decoder_gap_ms', 'decoder_raw_gap_ms',
+        'decoder_accepted_reduction_ms', 'possible_missing_tail', 'tail_observation_source')
+    return {name: values.get(name) for name in names}
 
 
 def stage(session, name, before, after):
