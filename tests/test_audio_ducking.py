@@ -182,7 +182,6 @@ def _simulate_new_process() -> None:
     ad._journal_pending.clear()
     ad._known_levels.clear()
     ad._duck_factors.clear()
-    ad._shallow_rejected.clear()
     ad._pending_notices.clear()
     ad._notice_sink = None
     ad._journal_path = None
@@ -232,22 +231,19 @@ def test_stop_interleaved_with_blocked_sweep_restores_nothing(monkeypatch):
     started = threading.Event()
     allow_set = threading.Event()
 
-    original_set = blocked_session.set_master_volume
-
-    def blocking_set(level: float) -> None:
+    # 1182: sweeps still enumerate, but never write a newly seen session.
+    def blocking_list():
         started.set()
         allow_set.wait(timeout=1)
-        original_set(level)
+        return [blocked_session]
 
-    blocked_session.set_master_volume = blocking_set  # type: ignore[method-assign]
     use_sessions([first_session])
 
     ducker = ad.SessionDucker(duck_level=0.2)
     ducker.start()
     assert first_session.volume == pytest.approx(0.2)
 
-    blocked_session.set_master_volume = blocking_set  # type: ignore[method-assign]
-    use_sessions([blocked_session])
+    use_sessions(blocking_list)
 
     sweep_thread = threading.Thread(target=ducker._run_sweep)
     sweep_thread.start()
@@ -262,7 +258,7 @@ def test_stop_interleaved_with_blocked_sweep_restores_nothing(monkeypatch):
     sweep_thread.join(timeout=1)
     assert blocked_session.volume == pytest.approx(1.0)
     assert ad._SHARED_SESSIONS == {}
-    assert blocked_session.volume_calls[-1] == pytest.approx(1.0)
+    assert blocked_session.volume_calls == []
 
 
 def test_repeated_start_stop_is_idempotent(monkeypatch):
@@ -375,7 +371,9 @@ def test_sweep_catches_new_session(monkeypatch):
 
     sessions.append(FakeSession("new", 333, 0.3))
     ducker._run_sweep()
-    assert sessions[1].volume == pytest.approx(0.3 * 0.2)
+    # 1182: a session first seen mid-duck is left alone.
+    assert sessions[1].volume == pytest.approx(0.3)
+    assert sessions[1].volume_calls == []
 
     ducker.stop()
     assert sessions[0].volume == pytest.approx(0.9)
@@ -682,7 +680,7 @@ def test_counters_increment_on_sweep(monkeypatch):
     ducker._run_sweep()
 
     assert ducker.sessions_seen == 2
-    assert ducker.sessions_ducked == 2
+    assert ducker.sessions_ducked == 1  # 1182: no mid-duck enrollment.
     ducker.stop()
 
 
@@ -788,17 +786,17 @@ def test_original_at_the_duck_target_is_rejected_for_the_remembered_level(journa
     ducker.stop()  # a clean run remembers 0.3
     assert json.loads(journal.read_text(encoding="utf-8"))["known_levels"] == {"Spotify.exe": 0.3}
 
-    # A pre-journal crash left it ducked and the journal lost the entry:
-    # the next run sees only 0.045, the duck target of 0.3.
+    # 1182: without an orphan entry, a matching value may be the user's
+    # deliberate choice. Never replace it with a guessed louder volume.
     app.volume = 0.3 * 0.15
     app.session_id, app.instance_id = "new-1", "inst-b"
     _hard_kill_and_restart(journal, [app])
     ducker = ad.SessionDucker(duck_level=0.15)
     ducker.start()
-    assert ad._SHARED_SESSIONS["new-1"].original_volume == pytest.approx(0.3)
+    assert ad._SHARED_SESSIONS["new-1"].original_volume == pytest.approx(0.045)
     ducker.stop()
-    assert app.volume == pytest.approx(0.3)
-    assert json.loads(journal.read_text(encoding="utf-8"))["known_levels"] == {"Spotify.exe": 0.3}
+    assert app.volume == pytest.approx(0.045)
+    assert json.loads(journal.read_text(encoding="utf-8"))["known_levels"] == {"Spotify.exe": pytest.approx(0.045)}
 
 
 def test_implausible_original_with_nothing_remembered_is_not_remembered(journal):
@@ -1005,7 +1003,9 @@ def test_vet_original_rejects_a_leftover_from_each_real_duck_path(journal, path,
     ad._known_levels["vlc.exe"] = remembered
     handle = NamedSession("s1", 100, 0.0, "vlc.exe")
 
-    assert ad._vet_original(handle, _f32(remembered * factor)) == (remembered, False), path
+    # 1182: volume arithmetic alone no longer proves an abandoned duck.
+    current = _f32(remembered * factor)
+    assert ad._vet_original(handle, current) == (current, current > ad.IMPLAUSIBLE_ORIGINAL_FLOOR), path
 
 
 def test_duck_factors_in_use_survive_a_restart(journal):
@@ -1015,7 +1015,7 @@ def test_duck_factors_in_use_survive_a_restart(journal):
     ducker.start()
     ducker.stop()
     _hard_kill_and_restart(journal, [])
-    assert ad._duck_products() == [pytest.approx(0.8)]
+    assert sorted(ad._duck_factors) == [pytest.approx(0.8)]  # 1182: legacy metadata is still persisted.
 
 
 def test_user_set_30_percent_is_preserved_not_treated_as_leftover(journal):
@@ -1041,8 +1041,7 @@ def test_user_set_30_percent_is_preserved_not_treated_as_leftover(journal):
 
 
 def test_user_set_level_equal_to_an_idle_duck_is_accepted_after_one_restore(journal):
-    # 80% of a remembered 100% cannot be told from a leftover idle duck by
-    # value. It is restored once; seeing it again means the user chose it.
+    # 1182: the user's first selection wins, including an exact duck level.
     app = NamedSession("s1", 100, 1.0, "firefox.exe", "inst-a")
     use_sessions([app])
     ad.configure_duck_journal(journal)
@@ -1053,7 +1052,7 @@ def test_user_set_level_equal_to_an_idle_duck_is_accepted_after_one_restore(jour
     app.volume = _f32(0.8)
     ducker.start()
     ducker.stop()
-    assert app.volume == pytest.approx(1.0)  # treated as a leftover once
+    assert app.volume == pytest.approx(0.8)
 
     app.volume = _f32(0.8)  # the user sets it again
     ducker.start()
@@ -1080,11 +1079,15 @@ def test_session_vanishing_while_ducked_does_not_compound(journal):
         sessions.append(NamedSession(f"s{cycle + 2}", 100, old.volume, "brave.exe", f"inst-{cycle + 2}"))
         idle._run_sweep()
         assert sessions[0].volume == pytest.approx(0.8), cycle
-        assert ad._SHARED_SESSIONS[sessions[0].session_id].original_volume == pytest.approx(1.0), cycle
+        # 1182: no adoption or cross-tab original inheritance mid-duck.
+        assert sessions[0].session_id not in ad._SHARED_SESSIONS, cycle
+        assert sessions[0].volume_calls == [], cycle
         idle.stop()  # the vanished session cannot be read: queued, not lost
-        assert sessions[0].volume == pytest.approx(1.0), cycle
+        assert sessions[0].volume == pytest.approx(0.8), cycle
+        assert ad._journal_pending, cycle
         idle.start()
         assert sessions[0].volume == pytest.approx(0.8), cycle
+        assert ad._SHARED_SESSIONS[sessions[0].session_id].original_volume == pytest.approx(1.0), cycle
 
     idle.stop()
     assert sessions[0].volume == pytest.approx(1.0)
