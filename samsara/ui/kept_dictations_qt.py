@@ -214,33 +214,35 @@ class KeptView(QWidget):
 
 
 def add_history(view, app):
-    from PySide6.QtWidgets import QStackedWidget
-    root = view.layout()
+    from samsara.ui.history_view import _make_transparent
+    column = view.layout()
     normal = QWidget(view)
-    column = QVBoxLayout(normal)
+    _make_transparent(normal)
+    # Transfer the whole layout so nested rows, stretch and spacing stay intact.
+    normal.setLayout(column)
+    root = QVBoxLayout(view)
+    root.setContentsMargins(column.contentsMargins())
+    root.setSpacing(column.spacing())
     column.setContentsMargins(0, 0, 0, 0)
-    while root.count():
-        item = root.takeAt(0)
-        if item.widget() is not None:
-            column.addWidget(item.widget(), 1 if item.widget() is view._list else 0)
-        elif item.layout() is not None:
-            column.addLayout(item.layout())
-        else:
-            column.addItem(item)
-    stack = QStackedWidget(view)
-    stack.addWidget(normal)
     view.kept_panel = KeptView(store_for(app), view)
-    stack.addWidget(view.kept_panel)
+    view.kept_panel.hide()
     buttons = QHBoxLayout()
-    history_button = _button('History', lambda: stack.setCurrentIndex(0))
+    def show_history():
+        view.kept_panel.hide()
+        normal.show()
+    history_button = _button('History', show_history)
     def show_kept():
         view.kept_panel.refresh()
-        stack.setCurrentIndex(1)
+        normal.hide()
+        view.kept_panel.show()
     view.kept_button = _button('Kept', show_kept)
     buttons.addWidget(history_button)
     buttons.addWidget(view.kept_button)
     buttons.addStretch()
     root.addLayout(buttons)
-    root.addWidget(stack, 1)
+    # Box layouts ignore hidden pages; QStackedWidget reserves Kept's taller
+    # height-for-width even on History, pushing its footer below the host.
+    root.addWidget(normal, 1)
+    root.addWidget(view.kept_panel, 1)
 
 # PLACEHOLDER COPY (1161): ordinary review labels and status messages chosen by the worker.
