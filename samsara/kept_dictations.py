@@ -96,17 +96,20 @@ class KeptStore:
                 row = take['metadata']
                 wav = self.audio_path(row['id'])
                 sidecar = wav.with_suffix('.json')
+                pending_wav = wav.with_suffix('.wav.tmp')
                 try:
-                    if not wav.exists():
-                        with wave.open(str(wav), 'wb') as output:
-                            output.setnchannels(1)
-                            output.setsampwidth(2)
-                            output.setframerate(row['sample_rate'])
-                            output.writeframes(_to_int16_pcm(take['audio']).tobytes())
+                    # A staged take grows under the same id. Replace its PCM too.
+                    with wave.open(str(pending_wav), 'wb') as output:
+                        output.setnchannels(1)
+                        output.setsampwidth(2)
+                        output.setframerate(row['sample_rate'])
+                        output.writeframes(_to_int16_pcm(take['audio']).tobytes())
+                    pending_wav.replace(wav)
                     temp = sidecar.with_suffix('.tmp')
                     temp.write_text(json.dumps(row, ensure_ascii=False, allow_nan=False), encoding='utf-8')
                     temp.replace(sidecar)
                 except Exception:
+                    pending_wav.unlink(missing_ok=True)
                     wav.unlink(missing_ok=True)
                     sidecar.unlink(missing_ok=True)
                     sidecar.with_suffix('.tmp').unlink(missing_ok=True)
@@ -118,7 +121,7 @@ class KeptStore:
             _warning()
 
     def remember(self, audio, rate, raw, final, *, path='hold', model='', device='',
-                 status='ready', take_id=None, generation=None, tail_evidence=None):
+                 status='ready', take_id=None, generation=None, tail_evidence=None, chunk_boundaries=None):
         if audio is None or not np.asarray(audio).size or rate <= 0:
             return
         with self.lock:
@@ -127,12 +130,14 @@ class KeptStore:
             take_id = take_id or uuid.uuid4().hex
             if take_id in self.deleted:
                 return
-            pcm = np.array(audio, copy=True).reshape(-1)
+            from samsara.hold_recording_recovery import bounded_take
+            audio, saved = bounded_take(np.asarray(audio).reshape(-1), rate, chunk_boundaries)
+            pcm = np.array(audio, copy=True)
             self.order = max(self.order + 1, time.time_ns())
             row = dict(id=take_id, order=self.order, timestamp=datetime.now(timezone.utc).isoformat(),
                        raw_transcript=raw or '', final_text=final or '', path=path,
                        model=model, device=device, status=status, sample_rate=int(rate),
-                       duration_s=len(pcm) / rate)
+                       **saved)
             if tail_evidence:
                 row['tail_evidence'] = dict(tail_evidence)
             explicit = self.armed or (self.last is not None and self.last['metadata']['id'] == take_id
@@ -258,6 +263,16 @@ def capture(app, audio, raw, final, path, **kwargs):
         _warning()
 
 
+def _capture_parts(app, arrays, raw, final, path, **kwargs):
+    boundaries, offset = [], 0
+    for audio in arrays:
+        end = offset + len(audio)
+        boundaries.append(dict(start_sample=offset, end_sample=end, source='capture_samples'))
+        offset = end
+    return capture(app, np.concatenate(arrays), raw, final, path,
+                   chunk_boundaries=boundaries, **kwargs)
+
+
 def request_keep(app, *, voice=False):
     try:
         store = store_for(app)
@@ -294,8 +309,10 @@ def capture_held(session, text, raw):
         if audio is None:
             audio = getattr(session, '_stopped_audio_1042', None)
         from samsara.hold_diagnostics import tail_fields
+        from samsara.hold_recording_recovery import take_boundaries
         session._kept_take_id = capture(session.app, audio, raw, text, 'hold', take_id=take_id,
             generation=getattr(session, '_kept_generation', None),
+            chunk_boundaries=take_boundaries(session, audio) if audio is not None else [],
             tail_evidence=tail_fields(session),
             status='ready' if text else 'audio retained')
     except Exception:
@@ -348,7 +365,7 @@ def observe_commit(method):
             if app and result.kind == 'dictate_committed':
                 arrays = [ref for ref in refs if ref is not None and np.asarray(ref).size]
                 if arrays:
-                    capture(app, np.concatenate(arrays), raw, result.detail.get('text', ''),
+                    _capture_parts(app, arrays, raw, result.detail.get('text', ''),
                         'hands-free', status='sent', generation=generation,
                         take_id=getattr(manager, '_kept_take_id', None))
                 manager._kept_raw = ''
@@ -421,7 +438,7 @@ def _dispatch_session(manager, raw, signals, onset_context):
             refs = manager._dictate_pending_audio
             arrays = [ref for ref in refs if ref is not None and np.asarray(ref).size]
             if arrays:
-                manager._kept_take_id = capture(app, np.concatenate(arrays), manager._kept_raw, '',
+                manager._kept_take_id = _capture_parts(app, arrays, manager._kept_raw, '',
                     'hands-free', status='staged', generation=generation,
                     take_id=getattr(manager, '_kept_take_id', None))
         elif outcome.kind in ('dictate_committed', 'dictate_injected'):
@@ -429,7 +446,7 @@ def _dispatch_session(manager, raw, signals, onset_context):
             if audio is not None and np.asarray(audio).size and not any(ref is audio for ref in refs):
                 arrays.append(audio)
             if arrays:
-                capture(app, np.concatenate(arrays),
+                _capture_parts(app, arrays,
                     (pending_raw if str(raw).strip().rstrip('.!?').casefold() == 'send' else
                      (pending_raw + ' ' + raw).strip()), outcome.detail.get('text', ''),
                     'hands-free', status='sent', generation=generation,
@@ -526,9 +543,9 @@ def wake_history(app, raw, final, mode, entry_type, status='success'):
         if mode != 'wake' or entry_type != 'dictation' or context is None or context['app'] is not app:
             return
         from samsara.audio_tools import resample_audio
-        audio = np.concatenate([resample_audio(np.concatenate(frames), rate, app.model_rate)
-                                for frames, rate in context['parts']])
-        capture(app, audio, context.get('raw', raw), final if status == 'success' else '', 'wake',
+        arrays = [resample_audio(np.concatenate(frames), rate, app.model_rate)
+                  for frames, rate in context['parts']]
+        _capture_parts(app, arrays, context.get('raw', raw), final if status == 'success' else '', 'wake',
                 status='sent' if status == 'success' else 'not typed', generation=context['generation'])
         context['consumed'] = True
     except Exception:

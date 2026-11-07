@@ -119,6 +119,7 @@ def test_native_input_after_trim_and_before_segment_drop(app, monkeypatch):
     import samsara.hallucination_filter as filters
     hold = session(app, first=True)
     audio = np.r_[np.full(16000, .1, np.float32), np.zeros(16000, np.float32)]
+    hold._decode_audio = audio  # 1184: archive the complete take before native trimming.
     received = []
     def transcribe(pcm, **params):
         received.append(pcm.copy())
@@ -139,10 +140,11 @@ def test_native_input_after_trim_and_before_segment_drop(app, monkeypatch):
     metadata = json.loads(path.read_text())
     with wave.open(str(path.with_suffix('.wav')), 'rb') as wav:
         assert (wav.getnchannels(), wav.getsampwidth(), wav.getframerate()) == (1, 2, 16000)
-        assert wav.getnframes() == len(received[0]) == 20800
+        assert wav.getnframes() == len(audio) == 32000  # 1184: native trim is metadata only.
+        assert len(received[0]) == 20800
         pcm = np.frombuffer(wav.readframes(wav.getnframes()), '<i2')
-    np.testing.assert_array_equal(pcm, np.rint(received[0] * 32768).astype('<i2'))
-    assert metadata['sample_count'] == 20800
+    np.testing.assert_array_equal(pcm, np.rint(audio * 32768).astype('<i2'))
+    assert metadata['sample_count'] == 32000  # 1184: saved samples cover the whole take.
     assert metadata['decode_attempts'][0]['segments'][0]['avg_logprob'] == -.2
     assert metadata['decode_attempts'][0]['params']['beam_size'] == 3
     assert metadata['hold_final']['segments_dropped'] == 1
@@ -301,8 +303,8 @@ def test_native_hook_without_opt_in_does_not_observe(app):
     app.model = ResilientSpeechModel(app, native, lambda: native, device='cpu')
     token = current_audit.set(hold._hold_final_audit)
     try:
-        assert recovery.incident_model(app) is app.model
-        segments, _ = app.model.transcribe(hold._decode_audio, temperature=0.)
+        # 1184: numeric Keep boundaries are observed without incident metrics/consent.
+        segments, _ = recovery.incident_model(app).transcribe(hold._decode_audio, temperature=0.)
         assert list(segments) == []
     finally:
         current_audit.reset(token)

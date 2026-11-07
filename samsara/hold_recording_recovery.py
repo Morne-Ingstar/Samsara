@@ -115,6 +115,39 @@ import numpy as np
 
 _incident_audit = ContextVar('incident_native_audit_1052a', default=None)
 _store_lock = threading.Lock()
+# Match the held-capture limit without importing/bootstrapping streaming UI.
+MAX_SAVED_TAKE_S = 120.0
+
+
+def bounded_take(audio, rate, boundaries=None):
+    """Save one original timeline, explicitly describing any duration cap."""
+    total = len(audio)
+    count = min(total, round(MAX_SAVED_TAKE_S * rate))
+    return audio[:count], dict(sample_count=count, capture_sample_count=total,
+        duration_s=count / rate, capture_duration_s=total / rate,
+        truncated=count < total, truncation_reason='duration_cap' if count < total else None,
+        max_duration_s=MAX_SAVED_TAKE_S,
+        chunk_boundaries=(boundaries if boundaries is not None else
+                          [dict(start_sample=0, end_sample=total, source='capture_samples')]))
+
+
+def take_boundaries(session, audio):
+    """Map native input views onto the complete take; never join decoder PCM."""
+    inputs = getattr(getattr(session, '_hold_final_audit', None), 'take_inputs', ())
+    boundaries = []
+    for pcm in list(inputs):
+        start = end = None
+        if (np.shares_memory(audio, pcm) and audio.ndim == pcm.ndim == 1
+                and audio.dtype == pcm.dtype and audio.flags.c_contiguous and pcm.flags.c_contiguous):
+            start = (pcm.ctypes.data - audio.ctypes.data) // audio.itemsize
+            end = start + len(pcm)
+            if not 0 <= start <= end <= len(audio):
+                start = end = None
+        row = dict(start_sample=start, end_sample=end, sample_count=len(pcm),
+                   source='capture_samples' if start is not None else 'unmapped_native_input')
+        if row not in boundaries:
+            boundaries.append(row)
+    return boundaries
 
 
 def _incident_warning():
@@ -133,6 +166,13 @@ def _best_effort(observation):
         except Exception:
             _incident_warning()
     return run
+
+
+@_best_effort
+def _remember_take_input(audit, audio):
+    if not hasattr(audit, 'take_inputs'):
+        audit.take_inputs = []
+    audit.take_inputs.append(audio)
 
 
 def _exiting(app=None):
@@ -370,8 +410,6 @@ def observe_incident_decode(model, args, params):
     if not hasattr(audit, 'incident_attempts'):
         audit.incident_attempts = []
     audit.incident_attempts.append(attempt)
-    if not hasattr(audit, 'incident_audio'):
-        audit.incident_audio = np.array(audio, dtype=np.float32, copy=True)
     segments, info = model.transcribe(*args, **params)
     def observed():
         for segment in segments:
@@ -388,7 +426,7 @@ def incident_model(app):
     """Observe the native model boundary after silence trimming, before gates."""
     from samsara.hold_final_policy import current_audit
     audit = current_audit.get()
-    if audit is None or not _enabled(app):
+    if audit is None:
         return app.model
 
     class ObservedModel:
@@ -397,9 +435,12 @@ def incident_model(app):
 
         def transcribe(self, audio, **params):
             from samsara.gpu_fallback import ResilientSpeechModel
-            token = _incident_audit.set(audit)
+            # Keep needs numeric chunk ranges even when incident consent is off.
+            # References share the already-retained take; no extra PCM is copied.
+            _remember_take_input(audit, audio)
+            token = _incident_audit.set(audit if _enabled(app) else None)
             try:
-                if isinstance(app.model, ResilientSpeechModel):
+                if isinstance(app.model, ResilientSpeechModel) or not _enabled(app):
                     return app.model.transcribe(audio, **params)
                 return observe_incident_decode(app.model, (audio,), params)
             finally:
@@ -417,9 +458,7 @@ def complete_incident(session, text):
         return
     try:
         audit = getattr(session, '_hold_final_audit', None)
-        audio = getattr(audit, 'incident_audio', None)
-        if audio is None:
-            audio = _audio(session)
+        audio = _audio(session)
         if audio is None or not len(audio):
             return
         if getattr(session.app, 'model_rate', 16000) != 16000:
@@ -462,18 +501,19 @@ def complete_incident(session, text):
         # slot/failure warning was produced. Independent drops/retries still are.
         if empty and joined['speech_present'] == 0 and not dropped and not joined['no_speech_retries']:
             reasons.difference_update(('stopped_recovery', 'decode_recovery'))
+        saved_audio, saved = bounded_take(audio, 16000, take_boundaries(session, audio))
         metadata = {'timestamp': data['timestamp'], 'sample_rate': 16000,
                     'kept_take_id': getattr(session, '_kept_take_id', None),
                     'kept_generation': getattr(session, '_kept_generation', None),
-                    'sample_count': len(audio), 'reasons': sorted(reasons), **joined,
-                    'wav_source': 'native_first_attempt' if getattr(audit, 'incident_audio', None) is not None else 'stopped_capture',
+                    'reasons': sorted(reasons), **joined, **saved,
+                    'wav_source': 'complete_decode_take',
                     'gate_metrics': list(data['gate']), 'decode_attempts': attempts,
                     'hold_final': {'segments_decoded': getattr(audit, 'decoded', 0),
                                    'segments_dropped': sum(dropped.values()), 'reasons': dropped,
                                    'preview_tail_words': getattr(audit, 'preview_tail_words', 0),
                                    'chars_delivered': len(text or '')}}
         record = {'generation': data['generation'],
-                  'audio': np.array(audio, dtype=np.float32, copy=True), 'metadata': metadata,
+                  'audio': np.array(saved_audio, dtype=np.float32, copy=True), 'metadata': metadata,
                   'empty_or_failed': empty or failed,
                   'released': getattr(session, '_incident_release_1052a', time.monotonic())}
         session._incident_record_1121 = record
