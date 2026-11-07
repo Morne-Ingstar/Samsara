@@ -44,6 +44,7 @@ from samsara.tts.coordinator import AudioCoordinator  # noqa: E402
 from samsara.tts.engine_base import SpeechHandle  # noqa: E402
 
 GOOD = UtteranceSignals(has_contiguous_speech=True, compression_ratios=(1.3,))
+pytestmark = pytest.mark.usefixtures('bound_submit_target')  # 1179: synthetic inspected editor.
 
 
 @pytest.fixture(autouse=True)

@@ -310,3 +310,18 @@ def test_real_displays_clear_the_question(rig, qapp, choice, answer):
     finally:
         widget.close()
         widget.deleteLater()
+
+
+@pytest.mark.parametrize('retirement', ['tick', 'late_answer'])
+def test_expired_question_cannot_be_approved_or_reopened_1179(rig, retirement):
+    q = stage(rig)
+    rig.now[0] = q.deadline + .01
+    if retirement == 'tick':
+        ava_pending._tick(rig.app, q)
+    else:
+        assert ava_pending.consume(rig.app, 'yes', capture_path='command_key')
+    assert rig.app._ava_question is None and policy.pending_operation() is None
+    assert not ava_pending.consume(rig.app, 'yes', capture_path='command_key')
+    rig.callbacks[-1]()
+    assert rig.app._ava_question is None and policy.pending_operation() is None
+    rig.app.risky_action.assert_not_called()

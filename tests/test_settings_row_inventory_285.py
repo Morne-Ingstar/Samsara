@@ -214,7 +214,8 @@ def test_every_schema_key_has_one_home_or_an_explicit_ui_less_reason(window):
 def test_six_pages_keep_approved_base_budgets(window):
     assert settings_qt._TAB_NAMES == ['General', 'Dictation', 'Audio', 'Ava', 'Shortcuts', 'Help']
     # 1073: Indicator position and Speech volume join their main sections.
-    for name, count in {'General': 9, 'Dictation': 12, 'Audio': 12, 'Shortcuts': 11}.items():
+    # 1179: 1161 added exactly one Keep this dictation shortcut.
+    for name, count in {'General': 9, 'Dictation': 12, 'Audio': 12, 'Shortcuts': 12}.items():
         assert len(window._pages[name].base_rows) == count
     # 1073: Indicator position leaves Advanced; Idle preview stays for 1076.
     assert sum(row.page_name == 'General' and row.disclosure is window._pages['General'].advanced

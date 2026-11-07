@@ -188,6 +188,41 @@ class PlainChoices(QWidget):
             self.currentIndexChanged.emit()
 
 
+class PaceTrialBody(QWidget):
+    """Keep reading text beside the controls when there is room to wrap it."""
+    def __init__(self, instruction, sentence, state, description, pace):
+        super().__init__()
+        self._grid = QGridLayout(self)
+        self._grid.setContentsMargins(0, 0, 0, 0)
+        self._grid.setSpacing(theme.SPACE_2)
+        self._columns = None
+        self._intro, self._controls = QWidget(), QWidget()
+        for body, widgets in ((self._intro, (instruction, sentence)),
+                              (self._controls, (state, description, pace))):
+            body.setStyleSheet('QWidget { background: transparent; }')
+            column = QVBoxLayout(body)
+            column.setContentsMargins(0, 0, 0, 0)
+            column.setSpacing(theme.SPACE_2)
+            for widget in widgets:
+                column.addWidget(widget)
+            column.addStretch()
+        self._arrange(False)
+
+    def _arrange(self, columns):
+        if columns == self._columns:
+            return
+        self._columns = columns
+        self._grid.addWidget(self._intro, 0, 0)
+        self._grid.addWidget(self._controls, 0 if columns else 1, 1 if columns else 0)
+        self._grid.setColumnStretch(0, 1)
+        self._grid.invalidate()
+        self.updateGeometry()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._arrange(self.width() >= 700)
+
+
 def build_steps(page, layout):
     cfg, window = page.app.config.get('tts', {}) or {}, page.window
     page.position = label('1 of 3')
@@ -236,8 +271,11 @@ def build_steps(page, layout):
         row.addStretch()
         if key == 'pace':
             page.pace_description = label('')
-            frame.layout().addWidget(page.pace_description)
-            frame.layout().addWidget(page.pace)
+            # 1179: reuse the available width before requiring vertical scrolling.
+            for widget in (instruction, sentence, state):
+                frame.layout().removeWidget(widget)
+            frame.layout().addWidget(PaceTrialBody(instruction, sentence, state,
+                                                  page.pace_description, page.pace))
         frame.layout().addLayout(row)
     page.voice_skip = label('The voice is skipped while Silent is selected.')
     layout.addWidget(page.voice_skip)

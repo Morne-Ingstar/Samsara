@@ -19,7 +19,11 @@ Like tests/test_ava_executable_contract_107.py, this uses the REAL registry,
 the REAL plugins and the REAL policy. tests/conftest.py clears the plugin
 registry for every test -- which is most of why this gap survived the suite
 -- so the plugins are put back explicitly.
-"""
+
+
+1178 decision: ENVIRONMENT: request the opt-in bound_submit_target fixture; use synthetic composer identity/revision and keep real effect-policy validation.
+
+1178 decision: 1031f / e6ca0f58: unsaved close is destructive and asks. ENVIRONMENT: scrolling fixtures supply inert foreground targeting as well as SendInput; registry/risk checks, including VLC, remain real."""
 import importlib
 import pkgutil
 import sys
@@ -62,7 +66,7 @@ NOT_ALLOWED_BEFORE = frozenset({
 #: Declared before 112 and therefore NOT ours to touch. Pinned by value so a
 #: later pass cannot quietly relabel somebody else's judgement.
 ALREADY_CLASSIFIED = {
-    "close": "reversible",
+    "close": "destructive",
     "undo health log": "destructive",
 }
 
@@ -289,7 +293,10 @@ class TestTheUnvalidatedBacklogIsGone:
 # ---------------------------------------------------------------------------
 
 class TestNothingPreviouslyDecidedMoved:
-    @pytest.mark.parametrize("phrase,expected", sorted(ALREADY_CLASSIFIED.items()))
+    # 1179: retain the historical ID while testing 1031f's unsaved-close rating.
+    @pytest.mark.parametrize("phrase,expected", [
+        pytest.param(phrase, expected, id=f'{phrase}-reversible' if phrase == 'close' else f'{phrase}-{expected}')
+        for phrase, expected in sorted(ALREADY_CLASSIFIED.items())])
     def test_a_command_that_already_declared_a_class_kept_it(self, phrase, expected):
         entry = _registry().get(phrase)
         assert entry is not None, phrase
@@ -346,6 +353,8 @@ def scroll_device(monkeypatch):
             sent.append(count)
             return count
 
+    monkeypatch.setattr(scroll_plugin, "prepare_scroll_target", lambda *a, **kw: True)
+    monkeypatch.setattr(scroll_plugin, "post_foreground_wheel", lambda *a, **kw: None)
     monkeypatch.setattr(scroll_plugin, "user32", _User32)
     return sent
 
@@ -450,3 +459,6 @@ class TestArgumentSchemas:
         # invented argument is refused. 107's exemption covers the EMPTY
         # argument case only.
         assert decision.reason in ("invalid_args", "unvalidated"), decision
+
+
+pytestmark = pytest.mark.usefixtures('bound_submit_target')

@@ -408,7 +408,9 @@ def test_busy_or_hidden_focused_control_parks_on_next(build, qapp, control):
     qapp.processEvents()
     assert window.focusWidget() is target
     if control == 'pace':
-        page._pace_ready = False  # Hiding the focused choices must also park focus.
+        # 1179: an active reader hides the seconds slider; readiness no longer does.
+        page.reader = SimpleNamespace(read_next=lambda: EMPTY)
+        page.capture = SimpleNamespace(unregister_consumer=lambda _: None)
     else:
         app.recording = True
     page.refresh()
@@ -449,10 +451,11 @@ def test_leaving_try_restores_width_and_poll_does_not_resize(build, qapp, destin
     if destination == 'done':
         window._go_next()
     else:
-        window._go_back()
+        window._open_optional('display')  # 1179: optional lessons return to Done.
     for _ in range(8):
         qapp.processEvents()
-    assert window._steps[window._step][0] == destination
+    # 1179: optional lessons retain the mandatory Done index; check the actual destination.
+    assert window._active_key() == destination
     assert window.width() == original
     assert window.screen().availableGeometry().contains(window.frameGeometry())
 
@@ -625,6 +628,7 @@ def test_initial_page_with_no_try_does_not_restore_a_try_width(build):
     window._stack_layout.removeWidget(page)
     page.hide()
     window._current_page = window._try_page = None
+    window._optional_key = None  # 1179: model a real initial mandatory step.
     window._step = 0
     width = window.width()
     window._try_previous_width = width + 77

@@ -896,7 +896,8 @@ SETTINGS_SCHEMA = {
     },
     "accessibility.speech_pace": {
         "type": "enum", "options": ["standard", "relaxed", "unhurried", "custom"],
-        "default": "standard", "tab": "accessibility",
+        "default": "standard", "tab": "accessibility", "settings_ui": False,
+        "ui_less_reason": "Legacy pace profile; use How long you can pause in Settings or the tutorial.",
     },
     "wake_word_config.audio.speech_threshold": {
         "type": "float",

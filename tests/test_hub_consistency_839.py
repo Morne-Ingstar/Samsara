@@ -67,8 +67,10 @@ def test_headers_widths_heights_and_destructive_style(hub, qapp, name, tab):
     assert page._header.layout().contentsMargins().bottom() == 16
     assert title.font().pixelSize() == theme.HUB_TITLE_SIZE
     assert page._header.purpose.font().pixelSize() == theme.HUB_PURPOSE_SIZE
+    # 1179: History has a separate Kept child; measure the History controls.
+    body = page._header.parentWidget() if name == 'History' else page
     for kind in (QLineEdit, QTableView, QListView):
-        for control in page.findChildren(kind):
+        for control in body.findChildren(kind):
             if kind is QListView and control.objectName() == "":
                 # 1042b: QComboBox popup views are separate native popups.
                 parent = control.parentWidget()
@@ -79,7 +81,7 @@ def test_headers_widths_heights_and_destructive_style(hub, qapp, name, tab):
             ceiling = theme.HUB_INPUT_WIDTH if kind is QLineEdit else theme.HUB_LIST_WIDTH
             assert control.maximumWidth() <= ceiling, (name, control.accessibleName())
             assert control.width() <= ceiling
-    for button in page.findChildren(QPushButton):
+    for button in body.findChildren(QPushButton):
         assert button.height() in {theme.HUB_CONTROL_HEIGHT, theme.HUB_INLINE_HEIGHT}, button.text()
     for widget in page.findChildren(QWidget):
         if widget.objectName() == 'danger':

@@ -78,7 +78,7 @@ def missed_capture(app, reason, *, question=None):
         return True
 
 
-def _feedback(app, label, question=None):
+def _feedback(app, label, question=None, *, resolves="ava_question"):
     if question is not None and question.kind == "teaching":
         from samsara.ui import ava_captions_qt as captions
         label = question.text + " " + question.label
@@ -92,7 +92,7 @@ def _feedback(app, label, question=None):
     if callable(getattr(type(indicator), "show_feedback", None)):
         feedback = Feedback(FeedbackKind.QUESTION if question else FeedbackKind.INFORMATION,
             FeedbackPurpose.QUESTION if question else FeedbackPurpose.RESULT,
-            owner="ava_question" if question else "", resolves="" if question else "ava_question",
+            owner="ava_question" if question else "", resolves="" if question else resolves,
             alive=(lambda: getattr(app, "_ava_question", None) is question) if question else None,
             dismiss=(lambda: dismiss_question(app, question)) if question else None)
         if question and isinstance(question.runner, policy._ConfirmationListener):
@@ -119,7 +119,8 @@ def _clear(app, question, label=""):
             app.app_state, app.wake_word_triggered = question.previous
         app._release_wake_consumer("ava_question")
     if label:
-        _feedback(app, label)
+        owner = "policy:" + str(question.operation.op_id) if isinstance(question.runner, policy._ConfirmationListener) and question.operation is not None else "ava_question"
+        _feedback(app, label, resolves=owner)
 
 
 def _live(app, q):
