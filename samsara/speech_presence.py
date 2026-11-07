@@ -249,7 +249,7 @@ def measure(pcm, sample_rate):
 
 
 def skip_decode(pcm, sample_rate, config=None, *, final=True, path='capture', state=None,
-                existing_gate=None, capture=None, skip_reason=None):
+                existing_gate=None, capture=None, skip_reason=None, evidence_sink=None):
     """Measure admitted finals afresh; never rescan an existing batch decision."""
     result = Presence(False)
     duration_s, grace_ms = -1.0, 0.0
@@ -303,6 +303,11 @@ def skip_decode(pcm, sample_rate, config=None, *, final=True, path='capture', st
         return False
     finally:
         if final:
+            if evidence_sink is not None:
+                try:
+                    evidence_sink(result, pcm, sample_rate, verdict)
+                except Exception:
+                    pass  # Observation cannot alter any existing gate verdict.
             from samsara.hold_diagnostics import presence
             presence(state or app, result, grace_ms)
             _log_final(path, duration_s, result, grace_ms, verdict, observed_early,

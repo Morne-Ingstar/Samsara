@@ -5647,9 +5647,10 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             audio = resample_audio(audio, src_rate, self.model_rate)
             audio_duration = len(audio) / self.model_rate
             stage_timing.mark("capture_finalised", audio_s=audio_duration)
-
             from samsara.failure_reasons import skip_decode
-            if skip_decode(audio, self, path='handsfree'): self._log_cmd_utt_dropped('no_speech_in_audio', _capture_mode, audio_duration); return
+            from samsara.handsfree_fragment_policy import CaptureEvidence
+            fragment_capture = CaptureEvidence(self)
+            if skip_decode(audio, self, path='handsfree', evidence_sink=fragment_capture): self._log_cmd_utt_dropped('no_speech_in_audio', _capture_mode, audio_duration); return
             _self_hear = is_self_hear_capture(
                 getattr(self, 'audio_coordinator', None), speech_start_ns, last_voice_ns)
             if _capture_mode == 'command' and _self_hear:
@@ -5876,7 +5877,6 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 return
 
             logger.debug(f'[CMD-UTT] "{describe_text(text)}"')
-
             if self._command_mode_ghost_tap:
                 self._command_mode_ghost_tap = False
                 logger.debug('[CMD-UTT] Ghost tap — discarding')
@@ -5925,8 +5925,8 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 seg_list,
                 audio_ref=audio if _was_dictate_lane else None,
             )
+            signals = fragment_capture.attach(signals, seg_list, self)
             self._current_utterance_duration_s = audio_duration
-
             _cancel_windows = _cancel_window_module()
             if _cancel_windows is not None:
                 _cancel_windows.note_utterance_start()

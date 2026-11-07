@@ -873,9 +873,9 @@ class UtteranceSignals:
     # from VAD because a short, genuine control word may not form the general
     # gate's required contiguous run.
     transcript_confident: Optional[bool] = None
-    # Optional opaque payload for call-site extras (e.g., per-utterance
-    # audio for commit-time re-decoding in dictation.py).
+    # Optional audio for commit-time re-decoding in dictation.py.
     audio_ref: Any = None
+    fragment_evidence: Any = None  # 1174b observation; rejection unenabled.
 
 
 # Stricter than dictation.py's general hallucination backstop (3.0, a notch
