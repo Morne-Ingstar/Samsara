@@ -63,6 +63,10 @@ VOICE_SLOTS = {
     'favorites window size': ('wide', {'remainder': 'wide'}),
     'remove favorite': ('two', {'remainder': 'two'}),
     'rename favorite': ('two to Project notes', {'remainder': 'two to Project notes'}),
+    # 1185: 1160's required search slots need synthetic fixture examples too.
+    'search samsara history for': ('Sample query', {'remainder': 'Sample query'}),
+    'search samsara commands for': ('Sample query', {'remainder': 'Sample query'}),
+    'search saved snippets for': ('Sample query', {'remainder': 'Sample query'}),
 }
 CONTROLLER_SLOTS = {
     'interact focus': {'subject_token': 'opaque-controller-token'},

@@ -154,9 +154,11 @@ class TestStore:
         that cannot be written raises, so the caller can fall through."""
         def fail(*args, **kwargs):
             raise PermissionError("filesystem gone")
-        monkeypatch.setattr(qm.Path, "open", fail)
-        with pytest.raises(qm.MemoWriteError):
-            qm.add_memo("this must not vanish silently", "voice", home=tmp_path)
+        # 1185: restore Path.open before pytest/watchdog reporters write evidence.
+        with monkeypatch.context() as failing_store:
+            failing_store.setattr(qm.Path, "open", fail)
+            with pytest.raises(qm.MemoWriteError):
+                qm.add_memo("this must not vanish silently", "voice", home=tmp_path)
 
 
 # ---------------------------------------------------------------------------

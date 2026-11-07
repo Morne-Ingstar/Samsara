@@ -185,6 +185,9 @@ def test_problem_expands_to_fit_every_painted_line_then_shrinks(display, qapp, m
             painted.append((QRectF(rect), line, ink.name()))
             return original(painter, rect, line, font, ink)
         monkeypatch.setattr(result_message_rendering, 'paint_result', record)
+        # 1185: Compact captures the painter alias; patch its consumer too.
+        from samsara.ui import compact_result_paint
+        monkeypatch.setattr(compact_result_paint, 'paint_result', record)
         window = d.band()
         image = window.grab()
         assert not image.isNull() and painted

@@ -255,8 +255,10 @@ def test_show_and_reshow_restart_timeout(rig, monkeypatch, backend):
     else:
         monkeypatch.setattr(sn, '_try_show_dom_numbers', lambda app: (False, None))
         monkeypatch.setattr(sn, '_invalidate_cache', lambda: None)
-        monkeypatch.setattr(sn, '_cached_enumerate', lambda: rig.controls)
-        monkeypatch.setattr(sn, '_enumerate_foreground_clickables', lambda: rig.controls)
+        # 1185: enumerators return records; keep real control binding active.
+        elements = [{'control': control} for control in rig.controls]
+        monkeypatch.setattr(sn, '_cached_enumerate', lambda: elements)
+        monkeypatch.setattr(sn, '_enumerate_foreground_clickables', lambda: elements)
         monkeypatch.setattr(sn, '_render_elements_qt',
                             lambda app, elements, *args: sn._elements.extend(elements))
     for now in (0, 25):
