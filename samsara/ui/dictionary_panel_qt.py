@@ -21,11 +21,11 @@ import logging
 import re
 from contextlib import nullcontext
 
-from PySide6.QtCore import Qt, Signal, Slot, QObject, QSettings, QItemSelectionModel
+from PySide6.QtCore import Qt, Signal, Slot, QObject, QSettings, QItemSelectionModel, QSize
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFrame, QHBoxLayout, QHeaderView,
     QLabel, QLayout, QLineEdit, QListWidget, QMenu, QMessageBox, QPushButton,
-    QScrollArea, QSizePolicy, QTableWidget, QTableWidgetItem, QTabWidget,
+    QScrollArea, QSizePolicy, QStyle, QStyleOptionTabWidgetFrame, QTableWidget, QTableWidgetItem, QTabWidget,
     QToolButton, QVBoxLayout, QWidget,
 )
 
@@ -156,6 +156,22 @@ class _VocabularyInput(QLineEdit):
 # Public panel
 # ---------------------------------------------------------------------------
 
+class _DictionaryTabs(QTabWidget):
+    """Scroll for the selected editor, rather than the tallest hidden editor."""
+
+    def minimumSizeHint(self):
+        page = self.currentWidget()
+        if page is None:
+            return super().minimumSizeHint()
+        content = page.minimumSizeHint().expandedTo(page.minimumSize())
+        bar = self.tabBar().minimumSizeHint()
+        option = QStyleOptionTabWidgetFrame()
+        self.initStyleOption(option)
+        return self.style().sizeFromContents(
+            QStyle.ContentsType.CT_TabWidget, option,
+            QSize(max(content.width(), bar.width()), content.height() + bar.height()), self)
+
+
 class DictionaryPanelQt(QWidget):
     """Three-tab dictionary editor.  Embed directly in any Qt layout."""
 
@@ -263,7 +279,7 @@ class DictionaryPanelQt(QWidget):
         self._header.setMaximumWidth(theme.HUB_LIST_WIDTH)
         lay.addWidget(self._header)
 
-        self._tabs = QTabWidget()
+        self._tabs = _DictionaryTabs()
         self._tabs.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._tabs.setMaximumWidth(theme.HUB_LIST_WIDTH + 28)
         # 839: the header and separate preference row must not push actions

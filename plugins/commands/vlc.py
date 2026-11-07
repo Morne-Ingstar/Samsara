@@ -188,7 +188,8 @@ def _register():
                 risk_class='safe', ai_composable=True, side_effects=['audio'])(
                     handler)
     command('vlc subtitles off', aliases=['vlc turn subtitles off', 'v l c subtitles off'],
-            pack='vlc', whole_utterance=True)(_handler('subtitles-off', 'subtitles off (requires VLC Web interface)'))
+            pack='vlc', whole_utterance=True, risk_class='safe', ai_composable=True,
+            side_effects=['audio'])(_handler('subtitles-off', 'subtitles off (requires VLC Web interface)'))
     for direction, aliases in (('forward', ('skip ahead',)), ('back', ('skip backward', 'rewind'))):
         prefixes = [f'{name} {verb}' for name in _NAMES
                     for verb in (f'skip {direction}', *aliases)]

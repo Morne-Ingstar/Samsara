@@ -606,8 +606,11 @@ class DeviceChanges:
         else:
             removed = bool(previous) and previous != present
         configured = getattr(self.app, 'config', {}).get('microphone_name')
-        returned = (matching_capture_endpoints(current, configured)
-                    != matching_capture_endpoints(before, configured))
+        configured_before = matching_capture_endpoints(before, configured)
+        configured_present = matching_capture_endpoints(current, configured)
+        # A return needs one identifiable endpoint after absence; a change
+        # among ambiguous matches must not cycle a healthy chosen input.
+        returned = not configured_before and len(configured_present) == 1
         if lost or removed or follows_default(self.app) or returned:
             if removed and ace is not None:
                 ace.mark_device_lost()
