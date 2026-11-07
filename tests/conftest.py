@@ -1424,3 +1424,20 @@ def qt_widget_scope(qapp, qt_deferred_delete):
                         qt_deferred_delete(widget)
 
     return owned
+
+
+@pytest.fixture
+def fake_submit_target(monkeypatch, fake_delivery_target):
+    """1175: synthetic command tests have no inspected desktop target.
+
+    Unknown grants no approval; the real effect policy still decides/refuses.
+    Tests of target inspection supply their own explicit target evidence.
+    """
+    from samsara import effect_policy
+    monkeypatch.setattr(effect_policy, 'resolve_submit_target',
+                        lambda app=None: effect_policy.SubmitTarget())
+    host = sys.modules.get('dictation')
+    if host is not None:
+        # These command fixtures describe ordinary synthetic editors, not an
+        # address bar on the owner's desktop. Keep other verbatim rules real.
+        monkeypatch.setattr(host.DictationApp, '_verbatim_address_bar', lambda self: False)

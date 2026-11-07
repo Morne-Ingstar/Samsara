@@ -178,6 +178,11 @@ def _fake_auto(created):
 
 
 def test_cached_subtree_is_used_when_the_window_has_a_handle(monkeypatch):
+    # 1175 n1: the fake cached provider needs constants, not native UIA startup.
+    constants = {BUTTON: "ButtonControl", DOCUMENT: "DocumentControl",
+                 GROUP: "GroupControl", WINDOW_T: "WindowControl"}
+    monkeypatch.setitem(sys.modules, "uiautomation",
+                        SimpleNamespace(uiautomation=SimpleNamespace(ControlTypeNames=constants)))
     created = []
     auto = _fake_auto(created)
     deep = _CachedElement(BUTTON, (100, 100, 180, 130))

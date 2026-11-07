@@ -370,3 +370,10 @@ def test_refresh_with_nothing_reports_too(harness):
 ])
 def test_opaque_classification_matches_measurements(kind, count, nodes, expected):
     assert sn._looks_opaque(kind, count, nodes) is expected
+
+
+# 1175: layout now measures QFont; construct Qt before the geometry cases too.
+import pytest as _pytest_qapp_1175
+_qapp_marks_1175 = globals().get('pytestmark', [])
+pytestmark = (list(_qapp_marks_1175) if isinstance(_qapp_marks_1175, (list, tuple)) else [_qapp_marks_1175]) + [
+    _pytest_qapp_1175.mark.usefixtures('qapp')]

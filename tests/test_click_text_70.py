@@ -346,3 +346,10 @@ def test_ocr_labels_do_not_trigger_the_app_hides_its_controls_warning(monkeypatc
     assert app.spoken == []
     with sn._state_lock:
         sn._elements.clear()
+
+
+# 1175: layout now measures QFont; construct Qt before the geometry cases too.
+import pytest as _pytest_qapp_1175
+_qapp_marks_1175 = globals().get('pytestmark', [])
+pytestmark = (list(_qapp_marks_1175) if isinstance(_qapp_marks_1175, (list, tuple)) else [_qapp_marks_1175]) + [
+    _pytest_qapp_1175.mark.usefixtures('qapp', 'fake_submit_target')]

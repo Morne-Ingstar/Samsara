@@ -1,5 +1,6 @@
 """Bind production methods to fake apps; never import the desktop bootstrap."""
 from samsara.log import describe_text, safe_exception
+from samsara import hold_backstop, typed_delivery  # 1175: production AST dependencies.
 import ast
 import collections
 from pathlib import Path
@@ -61,6 +62,7 @@ def app(monkeypatch):
                and n.name == 'DictationApp')
     methods = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in METHODS]
     ns = dict(describe_text=describe_text, safe_exception=safe_exception,
+              hold_backstop=hold_backstop, typed_delivery=typed_delivery,
               StageTiming=StageTiming, set_current_stage_timing=set_current_stage_timing,
               reset_current_stage_timing=reset_current_stage_timing, time=clock, logger=Mock(), flight_recorder=SimpleNamespace(record=Mock()),
               audio_ducking=SimpleNamespace(SessionDucker=None, start_recording_media=Mock()),

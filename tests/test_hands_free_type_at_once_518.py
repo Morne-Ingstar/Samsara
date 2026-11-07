@@ -251,7 +251,8 @@ def test_real_host_callback_formats_once_pastes_and_records_exact_bytes(lane, mo
     app._answer_cancel_window = lambda text: None
     app._pop_pending_action_for_scratch = lambda: None
     copy = Mock()
-    monkeypatch.setattr(sys.modules['dictation'].pyperclip, 'copy', copy)
+    # 1175 n1: private delivery uses the protected clipboard adapter (1146).
+    monkeypatch.setattr('samsara.clipboard.copy_private_text', copy)
     manager = sys.modules['dictation'].DictationApp._ensure_session_mode_manager(app)
     manager._foreground_exe_resolver = lambda: 'synthetic.exe'
     manager._foreground_hwnd_resolver = lambda: 99

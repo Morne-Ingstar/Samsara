@@ -160,7 +160,8 @@ def test_live_capture_onset_flushes_pending_audio_once_and_excludes_hold_frames(
     assert queued[0][0] is frames and queued[0][1] == 7
     assert not wake._utterance_frames
     # A hold frame reaches the actual wake admission gate, before VAD/decode.
-    wake._process_frame(SimpleNamespace(device_epoch=0))
+    # 1175: even a held frame carries the Frame bus identity/timestamp.
+    wake._process_frame(SimpleNamespace(device_epoch=0, seq=0, t_capture=0.0))
     assert not wake._utterance_frames and len(queued) == 1
     app._pause_command_mode_inactivity_for_hold.assert_called_once()
     # The queued chunk finishes while the independent hold owns the display.

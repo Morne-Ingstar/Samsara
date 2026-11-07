@@ -183,3 +183,10 @@ def test_catalog_has_commands():
     document = json.loads((Path(__file__).parents[1] / "commands_catalog.json").read_text(encoding="utf-8"))
     assert {"feedback_level." + phrase.replace(" ", "_") for phrase in PHRASES} <= {
         row["canonical_id"] for row in document["commands"]}
+
+
+# 1175: keep synthetic command dispatch off the owner's desktop.
+import pytest as _pytest_1175
+_marks_1175 = globals().get('pytestmark', [])
+pytestmark = (list(_marks_1175) if isinstance(_marks_1175, (list, tuple)) else [_marks_1175]) + [
+    _pytest_1175.mark.usefixtures('fake_submit_target')]

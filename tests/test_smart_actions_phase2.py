@@ -385,7 +385,7 @@ class TestFallbackHierarchy:
         with patch('plugins.commands.smart_actions.append_entry',
                    return_value=False), \
              patch.object(d, '_emergency_db_write', side_effect=RuntimeError("db fail")), \
-             patch('pyperclip.copy') as mock_copy, \
+             patch('samsara.clipboard.copy_private_text') as mock_copy, \
              patch('plugins.commands.smart_actions._play_earcon'):
             result = d._fallback_save("lost thought", "brain dump failed")
         assert result == "saved_to_clipboard"

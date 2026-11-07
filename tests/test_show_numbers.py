@@ -9,7 +9,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # Stub uiautomation / win32 only when the real package is missing (CI).
 # An unconditional empty stub leaked into every other test collected in the
 # same process (plugin loading then failed on win32api.error) -- queue 56.
-for _mod in ('uiautomation', 'win32api', 'win32con', 'win32gui'):
+# 1175: UIA is lazy in production and fake controls are passed explicitly.
+for _mod in ('win32api', 'win32con', 'win32gui'):
     if _mod not in sys.modules:
         try:
             __import__(_mod)

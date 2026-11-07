@@ -139,7 +139,8 @@ def test_commit_partial_closes_at_400ms_and_regular_chunk_at_650ms(monkeypatch, 
         consumer, app, _ = preview_fixture(pace, word)
         now, flushed = [100 + threshold - 0.01], []
         monkeypatch.setattr(wake, 'time', SimpleNamespace(time=lambda: now[0],
-                            perf_counter_ns=lambda: int(now[0] * 1e9), monotonic=lambda: now[0]))
+                            perf_counter_ns=lambda: int(now[0] * 1e9), monotonic=lambda: now[0],
+                            perf_counter=lambda: now[0]))
         consumer._flush = lambda *args, **kwargs: flushed.append(kwargs)
         frame = _loud_frame()
         frame.pcm[:] = 0
@@ -170,7 +171,8 @@ def test_stale_partial_cannot_end_a_new_capture(changed):
 @pytest.mark.parametrize('buffered,mode', [(False, sm.SessionMode.DICTATE), (True, sm.SessionMode.COMMAND)])
 def test_fast_flush_is_manual_dictate_only(monkeypatch, buffered, mode):
     consumer, _, _ = preview_fixture(buffered=buffered, mode=mode)
-    monkeypatch.setattr(wake, 'time', SimpleNamespace(time=lambda: 100.5, perf_counter_ns=lambda: 1))
+    monkeypatch.setattr(wake, 'time', SimpleNamespace(time=lambda: 100.5, perf_counter_ns=lambda: 1,
+                                                 perf_counter=lambda: 100.5))
     flushed = []
     consumer._flush = lambda *args, **kwargs: flushed.append(kwargs)
     frame = _loud_frame()

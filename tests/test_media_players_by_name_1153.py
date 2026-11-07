@@ -419,9 +419,9 @@ def test_media_reference_reads_live_catalogue_and_pack_refresh(qapp, monkeypatch
     from samsara.ui.quick_reference_qt import _QuickReferenceWindow
 
     records = [
-        {'canonical_id': 'music.pause_vlc', 'phrase': 'pause vlc', 'pack': 'vlc'},
+        {'canonical_id': 'music.pause_vlc', 'phrase': 'pause vlc', 'pack': 'vlc', 'aliases': []},
         {'canonical_id': 'vlc.vlc_skip_forward', 'phrase': 'vlc skip forward',
-         'pack': 'vlc', 'examples': ['VLC skip forward 60 seconds']},
+         'pack': 'vlc', 'aliases': [], 'examples': ['VLC skip forward 60 seconds']},
     ]
     live_rows = [{'test': 'live registry snapshot'}]
     loader = Mock(return_value=records)

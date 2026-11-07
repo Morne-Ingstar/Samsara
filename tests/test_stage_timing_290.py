@@ -93,8 +93,9 @@ def test_stop_recording_with_disabled_timing_uses_noop_surface():
     stop_method = next(node for node in app_class.body
                        if isinstance(node, ast.FunctionDef) and node.name == "stop_recording")
     module = types.ModuleType("dictation_stop_recording_test")
+    from samsara import hold_backstop  # 1175: production stop-wrapper dependency.
     module.__dict__.update(
-        StageTiming=StageTiming,
+        hold_backstop=hold_backstop, StageTiming=StageTiming,
         set_current_stage_timing=set_current_stage_timing,
         reset_current_stage_timing=reset_current_stage_timing,
     )

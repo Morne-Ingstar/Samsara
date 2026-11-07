@@ -96,6 +96,7 @@ def _loud_frame(epoch=0):
     frame.pcm = np.full(FRAME_SIZE, 20000, dtype=np.int16)
     frame.device_epoch = epoch
     frame.seq = 0
+    frame.t_capture = time.perf_counter()  # 1175: real Frame timestamp shape.
     return frame
 
 

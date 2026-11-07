@@ -262,3 +262,10 @@ def test_match_renderer_contains_no_unmatched_labels(monkeypatch):
     assert windows == [[[10, 20, 28, 22, '1'], [50, 60, 28, 22, '2']]]
     overlay.hide()
     overlay.hide()  # Foreground cancellation and the Qt poll may both hide it.
+
+
+# 1175: keep synthetic command dispatch off the owner's desktop.
+import pytest as _pytest_1175
+_marks_1175 = globals().get('pytestmark', [])
+pytestmark = (list(_marks_1175) if isinstance(_marks_1175, (list, tuple)) else [_marks_1175]) + [
+    _pytest_1175.mark.usefixtures('fake_submit_target')]

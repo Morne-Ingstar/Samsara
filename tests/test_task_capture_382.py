@@ -13,7 +13,7 @@ from unittest.mock import Mock
 import pytest
 
 from plugins.commands import tasks
-from samsara import hotkeys, tasks_store
+from samsara import hotkeys, tasks_store, typed_delivery  # 1175: cancel AST dependency.
 from samsara.runtime import thread_registry
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -256,7 +256,7 @@ def _capture_lifecycle_app(tmp_path, monkeypatch):
     methods = [n for n in cls.body if isinstance(n, ast.FunctionDef)
                and n.name in {'cancel_recording', '_cancel_recording_impl'}]
     assert {n.name for n in methods} == {'cancel_recording', '_cancel_recording_impl'}
-    namespace = {'logger': logging.getLogger('382.cancel.production')}
+    namespace = {'logger': logging.getLogger('382.cancel.production'), 'typed_delivery': typed_delivery}
     exec(compile(ast.Module(body=methods, type_ignores=[]), str(ROOT / 'dictation.py'), 'exec'), namespace)
     for name in namespace.keys() & {'cancel_recording', '_cancel_recording_impl'}:
         setattr(app, name, MethodType(namespace[name], app))

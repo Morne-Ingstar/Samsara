@@ -19,7 +19,8 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from samsara import (ava_command_session, commands, config_defaults, diagnostics,
+# 1175: extracted methods need the same real helper as dictation.py.
+from samsara import (hold_backstop, ava_command_session, commands, config_defaults, diagnostics,
                      execution_policy, injection_safety, languages, outcome_ring)
 from samsara import constants
 from samsara.audio_tools import (_apply_retry_on_suspected_loss, _fade_edges,

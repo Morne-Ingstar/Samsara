@@ -30,6 +30,7 @@ def _app(config, transcript, command_mode_active=False):
     app = SimpleNamespace(
         config=config, app_state="asleep", capture_rate=16000, model_rate=16000,
         _transcription_owners=TranscriptionOwners(), _vad_available=True,
+        _wake_detector=None,  # 1175: real app constructor default, no detector/device.
         wake_word_triggered=False, command_mode_active=command_mode_active,
         model_lock=__import__("threading").Lock(),
         model=SimpleNamespace(transcribe=lambda audio, **kw: (

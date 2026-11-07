@@ -181,3 +181,10 @@ def test_renderer_uses_final_coordinates_and_draws_collision_target_offscreen(qa
         assert win.windowFlags() & overlay.Qt.WindowTransparentForInput
     finally: win.deleteLater()
 
+
+
+# 1175: layout now measures QFont; construct Qt before the geometry cases too.
+import pytest as _pytest_qapp_1175
+_qapp_marks_1175 = globals().get('pytestmark', [])
+pytestmark = (list(_qapp_marks_1175) if isinstance(_qapp_marks_1175, (list, tuple)) else [_qapp_marks_1175]) + [
+    _pytest_qapp_1175.mark.usefixtures('qapp')]

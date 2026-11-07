@@ -1,10 +1,15 @@
 import importlib.util
 from pathlib import Path
+import sys
+from types import ModuleType
+from unittest.mock import patch
 
 MODULE_PATH = Path(__file__).parents[1] / "tools" / "probes" / "inject_matrix.py"
 spec = importlib.util.spec_from_file_location("inject_matrix", MODULE_PATH)
 inject_matrix = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(inject_matrix)
+# 1175: pure helper tests do not use the probe's live UIA client; no module leak.
+with patch.dict(sys.modules, {"uiautomation": ModuleType("uiautomation")}):
+    spec.loader.exec_module(inject_matrix)
 
 def test_sentence_comparison_is_exact():
     assert inject_matrix.compare_sentence(inject_matrix.TEXT)

@@ -278,7 +278,10 @@ def test_begin_incident_contains_setup_and_metadata_failures(stores, monkeypatch
     else:
         store.previous = record(store)
         store.previous.update(released=recovery.time.monotonic(), empty_or_failed=False)
-        monkeypatch.setattr(recovery.json, 'dumps', Mock(side_effect=MemoryError))
+        # 1175: fail only the product serializer, not pytest's shared JSON/watchdog.
+        fake_json = NS(**vars(recovery.json))
+        fake_json.dumps = Mock(side_effect=MemoryError)
+        monkeypatch.setattr(recovery, 'json', fake_json)
     recovery.begin_incident(hold)
     assert len(warnings(caplog)) == 1
 
