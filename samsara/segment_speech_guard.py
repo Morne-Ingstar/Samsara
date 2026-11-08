@@ -131,12 +131,12 @@ def screen(segments, bounds, rate, origin, params):
                 kept.append(item)
                 continue
         else:
-            # Legacy decoders can omit word times. Require a majority overlap
-            # for uncertain pieces; confident segments may span a thinking
-            # pause and still contain a short, genuine spoken phrase. Missing
-            # segment timing leaves confident legacy output to existing guards.
-            overlaps = _overlaps(segment, bounds, rate, origin,
-                                 fraction=.6 if uncertain else 0.)
+            # 1198: without word times, a segment can include a long pause
+            # before a short spoken phrase even at low decoder confidence.
+            # Speech duration divided by segment duration cannot disprove it.
+            # Require local speech; unsafe fallbacks were rejected above.
+            # Missing timing still cannot support uncertain legacy output.
+            overlaps = _overlaps(segment, bounds, rate, origin, fraction=0.)
             if overlaps is False or (overlaps is None and (uncertain or not bounds)):
                 removed_segments += 1
                 continue
