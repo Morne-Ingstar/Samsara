@@ -290,6 +290,7 @@ def paste_preserving_clipboard(
     _typed_wanted = explicit_type or (not clipboard_only and len(text) < threshold
                      and app._foreground_wants_typed_injection()
                      and not (attempt is not None and attempt.mode == 'paste'))
+    typed_reason = 'explicit_type_request' if explicit_type else 'under_paste_min_chars'
     _typed_failed = False
     if _typed_wanted:
         if before_paste is not None and not before_paste():
@@ -297,7 +298,7 @@ def paste_preserving_clipboard(
                 "[TYPE] Injection cancelled because the foreground target changed"
             )
             flight_recorder.record(
-                'inject', path='typed', why='under_paste_min_chars',
+                'inject', path='typed', why=typed_reason,
                 target_process=app._flight_foreground_process_name(),
                 chars=len(text), result='cancelled_target_changed',
             )
@@ -310,13 +311,14 @@ def paste_preserving_clipboard(
         if not before_delivery(app, text):
             return _result(False, False, reason='privacy_refused')
         app._unit_before = _editor_snapshot()
+        logger.info('[DELIVERY] route=typed reason=%s chars=%d', typed_reason, len(text))
         typed = type_text_unicode_fn(text)
         stopped = _typed_stop(typed)
         if stopped == 'partial':
             return _partial_typed_result(app, text, typed, _result)
         if stopped == 'target_changed':
             flight_recorder.record(
-                'inject', path='typed', why='under_paste_min_chars',
+                'inject', path='typed', why=typed_reason,
                 target_process=app._flight_foreground_process_name(),
                 chars=len(text), result='cancelled_target_changed',
             )
@@ -334,7 +336,7 @@ def paste_preserving_clipboard(
                     len(text), typed_hwnd,
                 )
                 flight_recorder.record(
-                    'inject', path='typed', why='under_paste_min_chars',
+                    'inject', path='typed', why=typed_reason,
                     target_process=app._flight_foreground_process_name(),
                     chars=len(text), result='sent_unverified',
                 )
@@ -343,7 +345,7 @@ def paste_preserving_clipboard(
                 "[TYPE] Unicode-typed chars=%d hwnd=%r", len(text), typed_hwnd,
             )
             flight_recorder.record(
-                'inject', path='typed', why='under_paste_min_chars',
+                'inject', path='typed', why=typed_reason,
                 target_process=app._flight_foreground_process_name(),
                 chars=len(text), result='ok',
             )
@@ -356,7 +358,7 @@ def paste_preserving_clipboard(
         )
         _typed_failed = True
         flight_recorder.record(
-            'inject', path='typed', why='under_paste_min_chars',
+            'inject', path='typed', why=typed_reason,
             target_process=app._flight_foreground_process_name(),
             chars=len(text), result='failed_falling_back_to_clipboard',
         )
@@ -387,13 +389,25 @@ def paste_preserving_clipboard(
         app._unit_before = _editor_snapshot()
         return True
 
-    typed_fallback_used = {"value": False, "partial": None}
+    typed_fallback_used = {"value": False, "partial": None, "reason": None}
 
     def _typed_fallback_without_clipboard():
         # 986: the allowlist chooses typed-first delivery, not whether a full
         # clipboard may prevent dictation. Do not repeat a failed typing try.
-        if _typed_failed or not _capture_target_before_paste():
+        if (_typed_failed or typed_fallback_used['reason'] is not None
+                or not _capture_target_before_paste()):
             return False
+        reason = ('clipboard_backup_unavailable' if attempt is not None and attempt.backup_failed
+                  else 'clipboard_not_ready')
+        typed_fallback_used['reason'] = reason
+        # 1187: preserve 776/977 fallback even for structured callers without UI.
+        # PLACEHOLDER COPY (1187): explain a long delivery's necessary route change.
+        show = getattr(app, '_show_outcome_chip', None)
+        if len(text) >= 300 and feedback != 'silent' and callable(show):
+            explanation = ("the clipboard couldn't be backed up" if reason == 'clipboard_backup_unavailable'
+                           else 'the clipboard is busy or not ready')
+            show(f'Typing instead of pasting because {explanation}.', 'warning')
+        logger.warning('[DELIVERY] route=typed_fallback reason=%s chars=%d', reason, len(text))
         # Preserve the existing debounce pacing for configured typed targets;
         # every other target gets the primitive's paced default (1166s).
         typed = (type_text_unicode_fn(text, key_interval=0.05)
@@ -406,7 +420,7 @@ def paste_preserving_clipboard(
             typed = True
         elif stopped == 'target_changed':
             paste_target['abort'] = 'target_changed'
-        typed_fallback_used["value"] = typed
+        typed_fallback_used["value"] = bool(typed)
         return typed_fallback_used["value"]
 
     # Keep one clipboard implementation. The centralized path captures
@@ -461,10 +475,12 @@ def paste_preserving_clipboard(
     if typed_fallback_used["partial"] is not None and paste_ok and not delivery_confirmed:
         return _partial_typed_result(app, text, typed_fallback_used["partial"], _result,
                                      path='typed_fallback')
+    route = 'typed_fallback' if typed_fallback_used['reason'] is not None else 'clipboard'
+    route_reason = typed_fallback_used['reason'] or ('typed_failed' if _typed_failed else 'normal_dictation')
+    logger.info('[DELIVERY] route=%s reason=%s chars=%d sent=%s confirmed=%s',
+                route, route_reason, len(text), paste_ok, delivery_confirmed)
     flight_recorder.record(
-        'inject', path='clipboard',
-        why=('typed_failed' if _typed_failed else 'over_paste_min_chars' if len(text) >= threshold
-             else 'typed_injection_not_enabled_for_target'),
+        'inject', path=route, why=route_reason,
         target_process=app._flight_foreground_process_name(),
         chars=len(text), result=('sent_unverified' if outcome == DeliveryOutcome.UNVERIFIED else 'ok') if paste_ok else 'failed',
     )
