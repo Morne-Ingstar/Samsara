@@ -46,6 +46,34 @@ against an approved offline Daily settings snapshot before treating the
 corpus as evidence of Daily's microphone. No software gain exists in the
 production capture engine; system input gain remains in effect.
 
+For a capture-path comparison the runner can use:
+
+```powershell
+python -m tools.voice_corpus record --capture-path daily --settings <offline-snapshot.json> --corpus D:\SamsaraCorpus\daily_path
+```
+
+`--capture-path daily` requires an exact `microphone_name`. It matches that name
+and `microphone_hostapi` (default `Windows WASAPI`) to one current input index;
+missing or ambiguous matches fail, without opening another input. A stale saved
+index cannot select another microphone. The existing default capture path stays
+at 16 kHz. Daily capture opens mono float32 at the endpoint's default sample rate
+in 100 ms blocks, then calls the production engine callback for its block-local
+polyphase resampling and PCM16 clipping/scaling. No second PCM conversion occurs.
+An optional snapshot `_capture_rate` follows the engine's recorded-index rule.
+This matches the code and offline endpoint identity; it does not inspect or
+verify the currently running Daily stream, Windows enhancements or interface gain.
+
+The console shows the actual device index, host API, input
+rate, block size and output format. Each saved sidecar retains that receipt in
+`capture_status` and saves the device index. The window continues to label the
+running Daily match as unverified. Production logging is isolated under
+the corpus's `recorder-profile` folder. No gain, AGC, normalization, playback
+ducking or reference stream is started. Preduck is an optional production
+pre-roll selector, not input gain. PAD is a physical interface control.
+For the comparison, record sitting 1 (15 lines), then pause before sitting 2;
+use Space while Daily has Mouse 5. Keep interface gain, distance and room fixed.
+Separate-session SNR estimates alone cannot attribute a difference to WASAPI.
+
 The 60 lines are grouped into four sittings of 15. Most are short; two are
 long holds with pauses. Allow roughly 20–25 minutes including reading,
 retries and breaks; actual voiced material is considerably shorter. Source:

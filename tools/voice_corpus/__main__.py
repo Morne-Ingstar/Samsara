@@ -81,6 +81,8 @@ def main(argv=None):
     record = commands.add_parser("record", help="Open the standalone recorder")
     record.add_argument("--corpus", type=Path, default=DEFAULT_ROOT)
     record.add_argument("--settings", type=Path, help="Explicit offline microphone/model snapshot")
+    record.add_argument("--capture-path", choices=("default", "daily"), default="default",
+                        help="daily: exact offline snapshot endpoint and production native-rate conversion")
     replay = commands.add_parser("replay", help="Offline production hold replay")
     replay.add_argument("--corpus", type=Path, default=DEFAULT_ROOT)
     replay.add_argument("--model", type=Path, required=True, help="Local faster-whisper folder; no downloads")
@@ -111,7 +113,8 @@ def main(argv=None):
             from .audio import settings_snapshot
             from .recorder import run
             snapshot = external_path(args.settings) if args.settings else external_path(args.corpus) / "recorder-settings.json"
-            return run(args.corpus, settings_snapshot(snapshot if snapshot.exists() else None))
+            return run(args.corpus, settings_snapshot(snapshot if snapshot.exists() else None),
+                       capture_path=args.capture_path)
         if args.command == "replay":
             return replay_corpus(args)
         if args.command == "score":

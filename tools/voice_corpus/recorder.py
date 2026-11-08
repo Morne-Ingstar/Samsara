@@ -3,12 +3,13 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 import sys
+import os
 
 from PySide6.QtCore import Qt, QTimer, Signal, QEvent
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QMainWindow, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
-from .audio import Capture, control_phrase, local_model
+from .audio import Capture, DailyCapture, control_phrase, local_model
 from .storage import Session
 
 
@@ -119,7 +120,10 @@ class RecorderWindow(QMainWindow):
         if phrase:
             self.session.control(phrase)
             return "Control accepted"
-        self.session.save(pcm, released, device_name=self.capture.device["name"], capture_status=statuses)
+        receipt = getattr(self.capture, "receipt", None)
+        self.session.save(pcm, released, device_name=self.capture.device["name"],
+                          device_id=getattr(self.capture, "device_id", None),
+                          capture_status=statuses + ([receipt] if receipt else []))
         return "Saved — hold for the next line" + (" (audio warning; consider Again)" if statuses else "")
 
     def poll(self):
@@ -197,15 +201,18 @@ class RecorderWindow(QMainWindow):
         event.accept()
 
 
-def run(root, settings):
+def run(root, settings, *, capture_path="default"):
     from .storage import recording_lock, recording_root
     root = recording_root(root)
+    # Production imports may configure a logger: keep it out of live profiles.
+    os.environ["SAMSARA_HOME_DIR"] = str(root / "recorder-profile")
     app = QApplication.instance() or QApplication(sys.argv[:1])
     from samsara.ui import theme
     app.setStyleSheet(theme.build_stylesheet())
     # Load the control model before opening any microphone stream.
     model = local_model(settings.get("model_path"))
-    with recording_lock(root), Capture(settings) as capture:
+    source = DailyCapture if capture_path == "daily" else Capture
+    with recording_lock(root), source(settings) as capture:
         window = RecorderWindow(Session(root), capture, model)
         window.show()
         return app.exec()
