@@ -14,10 +14,14 @@ the recorder does not intercept or suppress another app's global hotkey.
 The launcher lives at `tools/voice_corpus/Record voice corpus.cmd`. Run
 `tools/voice_corpus/Install recorder shortcut.ps1` to create a Desktop CMD
 that calls this file (copying the original file changes its relative working
-directory). The installer preserves existing launchers. It uses the development
-environment's pythonw, with `SAMSARA_CORPUS_PYTHON` as an optional override.
+directory). The installer preserves existing launchers. The launcher uses
+`SAMSARA_CORPUS_PYTHON` when set (an interpreter path without surrounding quotes),
+then pythonw from an active virtualenv or Conda environment, then `pythonw.exe`
+on PATH. Set the override to a Python environment with the recorder dependencies
+installed when launching from the Desktop without an active environment.
 No application is launched by setup or replay. The corpus uses
-`D:\SamsaraCorpus` by default, outside all repositories. No upload, cloud
+`D:\SamsaraCorpus` by default; set `SAMSARA_VOICE_ROOT` to use another folder
+outside all repositories. No upload, cloud
 transcription, source-control operation, or driver installation is performed.
 
 The recorder uses a locally cached faster-whisper base model for the three
