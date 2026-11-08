@@ -4,7 +4,7 @@ Samsara Voice Dictation & Control
 A modular speech-to-text and voice command application.
 """
 
-__version__ = "0.42.0"
+__version__ = "0.42.1"
 
 def __getattr__(name):
     """Resolve public classes on demand; required import failures stay visible."""

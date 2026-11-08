@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_release_stamps_and_derived_consumers_agree():
     from tools.check_release_version import check_versions
-    version = check_versions(ROOT, 'v0.42.0')
+    version = check_versions(ROOT, 'v0.42.1')
     batch = (ROOT / 'build_release.bat').read_text(encoding='utf-8')
     # 875b: the selected interpreter reads the canonical version before naming outputs.
     assert "_string_assignment(Path('samsara/__init__.py'), '__version__')" in batch
@@ -47,8 +47,8 @@ def test_beta6_release_note_is_first_and_home_uses_its_lead(qapp, monkeypatch, q
     from samsara.ui import home_qt, home_signals
     from tests.test_home_qt import _app, _FakeSettings
 
-    expected = '0.42.0 - steadier dictation, easier hands-free, clearer messages, and more voice commands.'
-    assert changelog_summary(ROOT / 'CHANGELOG.md') == ('0.42.0', expected)
+    expected = '0.42.1 - steadier dictation that keeps every word, easier hands-free, clearer messages, and more voice commands.'
+    assert changelog_summary(ROOT / 'CHANGELOG.md') == ('0.42.1', expected)
     monkeypatch.setattr(home_qt, 'QSettings', _FakeSettings)
     monkeypatch.setattr(home_qt, '_user_word_count', lambda app: 0)
     monkeypatch.setattr(home_signals, 'corrections_waiting', lambda app: 0)

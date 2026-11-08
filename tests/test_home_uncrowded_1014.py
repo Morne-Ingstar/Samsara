@@ -141,7 +141,7 @@ def test_seen_version_is_still_available_and_future_version_is_not_announced(qap
     try:
         assert home._whats_new_button.text() == "What's new"
         home._whats_new_button.click()
-        assert home._whats_new_button.dialog.findChild(QLabel, 'releaseSummary').text().startswith('0.42.0 -')
+        assert home._whats_new_button.dialog.findChild(QLabel, 'releaseSummary').text().startswith('0.42.1 -')
         assert 'signed' not in home._whats_new_button.dialog.findChild(QLabel, 'releaseSummary').text()
         home._whats_new_button.dialog.close()
     finally:
