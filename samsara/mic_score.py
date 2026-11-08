@@ -242,7 +242,10 @@ def deliver_with_history(session, callback, *args):
     """Restore only this streaming capture's evidence on the delivery thread."""
     token = _history.set((session.app, getattr(session, "_mic_score_evidence", {})))
     try:
-        return callback(*args)
+        from samsara.dictation_history import capture_history
+        audit = getattr(session, '_hold_final_audit', None)
+        with capture_history(session.app, getattr(audit, 'retry_history_slot', None)):
+            return callback(*args)
     finally:
         _history.reset(token)
 

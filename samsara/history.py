@@ -80,7 +80,8 @@ class HistoryManager:
     def add(self, raw_text, display_text="", app_context="",
             duration_ms=0, mode="hold", status="success",
             audio_path=None, entry_type="dictation",
-            log_prob=None, matched_command=None, privacy_reason="", target_app="", microphone_name=""):
+            log_prob=None, matched_command=None, privacy_reason="", target_app="", microphone_name="",
+            entry_id=None):
         """Add a transcription to history. Returns the row id."""
         if not display_text:
             display_text = raw_text
@@ -89,6 +90,24 @@ class HistoryManager:
             audio_path = matched_command = None
         timestamp = datetime.now().isoformat()
         with self._lock:
+            if entry_id is not None:
+                previous = self._conn.execute('SELECT * FROM history WHERE id=?', (entry_id,)).fetchone()
+                if previous is None:
+                    return None  # A cleared take must never be recreated by its retry.
+                if previous['privacy_reason']:
+                    privacy_reason, target_app = previous['privacy_reason'], previous['target_app']
+                    raw_text = display_text = app_context = ''
+                    audio_path = matched_command = None
+                elif status == 'failed' and not raw_text and not privacy_reason and previous['raw_text']:
+                    raw_text, display_text = previous['raw_text'], previous['display_text']
+                self._conn.execute('''
+                    UPDATE history SET app_context=?, raw_text=?, display_text=?, duration_ms=?,
+                        mode=?, status=?, audio_path=?, entry_type=?, log_prob=?, matched_command=?,
+                        privacy_reason=?, target_app=?, microphone_name=? WHERE id=?
+                ''', (app_context, raw_text, display_text, duration_ms, mode, status, audio_path,
+                      entry_type, log_prob, matched_command, privacy_reason, target_app, microphone_name, entry_id))
+                self._conn.commit()
+                return entry_id
             cursor = self._conn.execute("""
                 INSERT INTO history
                     (timestamp, app_context, raw_text, display_text,

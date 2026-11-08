@@ -72,6 +72,12 @@ def _prepare_final(session, text, raw_text, duration_s):
 
 def cancelled(session):
     """Cancellation still prevents injection, while retaining work once."""
+    from samsara.dictation_history import capture_history
+    with capture_history(session.app):
+        _cancelled(session)
+
+
+def _cancelled(session):
     retained = retain_stopped(session, 'streaming_cancelled')
     complete_incident(session, '')
     preview = getattr(session, '_last_partial', '')

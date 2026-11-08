@@ -68,6 +68,10 @@ def claim(app, text='try again', *, expected=None):
             return None
         if slot is not None:
             app._hold_retry_audio = None
+            from samsara.hold_final_policy import current_audit
+            audit = current_audit.get()
+            if audit is not None:
+                audit.retry_history_slot = slot
         return slot
 
 
@@ -170,6 +174,10 @@ def request(app, text='try again', *, expected=None):
                 return
         show_note(app, empty=True, label=RETRY_FAILED)
     def run():
+        from samsara.dictation_history import capture_history
+        with capture_history(app, slot):
+            recover()
+    def recover():
         from samsara import decode_recovery as decoder
         try:
             from samsara.transcript_gates import _apply_segment_quality_gates
@@ -202,7 +210,7 @@ def request(app, text='try again', *, expected=None):
             if decoded.missed or not text:
                 failed(decoded.missed or slot.ranges)
             elif confirmed:
-                _result_note(app, RETRY_DONE, 'success')
+                _result_note(app, RETRY_DONE, 'success', slot=slot)
         except Exception:
             failed(slot.ranges)
     from samsara import decode_recovery as decoder

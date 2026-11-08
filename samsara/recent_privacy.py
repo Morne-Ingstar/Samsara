@@ -124,7 +124,8 @@ def write_history(app, **fields):
                           matched_command=None, audio_path=None)
     from samsara.paste_again import remember_history
     remember_history(app, fields)
-    return app.history_db.add(**fields)
+    from samsara.dictation_history import write_entry
+    return write_entry(app, **fields)
 
 
 def before_delivery(app, text):

@@ -8,6 +8,40 @@ _state = threading.local()
 
 
 @dataclass
+class _Capture:
+    app: object
+    entry_id: int | None = None
+    slot: object = None
+    retry: bool = False
+
+
+@contextmanager
+def capture_history(app, slot=None):
+    """Share one take's row across its capture writer and retry feedback."""
+    previous = getattr(_state, 'capture', None)
+    _state.capture = _Capture(app, getattr(slot, 'history_entry_id', None), slot, slot is not None)
+    try:
+        yield
+    finally:
+        _state.capture = previous
+
+
+def write_entry(app, **fields):
+    """Called after privacy filtering; reuse only an explicitly scoped take."""
+    capture = getattr(_state, 'capture', None)
+    if capture and capture.app is app and fields.get('entry_type', 'dictation') == 'dictation':
+        if capture.retry and capture.entry_id:
+            fields['entry_id'] = capture.entry_id
+        entry_id = app.history_db.add(**fields)
+        if entry_id is not None:
+            capture.entry_id = entry_id
+        if capture.slot is not None and entry_id is not None:
+            capture.slot.history_entry_id = entry_id
+        return entry_id
+    return app.history_db.add(**fields)
+
+
+@dataclass
 class _Entry:
     app: object
     entry_id: int | None = None
@@ -88,15 +122,29 @@ def bind_entry(app, entry_id):
 
 def retry_entry(app, slot, label):
     """Keep text-free failure details on the original take's retry record."""
+    capture = getattr(_state, 'capture', None)
+    capture = capture if capture and capture.app is app else None
+    if capture:
+        capture.slot, capture.retry = slot, True
+        if capture.entry_id:
+            if slot is not None:
+                slot.history_entry_id = capture.entry_id
+            return capture.entry_id
     entry_id = getattr(slot, 'history_entry_id', None)
     if entry_id:
+        if capture:
+            capture.entry_id = entry_id
         return entry_id
     store = getattr(app, 'history_db', None)
     if store is None:
         return None
     try:
-        entry_id = store.add(raw_text='', display_text=label, mode='streaming',
-                             status='failed', entry_type='failed')
+        from samsara.recent_privacy import write_history
+        audio = getattr(slot, 'audio', ())
+        guidance = label if 'Try again' in label else label + ' - Try again'
+        entry_id = write_history(app, raw_text='', display_text=guidance, mode='streaming',
+                                 duration_ms=int(len(audio) / getattr(app, 'model_rate', 16000) * 1000),
+                                 status='failed', entry_type='dictation' if capture else 'failed')
         if slot is not None:
             slot.history_entry_id = entry_id
         return entry_id
