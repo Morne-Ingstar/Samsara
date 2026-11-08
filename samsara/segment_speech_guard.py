@@ -3,6 +3,7 @@
 Reuse the hold's permissive Silero islands (250 ms padding, >.1 probability).
 Do not judge words by volume: a soft word inside speech remains eligible.
 Unknown detector evidence keeps the existing decoder guards in charge.
+Word timestamps may span thinking pauses; overlap fraction is not confidence.
 """
 from copy import copy
 from math import isfinite
@@ -54,6 +55,38 @@ def _anomalous_word(word):
             and start is not None and end is not None and 0 <= end - start < SHORT_WORD_S)
 
 
+def _supported_word(word, segment, bounds, rate, origin, params):
+    if _anomalous_word(word):
+        return False
+    if _overlaps(word, bounds, rate, origin) is True:
+        return True
+    # 1192: Whisper can stretch a genuine word across seconds of silence, or
+    # place it on the quiet part of a confidently decoded speech segment.
+    # A duration ratio cannot disprove that word. Require measured speech in
+    # this segment and complete, good decoder telemetry before relaxing it.
+    score = _number(getattr(segment, 'avg_logprob', None))
+    threshold = _number(params.get('log_prob_threshold', -1.))
+    silence = _number(getattr(segment, 'no_speech_prob', None))
+    compression = _number(getattr(segment, 'compression_ratio', None))
+    if (score is None or threshold is None or score < threshold
+            or silence is None or not 0 <= silence <= .6
+            or compression is None or not 0 <= compression <= 2.4
+            or _overlaps(segment, bounds, rate, origin, fraction=0.) is not True):
+        return False
+    overlap = _overlaps(word, bounds, rate, origin, fraction=0.)
+    if overlap is True:
+        return True
+    # With no local VAD support, the word itself must be more likely than not
+    # and timed inside that supported segment. Missing/invalid timing and
+    # unknown word confidence cannot borrow speech from another word.
+    probability = _number(getattr(word, 'probability', None))
+    a, b = (_number(getattr(word, key, None)) for key in ('start', 'end'))
+    start, end = (_number(getattr(segment, key, None)) for key in ('start', 'end'))
+    return (probability is not None and .5 <= probability <= 1.
+            and a is not None and b is not None and start is not None and end is not None
+            and 0 <= start <= a < b <= end)
+
+
 def screen(segments, bounds, rate, origin, params):
     """Remove unsupported words only after the existing acceptance decisions.
 
@@ -85,8 +118,8 @@ def screen(segments, bounds, rate, origin, params):
             removed_words += len(words or ())
             continue
         if words:
-            supported = [word for word in words if _overlaps(word, bounds, rate, origin) is True
-                         and not _anomalous_word(word)]
+            supported = [word for word in words
+                         if _supported_word(word, segment, bounds, rate, origin, params)]
             removed_words += len(words) - len(supported)
             if not supported:
                 removed_segments += 1
