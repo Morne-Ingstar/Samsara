@@ -53,7 +53,7 @@ def replay_corpus(args):
         runtime_config = dict(config, device=args.device, compute_type=args.compute_type)
         result = run_take(read_wav(wav), row["release_s"], model, runtime_config, partials=not args.no_partials)
         observed = result["raw"] if row["kind"] in ("command", "reply") else result["text"]
-        metrics = measure(row["expected_text"], observed)
+        metrics = measure(row["expected_text"], observed, tags=row["tags"])
         route = check(row["intended_text"], observed) if row["kind"] in ("command", "reply") else {}
         takes.append(dict(id=row["id"], line_id=row["line_id"], tags=row["tags"], kind=row["kind"],
                           synthetic=row.get("synthetic", False), **metrics, **route,
@@ -127,9 +127,15 @@ def main(argv=None):
             path = folder / f"baseline_{safe_id}_{stamp}.json"
             atomic_json(path, result)
             path.with_suffix(".md").write_text(result["summary"] + "\n\n" +
-                "| Condition | Takes | WER | Stray | Missing ending |\n|---|---:|---:|---:|---:|\n" +
-                "".join(f"| {tag} | {v['takes']} | {v['wer']:.1%} | {v['insertions']} | {v['missing_end_words']} |\n"
-                        for tag, v in result["tags"].items()), encoding="utf-8")
+                "| Condition | Takes | Scored | Off script | WER | Strict WER | Stray | Missing ending |\n"
+                "|---|---:|---:|---:|---:|---:|---:|---:|\n" +
+                "".join(f"| {tag} | {v['takes']} | {v['scored_takes']} | {v['off_script_takes']} | "
+                        f"{v['wer']:.1%} | {v['strict_wer']:.1%} | {v['insertions']} | {v['missing_end_words']} |\n"
+                        for tag, v in result["tags"].items()) +
+                "\nOff-script exclusions (token-overlap heuristic):\n\n" +
+                ("| Take | Line | Reference overlap |\n|---|---|---:|\n" +
+                 "".join(f"| {r['id']} | {r['line_id']} | {r['reference_overlap']:.1%} |\n"
+                         for r in result["off_script"]) if result["off_script"] else "None.\n"), encoding="utf-8")
             print(result["summary"])
             print("Baseline: " + str(path))
             return 0

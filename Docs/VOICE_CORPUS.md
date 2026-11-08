@@ -142,8 +142,31 @@ catalogue must be regenerated when command definitions change.
 Results persist numbers, opaque take IDs and route IDs, never recognition
 text or audio. `score` writes a dated Markdown summary (plain language first),
 per-condition metrics and a JSON baseline named for the supplied commit.
-WER uses Levenshtein word alignment, folding case/punctuation; number words
-and digits remain distinct. Empty-reference WER is the insertion count.
+The scorer's `measure(reference, hypothesis, tags=())` returns normalised
+Levenshtein WER as `wer` and the historical case/punctuation-tolerant WER in
+`strict`. Normalisation folds case, punctuation, whitespace and hyphens, splits
+joined letters/digits (`test4`), expands English integers/decimals and maps
+ordinals to cardinals (`4`, `four`, `fourth`). Common spoken punctuation is
+removed on both sides. Lines tagged `punctuation` retain historical strict
+scoring, so punctuation rendering regressions remain measurable. Exact rendered
+text equality remains separate. Empty-reference WER is the insertion count.
+
+`off_script` means multiset token overlap covers less than 50% of the
+normalised reference (exactly 50% remains included). This is a heuristic flag,
+not proof of a recording mistake: severe recognition failures and empty
+hypotheses can also trigger it. Empty references are never flagged. Flagged
+takes are listed separately and excluded from both WER columns, overall and
+per tag. Routing/decode failure counts and timing still include every take.
+`scored_takes` and `off_script_takes` expose the denominator change; strict
+and normalised WER each use their own reference-token denominator.
+
+Replay passes each take's tags into scoring. The dated Markdown baseline shows
+scored/excluded take counts, WER and strict WER for each condition, followed by
+an off-script exclusion list with take ID, line ID and reference-token overlap.
+Its summary identifies legacy/mixed runs as not fully normalised.
+Numeric-only legacy runs
+cannot recover formatting or token overlap without their original text; they
+must not be presented as newly normalised results.
 Missing starts/ends count reference words before/after the first/last exact
 match, including substitutions. Doubles count excess adjacent repeated token
 or phrase runs (up to eight words), capped by insertion count; intentional

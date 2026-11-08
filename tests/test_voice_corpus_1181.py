@@ -289,3 +289,147 @@ def test_opt_in_private_corpus(tmp_path):
         pytest.skip("Private corpus absent or not opted in; never runs in CI")
     assert main(["replay", "--corpus", str(root), "--model", os.environ["SAMSARA_VOICE_MODEL"],
                  "--build-id", "explicit-local-check", "--output", str(tmp_path / "private_metrics.json")]) == 0
+
+
+@pytest.mark.parametrize("reference,hypothesis", [
+    ("test four", "Test4"), ("fourth", "4th"), ("4", "fourth"),
+    ("forty six dollars", "46 dollars"), ("twenty-one", "21"),
+    ("one hundred and four", "104"), ("two thousand three", "2,003"),
+    ("two point seven five", "2.75"), ("Hello world", "Hello comma world full stop"),
+    ("alpha beta", "ALPHA—beta!"), ("second item", "2nd item"),
+])
+def test_normalised_number_and_punctuation_equivalence(reference, hypothesis):
+    result = measure(reference, hypothesis)
+    assert result["wer"] == 0
+    assert result["strict"]["wer"] > 0 or reference == "alpha beta"
+    assert not result["off_script"]
+    # Persist only metrics, never reference/hypothesis token lists.
+    assert all(not isinstance(v, (str, list)) for k, v in result.items() if k != "scoring_policy")
+
+
+def test_punctuation_tag_keeps_historical_strict_scoring():
+    result = measure("Hello, world.", "Hello comma world full stop", tags=["punctuation"])
+    assert result["wer"] == result["strict"]["wer"] == 1.5
+    assert result["punctuation_strict"]
+    assert measure("test four", "test4", tags=["punctuation"])["wer"] == 1
+
+
+@pytest.mark.parametrize("reference,hypothesis,excluded,overlap", [
+    ("alpha beta gamma delta", "alpha beta", False, .5),
+    ("alpha beta gamma delta", "alpha", True, .25),
+    ("alpha alpha beta", "alpha", True, 1/3),
+    ("alpha beta", "", True, 0), ("", "invented", False, 1),
+])
+def test_off_script_threshold_and_token_multiplicity(reference, hypothesis, excluded, overlap):
+    result = measure(reference, hypothesis)
+    assert result["off_script"] is excluded
+    assert result["reference_overlap"] == pytest.approx(overlap)
+
+
+def test_off_script_is_separate_and_failures_remain_visible():
+    run = example_run()
+    run["takes"].append(dict(id="b"*32, line_id="line_02", tags=["quiet"],
+                             release_to_text_ms=400., decode_failed=True,
+                             command_routed_correctly=False, **measure("alpha beta", "different words")))
+    result = score(run)
+    for totals in (result["totals"], result["tags"]["quiet"]):
+        assert totals["takes"] == 2 and totals["scored_takes"] == 1
+        assert totals["off_script_takes"] == 1 and totals["wer"] == 0
+        assert totals["strict_wer"] == 0
+        assert totals["decode_failures"] == totals["command_failures"] == 1
+        assert totals["slowest_release_to_text_ms"] == 400
+    assert result["off_script"][0]["line_id"] == "line_02"
+
+
+def test_strict_and_normalised_micro_averages_have_independent_denominators():
+    run = example_run()
+    run["takes"] = [dict(id=str(i), line_id=str(i), tags=["numbers"], release_to_text_ms=0,
+                         **measure(a, b)) for i, (a, b) in enumerate([
+                             ("test4", "test four"), ("alpha beta gamma", "alpha beta delta")])]
+    totals = score(run)["totals"]
+    assert totals["wer"] == pytest.approx(1/5)
+    assert totals["strict_wer"] == pytest.approx(3/4)
+
+
+def test_compare_reports_off_script_transition_and_decode_failure():
+    before = example_run()
+    after = json.loads(json.dumps(before))
+    after["takes"][0].update(measure("one two", "alien"), decode_failed=True)
+    assert compare(before, after)["regressions"][0]["regressed"] == ["off_script", "decode_failed"]
+
+
+def test_legacy_numeric_only_run_is_not_labelled_normalised():
+    run = example_run()
+    run["takes"][0].pop("scoring_policy")
+    assert "not fully normalised" in score(run)["summary"]
+
+
+def test_historical_unicode_apostrophe_and_number_suffix_boundary():
+    from tools.voice_corpus.scoring import words
+    assert words("it\u2019s") == ["it\u2019s"]
+    assert measure("test four three", "test4three")["wer"] == 0
+
+
+def test_all_off_script_still_reports_zero_scored_and_failure():
+    run = example_run()
+    run["takes"][0].update(measure("alpha beta", ""), decode_failed=True)
+    result = score(run)
+    assert result["totals"]["scored_takes"] == 0
+    assert result["totals"]["off_script_takes"] == 1
+    assert result["totals"]["reference_words"] == 0
+    assert result["totals"]["decode_failures"] == 1
+    assert result["tags"]["quiet"]["insertions"] == 0
+
+
+@pytest.mark.parametrize("tags,expected_wer", [(["punctuation"], 1.5), (["quiet"], 0)])
+def test_replay_cli_passes_tags_to_scoring(private_home, tmp_path, monkeypatch, tags, expected_wer):
+    from tools.voice_corpus import __main__ as cli, audio, replay
+    row = dict(id="a" * 32, line_id="line_01", tags=tags, kind="dictation",
+               expected_text="Hello, world.", release_s=.5, audio_sha256="same")
+    monkeypatch.setattr(cli, "Session", lambda root: NS(takes=tmp_path, selected=lambda: [row]))
+    monkeypatch.setattr(cli, "digest", lambda path: "same")
+    monkeypatch.setattr(cli, "read_wav", lambda path: np.zeros(1600, dtype="<i2"))
+    monkeypatch.setattr(audio, "local_model", lambda *a, **kw: object())
+    monkeypatch.setattr(replay, "build_fingerprint", lambda: "fake-source")
+    observed = "Hello comma world full stop"
+    fake_result = dict(text=observed, raw=observed, release_to_text_ms=1,
+                       captured_samples=1600, pcm_preserved=True, partials=0, tail={},
+                       final_state="done", delivery_count=1, decode_failed=False, held_keep_routed=False)
+    monkeypatch.setattr(replay, "run_take", lambda *a, **kw: fake_result)
+    output = tmp_path / "run.json"
+    assert main(["replay", "--corpus", str(tmp_path), "--model", str(tmp_path),
+                 "--build-id", "synthetic", "--output", str(output)]) == 0
+    result = json.loads(output.read_text())["takes"][0]
+    assert result["wer"] == expected_wer
+    assert result["strict"]["wer"] == 1.5
+    assert result["punctuation_strict"] == ("punctuation" in tags)
+    assert "expected_text" not in result and "text" not in result and "raw" not in result
+
+
+def test_score_cli_markdown_shows_dual_metrics_and_exclusions(tmp_path):
+    run = example_run()
+    run["takes"][0].update(measure("test4", "test four"))
+    run["takes"].append(dict(id="b" * 32, line_id="line_02", tags=["quiet"],
+                             release_to_text_ms=0, **measure("alpha beta", "unrelated")))
+    source = tmp_path / "run.json"
+    source.write_text(json.dumps(run), encoding="utf-8")
+    assert main(["score", str(source)]) == 0
+    baseline = next(tmp_path.glob("baseline_old_*.json"))
+    markdown = baseline.with_suffix(".md").read_text(encoding="utf-8")
+    assert "| Takes | Scored | Off script | WER | Strict WER |" in markdown
+    assert "| quiet | 2 | 1 | 1 | 0.0% | 200.0% | 0 | 0 |" in markdown
+    assert "| " + "b" * 32 + " | line_02 | 0.0% |" in markdown
+    assert json.loads(baseline.read_text())["off_script"][0]["line_id"] == "line_02"
+
+
+def test_score_cli_legacy_markdown_labels_policy_and_no_exclusions(tmp_path):
+    run = example_run()
+    for key in ("strict", "scoring_policy", "off_script", "reference_overlap", "punctuation_strict"):
+        run["takes"][0].pop(key)
+    source = tmp_path / "run.json"
+    source.write_text(json.dumps(run), encoding="utf-8")
+    assert main(["score", str(source)]) == 0
+    markdown = next(tmp_path.glob("baseline_old_*.md")).read_text(encoding="utf-8")
+    assert "not fully normalised" in markdown
+    assert "| quiet | 1 | 1 | 0 | 0.0% | 0.0% | 0 | 0 |" in markdown
+    assert "exclusions (token-overlap heuristic):\n\nNone." in markdown
