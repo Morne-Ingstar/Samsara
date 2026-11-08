@@ -1,4 +1,4 @@
-"""Immutable local diagnostic snapshots with strictly enumerated metadata."""
+"""Immutable diagnostic snapshots with redacted values and useful code context."""
 from dataclasses import dataclass
 from pathlib import Path
 import json
@@ -9,7 +9,10 @@ from .redact import error_first_line, redact_lines, redact_fault
 from .vocabulary import OUTCOMES
 
 
-def tail(path, count=50):
+DIAGNOSTICS_HEADING = "Diagnostics (last 200 lines; private values redacted):"
+
+
+def tail(path, count=200):
     """Bound I/O even for a huge diagnostic file. Never discover profile paths."""
     try:
         with Path(path).open("rb") as stream:
@@ -81,15 +84,8 @@ def snapshot(app, failed=None, *, fault=()):
         integrations.append("Hermes")
     if ((cfg.get("tasks", {}) or {}).get("todoist", {}) or {}).get("enabled") is True:
         integrations.append("Todoist")
-    commit = "unavailable"
-    # Optional build metadata, never invoke git or inspect a user's repository.
-    build = Path(__file__).resolve().parents[2] / "release" / "build_info.json"
-    try:
-        candidate = json.loads(build.read_text(encoding="utf-8")).get("commit", "")
-        if re.fullmatch(r"[0-9a-f]{7,40}", candidate):
-            commit = candidate
-    except (OSError, ValueError, TypeError):
-        pass
+    from .metadata import build_commit, changed_keys, recent_commands
+    commit = build_commit()
     log_dir = getattr(app, "_bug_report_log_dir", None)
     logs = redact_lines(tail(Path(log_dir) / "samsara.log")) if log_dir else ()
     version = __version__ if re.fullmatch(r"[0-9A-Za-z.+-]{1,60}", __version__) else "unavailable"
@@ -99,7 +95,11 @@ def snapshot(app, failed=None, *, fault=()):
              f"Windows: {windows}", f"Display: {display.title()}",
              "Enabled packs: " + (", ".join(packs) or "none"),
              "Integrations on: " + (", ".join(integrations) or "none"),
-             "", "Diagnostics (last 50 lines; unrecognized lines omitted):", *(logs or ("No allow-listed lines.",))]
+             "Changed configuration keys (values omitted): " + (", ".join(changed_keys(cfg)) or "none"),
+             "Audio devices: " + ("configured device (name omitted)" if cfg.get("microphone") or cfg.get("mic_device") else "system default (names omitted)"),
+             "Recent commands: " + (", ".join(recent_commands(app)) or "none recorded"),
+             "Previous session: " + getattr(app, "_bug_report_previous_exit", "none recorded"),
+             "", DIAGNOSTICS_HEADING, *(logs or ("No diagnostic file available.",))]
     if fault:
-        lines.extend(("", "Previous-session fault (unrecognized frames omitted):", *redact_fault(fault)))
+        lines.extend(("", "Previous-session fault (own-code frames; private values redacted):", *redact_fault(fault)))
     return "\n".join(lines)

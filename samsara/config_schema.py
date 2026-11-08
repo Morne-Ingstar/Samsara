@@ -64,6 +64,10 @@ def spoken_notices_for_level(level) -> str:
 
 
 SETTINGS_SCHEMA = {
+    "report_upload_contact": {
+        "type": "str", "default": "", "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Optional contact edited and remembered in the problem-report preview.",
+    },
     "smart_actions.personal_append_files": {
         "type": "list", "item_type": "str", "default": [], "tab": "ava",
         "settings_ui": False,

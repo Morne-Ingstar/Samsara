@@ -175,6 +175,10 @@ if os.environ.get("SAMSARA_GESTURE_COMPONENT_CHECK") == "installed":
 # DATA FILES
 # ============================================================================
 datas = []
+# 1186: ship real commit + own-code/log identities, and optional private receiver injection.
+from samsara.bug_report.build_data import report_datas
+datas += report_datas(app_dir, _build_work / 'report-data',
+                      upload_config=os.environ.get('SAMSARA_REPORT_UPLOAD_CONFIG'))
 
 # 1. ctranslate2 - models and specs (DLLs handled via binaries)
 ctranslate2_path = os.path.join(site_packages, 'ctranslate2')

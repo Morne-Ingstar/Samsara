@@ -139,3 +139,6 @@ AVA_MEMORY_PLAN.md
 
 # Owner machine-only commands; never ship.
 plugins/commands/local_*.py
+
+# Private release injection; must never be present in the public source tree.
+/samsara/data/report_upload.json

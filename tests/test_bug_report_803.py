@@ -43,7 +43,8 @@ def test_redactor_drops_every_forbidden_class_even_inside_known_tags(private):
     lines = [private, f"[INIT] {private}", f"[TTS] feedback level=normal {private}",
              f'[CMD] No command matched: "{private}"',
              f"RuntimeError: 12 chars {private}", f"  {private}"]
-    assert redact_lines(lines) == ()
+    # 1186: retain diagnostic structure while scrubbing every private value.
+    assert private not in "\n".join(redact_lines(lines))
     assert private not in error_first_line(private)
 
 
@@ -55,9 +56,9 @@ def test_allowlist_accepts_actual_numeric_log_masks_and_drops_masked_prose():
     exception = describe_text(ValueError("synthetic sample"))
     assert redact_lines([safe, exception, "[INIT] Enumerating audio devices..."]) == (
         safe, exception, "[INIT] Enumerating audio devices...")
-    assert redact_lines(["2026-10-23 12:00:00,123 - INFO - " + safe]) == (safe,)
-    assert redact_lines([safe + "\nsynthetic sample"]) == ()
-    assert redact_lines(["[EXIT] Goodbye!"] + ["private"] * 50) == ()
+    assert redact_lines(["2026-10-23 12:00:00,123 - INFO - " + safe]) == ("2026-10-23 12:00:00,123 - INFO - " + safe,)  # 1186: retain timing/level.
+    assert "synthetic sample" not in "\n".join(redact_lines([safe + "\nsynthetic sample"]))  # 1186: redact continuations.
+    assert "Goodbye" not in "\n".join(redact_lines(["[EXIT] Goodbye!"] + ["private"] * 200))  # 1186: last 200.
 
 
 def test_fault_frames_omit_profile_and_validate_shipped_code_names():
@@ -136,7 +137,13 @@ def test_preview_is_exact_and_inert_until_send_or_copy(qapp, monkeypatch, qt_wid
         window.copy.click()
         assert copied == [window.body.toPlainText()] and not opened
         window.send.click()
-        assert parse_qs(urlparse(opened[0]).query)["body"] == [window.body.toPlainText()]
+        # 1186: the exact ZIP preview includes metadata; bounded browser fallback may copy it.
+        draft = issue_draft(window.body.toPlainText())
+        assert parse_qs(urlparse(opened[0]).query) == parse_qs(urlparse(draft.url).query)
+        if draft.clipboard is not None:
+            assert copied[-1] == window.body.toPlainText()
+        else:
+            assert parse_qs(urlparse(opened[0]).query)["body"] == [window.body.toPlainText()]
         assert "Opening Settings" in window.body.toPlainText()
         for button in (window.send, window.copy, window.cancel):
             assert window.rect().contains(button.geometry())

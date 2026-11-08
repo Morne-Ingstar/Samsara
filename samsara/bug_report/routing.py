@@ -8,10 +8,16 @@ from samsara.session_modes import (DispatchOutcome, StackItem, SessionMode,
 
 
 def dispatch_command(manager, text, *, heard=None, allow_suggestion=True):
-    from .coordinator import report_latest
+    from .coordinator import report_latest, send_preview
     # 869s: command-lane punctuation is removed before dispatch and History.
     text = str(text or "").rstrip(" \t\r\n.,!?;:…")
     heard = str(text if heard is None else heard).rstrip(" \t\r\n.,!?;:…")
+    if " ".join(text.strip().casefold().split()) in ("send report", "send that report"):
+        sent = send_preview()
+        return DispatchOutcome(kind="command_executed" if sent else "command_failed", detail={
+            "phrase": "send report", "state": "executed" if sent else "failed",
+            "reason": "" if sent else "Report preview unavailable",
+        })
     if " ".join(str(text).strip().casefold().split()).rstrip(".!?") == "report that":
         opened = report_latest()
         return DispatchOutcome(kind="command_executed" if opened else "command_failed", detail={

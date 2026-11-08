@@ -51,7 +51,9 @@ def context_for(app, label, kind):
 def open_preview(app, report):
     from .preview_qt import ReportPreview
     # Keep it alive without blocking the event loop or opening a nested loop.
-    window = ReportPreview(report)
+    window = ReportPreview(report, config=getattr(app, "config", {}),
+                           on_contact=lambda contact: app.update_config_and_save({"report_upload_contact": contact}),
+                           on_spoken=getattr(app, "_speak_session_notice", None))
     windows = getattr(app, "_bug_report_windows", None)
     if windows is None:
         windows = app._bug_report_windows = []
@@ -61,6 +63,23 @@ def open_preview(app, report):
     window.raise_()
     window.activateWindow()
     return window
+
+
+def send_preview():
+    """Command-lane action only; never creates a preview or captures new evidence."""
+    app = _active() if _active is not None else None
+    if app is None or not getattr(app, "_bug_report_windows", ()):
+        return False
+    from samsara.ui import qt_runtime
+
+    def send():
+        for window in reversed(app._bug_report_windows):
+            if window.isVisible():
+                window.send_report()
+                return
+
+    qt_runtime.post(send)
+    return True
 
 
 def report_problem(app, label="", kind="error", *, failed=None):

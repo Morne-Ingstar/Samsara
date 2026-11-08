@@ -5,26 +5,28 @@ from .redact import redact_fault
 
 class CrashCatch:
     def __init__(self, previous, fault_lines=()):
-        self.pending = previous is not None
         self.fault = redact_fault(fault_lines)
+        from .session_exit import classify
+        self.kind, self.explanation = classify(previous, self.fault)
+        self.pending = self.kind == "crash"
 
     def take(self):
         if not self.pending:
             return None
         self.pending = False
-        return self.fault  # Empty evidence still means an unclean previous run.
+        return self.fault  # Only a positively recorded fault reaches this point.
 
 
 def offer(app, catch):
+    app._bug_report_previous_exit = catch.explanation or "clean exit"
     evidence = catch.take()
     if evidence is None:
         return None
     from .coordinator import open_preview
     from .preview_qt import CrashOffer
-    # Evidence is already allow-listed; snapshot accepts the same canonical lines.
+    # Evidence is already scrubbed; snapshot accepts the same canonical lines.
     def report():
-        body = snapshot(app, Failure("crash", "unavailable", "Previous session ended without a clean exit."))
-        body += "\n\nPrevious-session fault (unrecognized frames omitted):\n" + ("\n".join(evidence) or "No allow-listed fault lines.")
+        body = snapshot(app, Failure("crash", "unavailable", "Previous session recorded a fault."), fault=evidence)
         open_preview(app, body)
     app._bug_report_crash_offer = CrashOffer(report)
     app._bug_report_crash_offer.show()

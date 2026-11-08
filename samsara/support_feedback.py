@@ -19,6 +19,7 @@ BETA_FEEDBACK_URL = (
     "?template=beta_feedback.yml"
 )
 SUPPORT_URL = "https://morneis.com/samsara/support/"
+REPORT_UPLOAD_URL = "https://morneis.com/samsara/report"
 DOCUMENTATION_URL = "https://morneis.com/samsara/docs/"
 # This is intentionally a public beta-support address, not a hidden service
 # endpoint.  It opens the user's own mail client only after an explicit click,
@@ -141,6 +142,7 @@ __all__ = [
     "BETA_SUPPORT_SUBJECT",
     "BUG_REPORT_URL",
     "DOCUMENTATION_URL",
+    "REPORT_UPLOAD_URL",
     "SUPPORT_EMAIL_PROMPT",
     "SUPPORT_TAB_NAME",
     "SUPPORT_URL",
