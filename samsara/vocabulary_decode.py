@@ -123,6 +123,8 @@ def transcribe_with_vocabulary(app, audio, *, path, **params):
     from samsara.config_defaults import cfg_get
     from samsara.hold_recording_recovery import incident_model
     model = app.model if path in ('hold_partial', 'handsfree_preview') else incident_model(app)
+    from samsara.game_mode import observe_decode
+    model = observe_decode(app, model, path)  # 1200: diagnostics only; native call/pull timing.
     result = transcribe_without_outro(model, audio, effective,
         rate=getattr(app, 'model_rate', 16000), enabled=path not in ('hold_partial', 'handsfree_preview')
         and cfg_get(getattr(app, 'config', {}) or {}, 'dictation.signoff_filter'))

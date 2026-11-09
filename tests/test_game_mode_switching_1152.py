@@ -81,7 +81,8 @@ def test_ten_alt_tabs_per_minute_keep_cpu_and_every_hold_decodes(rig):
 def test_background_unminimized_game_is_retained_without_gpu_activity(rig):
     r = rig
     foreground, present = Mock(return_value=Sample(True, True, 42, 400)), Mock(return_value=True)
-    detector = WindowsGameDetector(foreground, present)
+    # 1200: an open window alone no longer proves background gameplay.
+    detector = WindowsGameDetector(foreground, present, activity=Mock(return_value=True))
     r.policy.sample = detector()
     r.policy.prepare()
     r.policy.reconcile()

@@ -15,6 +15,23 @@ NOTICE = "Game mode: dictation on CPU, a little slower"
 EXIT_GRACE_SECONDS = 45.0
 SWITCH_WINDOW_SECONDS = 60.0
 MAX_SWITCHES_PER_WINDOW = 4
+NON_GAME_PROCESSES = frozenset({
+    'vlc', 'mpv', 'chrome', 'brave', 'msedge', 'firefox', 'opera',
+    'spotify', 'steam', 'steamwebhelper',
+})
+NON_GAME_PREFIXES = ('stremio', 'mpc-hc', 'mpc-be', 'potplayer')
+
+
+def excluded_process(name):
+    """Match executable basenames, never window titles or install paths."""
+    name = name.replace('\\', '/').rsplit('/', 1)[-1].casefold()
+    if name.endswith('.exe'):
+        name = name[:-4]
+    return name in NON_GAME_PROCESSES or name.startswith(NON_GAME_PREFIXES)
+
+
+def game_candidate(sample):
+    return sample.fullscreen and sample.gpu_busy and not excluded_process(sample.process_name)
 
 
 @dataclass(frozen=True)
@@ -23,9 +40,22 @@ class Sample:
     gpu_busy: bool = False
     pid: int = 0
     hwnd: int = 0
-    # True: the previously detected game is still open and not minimized.
+    # True: the detected game is foreground or still rendering in background.
     # None: window inspection failed; do not treat uncertainty as an exit.
     game_present: bool | None = False
+    process_name: str = ''
+    window_class: str = ''
+    tracked_pid: int = 0
+    tracked_gpu_busy: bool | None = None
+
+
+def log_detection(event, source, observation, reason):
+    # Class names are structural; never fetch/log window title text.
+    log.info('[GAME-MODE] %s reason=%s process=%r window_class=%r '
+             'fullscreen=%s gpu_busy=%s foreground_pid=%s tracked_pid=%s tracked_gpu_busy=%s',
+             event, reason, source.process_name, source.window_class,
+             observation.fullscreen, observation.gpu_busy, observation.pid,
+             observation.tracked_pid or source.pid, observation.tracked_gpu_busy)
 
 
 def partials_enabled(app, session=None):
@@ -53,6 +83,7 @@ class GameMode:
         self.auto_requested = False
         self._sample = Sample()
         self._auto_active = False
+        self._auto_source = Sample()
         self._absent_since = None
         self.active = False
         self.resident = None
@@ -77,7 +108,9 @@ class GameMode:
         """Only fresh detector observations advance the exit debounce."""
         with self._lock:
             self._sample = value
-            if value.fullscreen and value.gpu_busy:
+            previous = self._auto_active
+            if game_candidate(value):
+                self._auto_source = value
                 self._auto_active = True
                 self._absent_since = None
             elif value.game_present is not False:
@@ -88,6 +121,10 @@ class GameMode:
                     self._absent_since = now
                 if now - self._absent_since >= EXIT_GRACE_SECONDS:
                     self._auto_active = False
+            if previous != self._auto_active:
+                log_detection('Auto on' if self._auto_active else 'Auto off',
+                              self._auto_source, value,
+                              'fullscreen-3d' if self._auto_active else 'inactive-grace-expired')
 
     @property
     def wanted(self):
@@ -123,6 +160,7 @@ class GameMode:
             self.app.model_lock.release()
             self._loading_name = name
         # No capture, policy or decoder lock spans the native constructor.
+        started = time.perf_counter()
         try:
             model = self.factory(name, device='cpu', compute_type='int8',
                                  cpu_threads=4, num_workers=2)
@@ -133,6 +171,8 @@ class GameMode:
             log.warning('[GAME-MODE] CPU model unavailable', exc_info=True)
             self.notify(self.app, self.active, 'Game mode could not load its CPU model; dictation kept its current model')
             return False
+        log.info('[GAME-MODE] CPU model loaded model=%s device=cpu compute_type=int8 load_ms=%.1f',
+                 name, (time.perf_counter() - started) * 1000)
         with self._lock:
             self._loading_name = None
             if name == cfg_get(self.app.config, 'game_mode.cpu_model'):
@@ -209,6 +249,9 @@ class GameMode:
             if lifecycle is not None:
                 lifecycle.release()
         if changed:
+            reason = ('primary-lane' if primary else 'manual' if self.manual is not None
+                      else 'auto' if self.automatic else 'disabled')
+            log_detection('On' if target else 'Off', self._auto_source, self.sample, reason)
             self.notify(self.app, target, notice)
         return changed
 
@@ -226,6 +269,12 @@ class GameMode:
             elif self.wanted != self.active:
                 text += '. Game mode change waiting until ready and idle.'
             return text
+
+    @property
+    def using_cpu(self):
+        """The display describes the selected device, never a pending request."""
+        return (self.active and self.app.model is not None
+                and _model_device(self.app.model, self.app.device_type) == 'cpu')
 
     def original_model(self):
         with self._lock:
@@ -290,7 +339,7 @@ def publish(app, active, notice=None):
     def show():
         # Posts from different callers can arrive out of order. Read what is
         # actually selected when Qt paints, not the old detection request.
-        current = getattr(getattr(app, '_game_mode', None), 'active', active)
+        current = getattr(getattr(app, '_game_mode', None), 'using_cpu', active)
         indicator = getattr(app, 'listening_indicator', None)
         setter = getattr(indicator, 'set_game_mode', None)
         if setter is not None:
@@ -304,6 +353,76 @@ def publish(app, active, notice=None):
 def _model_device(model, fallback):
     from samsara.gpu_fallback import ResilientSpeechModel
     return model._device if isinstance(model, ResilientSpeechModel) else fallback
+
+
+def observe_decode(app, model, path):
+    """Log native call/pull time without changing selection, params or segments.
+
+    The model argument may be the incident observer; app.model is the selected
+    speech instance. Keep that identity even if saved settings change later.
+    """
+    policy = getattr(app, '_game_mode', None)
+    if policy is None or not policy.wanted:
+        return model
+    selected = app.model
+    if policy._original is not None and selected is policy._original[0]:
+        name = policy._primary_name
+        _, device, compute = policy._original
+    elif policy.active and selected is policy.app.model:
+        name, device, compute = policy._active_name, app.device_type, app.compute_type
+    else:
+        name, device, compute = policy._primary_name, app.device_type, app.compute_type
+
+    def receipt(elapsed, status):
+        # A resilient CUDA instance can recover to CPU during this very call.
+        actual_device = _model_device(selected, device)
+        native = getattr(selected, 'model', None)
+        actual_compute = getattr(native, 'compute_type', None)
+        if not isinstance(actual_compute, str):
+            actual_compute = 'int8' if actual_device == 'cpu' and device == 'cuda' else compute
+        log.info('[GAME-MODE] Decode path=%s model=%s device=%s compute_type=%s '
+                 'decode_ms=%.1f status=%s',
+                 path, name, actual_device, actual_compute, elapsed * 1000, status)
+
+    class ObservedModel:
+        def __getattr__(self, name):
+            return getattr(model, name)
+
+        def transcribe(self, *args, **kwargs):
+            started = time.perf_counter()
+            try:
+                segments, info = model.transcribe(*args, **kwargs)
+            except BaseException:
+                receipt(time.perf_counter() - started, 'error')
+                raise
+            elapsed = time.perf_counter() - started
+
+            def observed():
+                nonlocal elapsed
+                status = 'cancelled'
+                try:
+                    iterator = iter(segments)
+                    while True:
+                        started = time.perf_counter()
+                        try:
+                            segment = next(iterator)
+                        except StopIteration:
+                            status = 'ok'
+                            return
+                        finally:
+                            elapsed += time.perf_counter() - started
+                        yield segment
+                except GeneratorExit:
+                    raise
+                except BaseException:
+                    status = 'error'
+                    raise
+                finally:
+                    receipt(elapsed, status)
+
+            return observed(), info
+
+    return ObservedModel()
 
 
 def runtime_text(app):
@@ -333,23 +452,35 @@ def add_tray(tray, menu):
 
 class WindowsGameDetector:
     """Track a detected game's window separately from foreground focus."""
-    def __init__(self, foreground=None, present=None):
+    def __init__(self, foreground=None, present=None, activity=None):
         self.foreground = foreground or windows_sample
-        self.present = present or game_window_present
+        self.present = present or (lambda sample: game_window_present(sample, include_minimized=True))
+        self.activity = activity or gpu_busy
         self.tracked = None
 
     def __call__(self):
         from dataclasses import replace
         sample = self.foreground()
-        if sample.fullscreen and sample.gpu_busy:
+        if game_candidate(sample):
+            if self.tracked is None or (self.tracked.pid, self.tracked.hwnd) != (sample.pid, sample.hwnd):
+                log_detection('Tracking', sample, sample, 'fullscreen-3d')
             self.tracked = sample
-            return sample
-        present = self.present(self.tracked) if self.tracked is not None else False
-        return replace(sample, game_present=present)
+            return replace(sample, game_present=True, tracked_pid=sample.pid, tracked_gpu_busy=True)
+        tracked = self.tracked
+        if tracked is None:
+            return replace(sample, game_present=False)
+        present = self.present(tracked)
+        busy = None
+        if present is True and (sample.pid, sample.hwnd) != (tracked.pid, tracked.hwnd):
+            busy = self.activity(tracked.pid)
+            present = busy
+        elif present is False:
+            self.tracked = None
+        return replace(sample, game_present=present, tracked_pid=tracked.pid, tracked_gpu_busy=busy)
 
 
-def game_window_present(sample):
-    """A background game still counts; a closed/minimized window does not."""
+def game_window_present(sample, *, include_minimized=False):
+    """Verify window/PID identity; rendering may keep even a minimized game."""
     import ctypes as c
     from ctypes import wintypes as w
     if not sample.hwnd:
@@ -363,7 +494,7 @@ def game_window_present(sample):
     pid = w.DWORD()
     if not user.GetWindowThreadProcessId(sample.hwnd, c.byref(pid)):
         return None
-    return pid.value == sample.pid and not user.IsIconic(sample.hwnd)
+    return pid.value == sample.pid and (include_minimized or not user.IsIconic(sample.hwnd))
 
 
 def windows_sample():
@@ -385,6 +516,7 @@ def windows_sample():
     user.GetWindowRect.argtypes = (w.HWND, c.POINTER(w.RECT))
     user.GetWindowThreadProcessId.argtypes = (w.HWND, c.POINTER(w.DWORD))
     user.IsIconic.argtypes = (w.HWND,)
+    user.GetClassNameW.argtypes = (w.HWND, w.LPWSTR, c.c_int)
 
     class Monitor(c.Structure):
         _fields_ = [('size', w.DWORD), ('monitor', w.RECT), ('work', w.RECT), ('flags', w.DWORD)]
@@ -399,7 +531,20 @@ def windows_sample():
     user.GetWindowThreadProcessId(hwnd, c.byref(pid))
     full = all(abs(getattr(rect, edge) - getattr(monitor.monitor, edge)) <= 2
                for edge in ('left', 'top', 'right', 'bottom'))
-    return Sample(full, full and gpu_busy(pid.value), pid.value, int(hwnd))
+    name = process_name(pid.value)
+    window_class = c.create_unicode_buffer(256)
+    user.GetClassNameW(hwnd, window_class, len(window_class))
+    # Uninspectable processes fail closed; manual mode remains available.
+    busy = bool(full and name and not excluded_process(name) and gpu_busy(pid.value))
+    return Sample(full, busy, pid.value, int(hwnd), process_name=name, window_class=window_class.value)
+
+
+def process_name(pid):
+    import psutil
+    try:
+        return psutil.Process(pid).name()
+    except psutil.Error:
+        return ''
 
 
 def gpu_busy(pid):
