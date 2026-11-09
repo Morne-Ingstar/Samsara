@@ -21,6 +21,7 @@ FILLERS = [
     r'\buh\b',
     r'\ber\b',
 ]
+_CLEAN_FILLERS = [r'\berm\b', r'\bah\b', r'\buhm\b', r'\bhmm\b']
 
 
 def clean_text(text, mode="clean"):
@@ -38,9 +39,16 @@ def clean_text(text, mode="clean"):
 
     result = text
 
-    # Strip filler words
-    for pattern in FILLERS:
-        result = re.sub(pattern, '', result, flags=re.IGNORECASE)
+    # Ah/Hmm can be deliberate replies when they are the entire utterance.
+    reply = re.fullmatch(r'\s*(?:ah|hmm)[.!?]*\s*', text, flags=re.IGNORECASE)
+    patterns = FILLERS + (_CLEAN_FILLERS if mode == 'clean' and not reply else [])
+    for pattern in patterns:
+        # Consume the filler's following comma so sentence starts do not
+        # become "Next. , Continue". Keep any preceding clause separator.
+        suffix = r',?' if mode == 'clean' else ''
+        result = re.sub(pattern + suffix, '', result, flags=re.IGNORECASE)
+    if mode == 'clean':
+        result = re.sub(r',\s*([.!?])', r'\1', result)
 
     # A repeated subject is a stutter; keep emphatic repeats such as "very very".
     result = re.sub(r'\b(I)(?:[ \t]+\1)+\b', r'\1', result, flags=re.IGNORECASE)
