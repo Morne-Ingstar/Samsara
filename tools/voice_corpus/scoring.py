@@ -60,7 +60,7 @@ def _repeated(tokens):
     return repeated
 
 
-def _measure(a, b):
+def _measure(a, b, *, alignment=False):
     grid = [[0] * (len(b) + 1) for _ in range(len(a) + 1)]
     for i in range(len(a) + 1):
         grid[i][0] = i
@@ -69,7 +69,7 @@ def _measure(a, b):
         for j, y in enumerate(b, 1):
             grid[i][j] = min(grid[i-1][j-1] + (x != y), grid[i-1][j] + 1, grid[i][j-1] + 1)
     i, j = len(a), len(b)
-    matched, missing = [], []
+    matched, missing, deleted = [], [], []
     substitutions = deletions = insertions = 0
     while i or j:
         if i and j and grid[i][j] == grid[i-1][j-1] + (a[i-1] != b[j-1]):
@@ -82,18 +82,22 @@ def _measure(a, b):
         elif i and grid[i][j] == grid[i-1][j] + 1:
             missing.append(i - 1)
             deletions += 1
+            deleted.append(i - 1)
             i -= 1
         else:
             insertions += 1
             j -= 1
     matched = sorted(matched)
-    return dict(reference_words=len(a), hypothesis_words=len(b),
+    result = dict(reference_words=len(a), hypothesis_words=len(b),
                 substitutions=substitutions, deletions=deletions, insertions=insertions,
                 wer=grid[len(a)][len(b)] / max(1, len(a)),
                 missing_start_words=matched[0] if matched else len(a),
                 missing_end_words=len(a) - 1 - matched[-1] if matched else len(a),
                 doubled_words=min(insertions, max(0, _repeated(b) - _repeated(a))),
                 )
+    if alignment:
+        result['deleted_reference_indices'] = sorted(deleted)
+    return result
 
 
 def measure(reference, hypothesis, tags=()):

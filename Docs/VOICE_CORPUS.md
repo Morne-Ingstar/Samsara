@@ -180,6 +180,51 @@ decode failures and latency increases above 100 ms (adjust with
 setup/harness error; 3 missing VB-CABLE. Recognition errors are measurements,
 so a successful replay does not by itself mean the build passes acceptance.
 
+## Live scoreboard
+
+Run from the checkout being measured, with explicit local models and an offline
+settings snapshot. This never starts the app or reads its live profile:
+
+```powershell
+python -m tools.voice_corpus.live_scoreboard --corpus D:\SamsaraCorpus\live_holds --reference-model <cached-large-v3-folder> --candidate-model <cached-small.en-folder> --settings <offline-settings.json> --candidate <checkout> --script-corpus D:\SamsaraCorpus\takes --output <private-numeric-report.json> --isolation <disposable-profile-folder> --allow-unknown-release
+```
+
+Every score is **vs large-v3 proxy, not human truth**. The reference uses beam 5,
+English, no hotwords/prompt, and word timestamps. Cached large-v3 is preferred;
+if absent, automatic selection tries cached turbo then distil and labels that
+actual proxy. No model downloads occur. CPU/int8 is the default; `--device cuda`
+uses float16, one model at a time, and yields between takes when GPU memory or
+utilization is constrained. It cannot reserve capacity against the live app.
+
+The reference cache is `.live_scoreboard_refs` beside each source WAV, keyed by
+WAV hash, model-file hashes and decoder parameters. It contains private text;
+keep it at source. `--memory-references` keeps text only in memory when source
+folders are read-only or under reports. Numeric JSON and Markdown include all
+takes (even empty/low-overlap candidates), normalized and strict D/I/S and WER,
+edition, microphone, duration and release-timing groups. WER is a micro-average;
+empty-reference insertions remain errors. Missing pairs are listed, not hidden.
+Duplicate WAV hashes with identical release points are listed and scored once;
+copying an archived take into another source folder cannot weight it twice.
+
+Release uses `release_audio_ms`, else `captured_audio_ms - admitted_tail_ms`,
+else corpus `release_s`. Unknown timing fails unless `--allow-unknown-release`
+explicitly permits a labelled file-end assumption; such takes are grouped
+separately. Invalid recorded timing is rejected. Replay reuses the production
+hold harness, including its admitted-tail decision, with the prior offline
+accumulator-drain barrier repair. Captured WAVs cannot restore speech already
+discarded by the original recording.
+
+The three ID-only lists flag aligned deletions overlapping the reference's
+first/last 1.5 seconds of recognized speech, and candidate insertions. These
+are word-time estimates from an imperfect proxy; they do not prove capture
+loss. Substitutions are counted separately. Unknown word timing is listed.
+The script-corpus check reports the proxy's own disagreement with the fixed
+script, including off-script speech; it is a sanity check, not a calibrated
+human error floor. `--extra-folder` adds a source folder; `--allow-unpaired`
+explicitly includes legacy WAVs without sidecars. `--manifest` adds a JSON list
+of `id`, `wav`, optional `sidecar`, and `edition` records without transcripts.
+Repeat `--candidate` to compare checkouts against the same in-memory references.
+
 ## Optional virtual microphone
 
 `python -m tools.voice_corpus devices` lists VB-CABLE endpoints without
