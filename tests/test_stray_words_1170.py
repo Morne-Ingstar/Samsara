@@ -199,9 +199,27 @@ def test_commit_redecode_keeps_vocabulary_but_screens_unspoken_hotwords(make_wor
         iter([segment('Keep these words.', .1, .9), segment(' Cube.', 3., 3.3)]), NS(language='en'))
     result, _ = transcribe_with_vocabulary(app, pcm, path='commit_redecode', language='en', **timing)
     assert ''.join(s.text for s in result).strip() == 'Keep these words.'
-    assert 'Cube' in app.model.transcribe.call_args.kwargs['hotwords']
+    # 1205: commit redecodes are prose, so hints stop; unsupported-word screening stays.
+    assert app.model.transcribe.call_args.kwargs['hotwords'] is None
     assert {key: app.model.transcribe.call_args.kwargs[key] for key in timing} == timing
     assert ('word_timestamps' in app.model.transcribe.call_args.kwargs) == bool(timing)
+
+
+@pytest.mark.parametrize('path', ['command_fast', 'wake', 'wake_debug'])
+def test_speech_screen_still_rejects_unspoken_hints_and_keeps_spoken_hints(make_worker, monkeypatch, path):
+    _, session, pcm = configure(make_worker, monkeypatch, 6., spans=[(0., 1.)])
+    app = session.app
+    app.voice_training_window.custom_vocab = ['Cube']
+    spoken, stray = segment('Cube.', .1, .9), segment(' Cube.', 3., 3.3)
+    original_texts = (spoken.text, stray.text)
+    app.model.transcribe.side_effect = lambda *a, **kw: (iter([spoken, stray]), NS(language='en'))
+    result, _ = transcribe_with_vocabulary(app, pcm, path=path, language='en')
+    effective = app.model.transcribe.call_args.kwargs
+    # 1205: command/wake hints remain; 1170's screen must work with that envelope too.
+    assert 'Cube' in effective['hotwords'].split(', ')
+    # Command/wake do not auto-run screen_commit; exercise the shared screen explicitly.
+    assert segment_speech_guard.screen(list(result), [(0, RATE)], RATE, 0., effective) == [spoken]
+    assert (spoken.text, stray.text) == original_texts
 
 
 @pytest.mark.parametrize('timing', [False, True])

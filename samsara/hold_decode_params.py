@@ -6,6 +6,9 @@ command phrases) must stay out of initial_prompt there. On a one-word
 clip a vocabulary-list prompt is an unusual decoder context, so partials
 and the final decode ask for include_vocabulary=False. Only the user's own
 explicit initial_prompt override is kept.
+
+The shared vocabulary_decode boundary also forces hotwords=None for these
+paths (1205), including profiles that already enabled built-in vocabulary.
 """
 import logging
 

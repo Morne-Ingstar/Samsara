@@ -84,6 +84,11 @@ def test_every_application_decode_seam_delivers_vocabulary(tmp_path, filename, c
             kwargs[kw.arg] = value(kw.value)
     vd.transcribe_with_vocabulary(*(value(arg) for arg in call.args), **kwargs)
     kwargs = app.model.transcribe.call_args.kwargs
+    # 1205: all seams remain wired, but prose no longer receives hint lists.
+    if path in vd.DICTATION_PATHS:
+        assert kwargs['hotwords'] is None
+        assert not kwargs.get('initial_prompt')
+        return
     words = kwargs['hotwords'].split(', ')
     assert 'PersonalTerm' in words
     assert 'wake word' in words

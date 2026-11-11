@@ -1,8 +1,9 @@
 """Bounded vocabulary delivery at the application decode boundary (1009).
 
 Hotwords are decoder context too: this proves delivery, not acoustic accuracy.
-Keep vocabulary lists out of prose initial_prompt (813); preserve explicit
-context and recovery overrides. No model loading, Qt, or profile reads here.
+Keep vocabulary lists out of prose initial_prompt (813) and hotwords (1205);
+preserve explicit context and recovery overrides. No model loading, Qt, or
+profile reads here.
 """
 import logging
 import threading
@@ -15,6 +16,10 @@ _LOG_LOCK = threading.RLock()
 PATHS = ('hold', 'hold_long', 'commit_redecode', 'ava', 'continuous', 'wake',
          'command_fast', 'session', 'hold_partial', 'handsfree_preview',
          'hold_final', 'wake_debug')
+# 1205: hint lists change free-form recognition even when absent from speech.
+# Built-in hints stay enabled by default, but reach command/wake paths only.
+COMMAND_PATHS = frozenset(('command_fast', 'wake', 'wake_debug'))
+DICTATION_PATHS = frozenset(PATHS) - COMMAND_PATHS
 
 
 def _token_count(model, text):
@@ -56,7 +61,7 @@ def _terms(app):
     return result
 
 
-def vocabulary_params(app, params):
+def vocabulary_params(app, params, *, path=None):
     """Fit complete terms, user then core then other enabled packs, to 223 tokens.
 
     Budget initial_prompt and hotwords together, including their leading spaces.
@@ -74,6 +79,9 @@ def vocabulary_params(app, params):
         while prompt and _token_count(model, prompt) > 223:
             prompt = prompt.rsplit(' ', 1)[0] if ' ' in prompt else ''
         result['initial_prompt'] = prompt
+    if path is not None and path not in COMMAND_PATHS:
+        result['hotwords'] = None
+        return result, 0
     available = 223 - _token_count(model, prompt)
     kept = []
     for word in _terms(app):
@@ -108,7 +116,7 @@ def transcribe_with_vocabulary(app, audio, *, path, **params):
     if selected is not app.model:
         app = copy(app)
         app.model = selected
-    effective, count = vocabulary_params(app, params)
+    effective, count = vocabulary_params(app, params, path=path)
     signature = (tuple(_terms(app)), (getattr(app, 'config', {}) or {}).get('initial_prompt'))
     with _LOG_LOCK:
         state = getattr(app, '__dict__', {}).get('_vocabulary_decode_log')

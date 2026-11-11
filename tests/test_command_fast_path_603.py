@@ -4,7 +4,8 @@ App methods run only with the ordinary no-bootstrap gate adapter. No model,
 microphone, real OS input, live profile, or recorded user text is needed.
 
 
-1178 decision: 1009 vocabulary delivery: terms travel via bounded hotwords. Fallback must retain the entire original audio, decode settings and immutable caller parameters, with the production vocabulary envelope."""
+1178 decision: 1009 vocabulary delivery: terms travel via bounded hotwords. Fallback must retain the entire original audio, decode settings and immutable caller parameters.
+1205: the command_fast pass keeps hints; the prose session fallback gets none."""
 from types import SimpleNamespace
 from unittest.mock import Mock
 import os
@@ -142,7 +143,12 @@ def test_unmatched_short_pass_redecodes_complete_original_audio(decode_app, cand
     for call in app.model.transcribe.call_args_list:
         assert call.args[0] is audio
     from samsara.vocabulary_decode import vocabulary_params
-    expected, _ = vocabulary_params(app, params)
+    # 1205: the short command_fast pass keeps hints; unmatched session prose does not.
+    first = app.model.transcribe.call_args_list[0].kwargs
+    assert first['hotwords'] and 'Samsara' in first['hotwords'].split(', ')
+    assert first['beam_size'] == first['best_of'] == 1 and first['temperature'] == 0.0
+    expected, _ = vocabulary_params(app, params, path='session')
+    assert expected['hotwords'] is None
     assert app.model.transcribe.call_args.kwargs == expected
     assert params == {'beam_size': 3, 'temperature': [0.0, 0.2], 'language': 'en'}
 
@@ -173,7 +179,8 @@ def test_ineligible_audio_or_lane_uses_exactly_original_decode(decode_app, lane,
     app.model = SimpleNamespace(transcribe=Mock(return_value=_result('Unchanged prose.')))
     app._decode_session_audio(np.zeros(length), params, command_lane=lane)
     assert app.model.transcribe.call_count == 1
-    assert app.model.transcribe.call_args.kwargs == params
+    # 1205: the session decode keeps its original settings with prose hotwords=None.
+    assert app.model.transcribe.call_args.kwargs == dict(params, hotwords=None)
 
 
 def test_absent_opt_in_preserves_default_decode(decode_app):
@@ -182,7 +189,8 @@ def test_absent_opt_in_preserves_default_decode(decode_app):
     app.model = SimpleNamespace(transcribe=Mock(return_value=_result('new tab')))
     app._decode_session_audio(np.zeros(16000), {'beam_size': 5}, command_lane=True)
     assert app.model.transcribe.call_count == 1
-    assert app.model.transcribe.call_args.kwargs == {'beam_size': 5}
+    # 1205: no speculative command pass means a session decode without hint lists.
+    assert app.model.transcribe.call_args.kwargs == {'beam_size': 5, 'hotwords': None}
 
 
 def test_415_prose_corpus_cannot_pass_short_command_filter(rig):
