@@ -149,11 +149,13 @@ def _transform(app, original, target, operation, argument, *, generation=None):
 
 
 def deterministic_cleanup(text: str) -> str:
-    """Conservative offline pause repair; retains paragraphs, names and acronyms.
+    """Explicit cleanup's offline pause repair; retains protected text.
 
     Require an unfinished left clause or a compatible continuation on the
     right. Shortness alone is not evidence that a sentence end was a pause.
     Ambiguous independent clauses stay separate; this is no grammar parser.
+    The text-only helper extends these 747 detectors to interior ellipses,
+    evidenced fragments and stray casing, without changing hold delivery.
     """
     def join_pause(left, following):
         fragment = re.split(r"[.!?\r\n]", following, maxsplit=1)[0]
@@ -203,26 +205,8 @@ def deterministic_cleanup(text: str) -> str:
             return False
         return continuation and (len(previous) <= 5 or noun_phrase)
 
-    text = re.sub(r"[ \t]{2,}", " ", text or "")
-    parts = re.split(r"(\.[ \t]+)", text)
-    result = parts[0]
-    for index in range(1, len(parts), 2):
-        separator, following = parts[index:index + 2]
-        left = re.split(r"[.!?\r\n]", parts[index - 1])[-1].strip()
-        if join_pause(left, following):
-            word = following.split()[0]
-            if word.lower() in _LOWERCASE_WORDS and not word.isupper():
-                following = following[0].lower() + following[1:]
-            separator = " "
-        result += separator + following
-
-    def lower_stray(match):
-        prefix, word = match.groups()
-        if word.lower() in _LOWERCASE_WORDS and not re.search(r"[.!?\n]\s*$", prefix):
-            word = word.lower()
-        return prefix + word
-
-    return re.sub(r"([^\w]*\s+)([A-Z][a-z]+)\b", lower_stray, result)
+    from samsara.ava_edit.pause_cleanup import repair
+    return repair(text, join_pause, _LOWERCASE_WORDS)
 
 
 def should_capture(app, instruction: str) -> bool:

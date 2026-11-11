@@ -79,7 +79,8 @@ def test_offline_pause_joins(source, expected):
     pytest.param("I know who. Alice told me.", id="named-new-subject"),
     pytest.param("I went home. she stayed there.", id="lowercase-independent-clause"),
     pytest.param("I am ready. Yes.", id="short-verbless-answer"),
-    pytest.param("I waited... Then I left.", id="ellipsis"),
+    # 1215 repairs interior pause ellipses; only final ellipses remain.
+    pytest.param("I waited...", id="ellipsis"),
 ])
 def test_real_boundaries_are_preserved(source):
     assert selection.deterministic_cleanup(source) == source
