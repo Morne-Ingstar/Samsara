@@ -10979,6 +10979,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                             entry_type="dictation",
                         )
                         return
+                    from samsara import hold_continuation; text = hold_continuation.prepare(self, text, _bench_raw_transcript, verbatim=_verbatim_active, tutorial=tutorial_waiting)
                     # History keeps the final before sending; the paste seam reports receipt.
                     # Permission alone cannot prove that Ctrl+V or typed input was received.
                     self.add_to_history(text.strip(), is_command=False)
@@ -10991,7 +10992,6 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                         entry_type="dictation",
                     )
                     self._notify_main_window(text.strip())
-
                     # Diagnostics record -- total measured from transcribe start
                     # to just before paste, matching the smart_correct call site.
                     try:
@@ -11031,9 +11031,9 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                         )
                     except Exception as _bench_exc:
                         logger.debug(f"[BENCH] append_sample failed: {_bench_exc}")
-
                     if self.config['auto_paste'] or tutorial_waiting:
                         delivered = self._paste_preserving_clipboard(text, **tutorial_capture.kwargs(tutorial_waiting))
+                        hold_continuation.remember(self, text, delivered)
                         if (delivered is False
                                 and self._live_surface_hold_parking_enabled()):
                             # The injector explicitly reported failure.  Keep
