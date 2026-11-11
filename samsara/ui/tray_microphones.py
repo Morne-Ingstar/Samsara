@@ -11,6 +11,9 @@ log = logging.getLogger(__name__)
 
 
 def build_microphone_menu(app, add):
+    changes = getattr(app, '_microphone_changes', None)
+    if changes is not None and (changes._input_pending or changes._pending is not None):
+        changes.request_input()  # 1206: keep stale-list intent queued during speech.
     if not app._mic_refresh_blocked():
         try:
             app.available_mics = app.get_available_microphones()

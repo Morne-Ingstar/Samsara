@@ -230,10 +230,45 @@ from samsara.portaudio_guard import RescanDeferred
 
 
 def capture_busy(app):
-    """A live utterance/listening session must keep its capture stream."""
-    return any(bool(getattr(app, name, False)) for name in
-               ('recording', 'continuous_active', 'wake_word_active', 'command_mode_active',
-                'ava_mode_active', 'ava_command_session_active'))
+    """Protect speech and drafts; an idle always-on listener is pausable."""
+    if any(bool(getattr(app, name, False)) for name in
+           ('recording', '_hotkey_recording', '_stop_in_flight', '_streaming_session',
+            'is_speaking', 'command_mode_active', 'ava_mode_active',
+            'ava_command_session_active')):
+        return True
+    wake = getattr(app, '_wake_consumer', None)
+    continuous = getattr(app, '_continuous_consumer', None)
+    manager = getattr(app, '_session_mode_manager', None)
+    return bool(getattr(app, '_ava_question', None)
+                or getattr(wake, '_utterance_frames', ())
+                or getattr(wake, '_toggle_queue', ())
+                or getattr(wake, '_toggle_worker_active', False)
+                or getattr(continuous, '_is_speaking', False)
+                or getattr(continuous, '_speech_frames', ())
+                or getattr(manager, '_dictate_pending_audio', ()))
+
+
+@contextmanager
+def _refresh_guard(app, sd, lost):
+    with rescan_transaction(app, sd), ExitStack() as paused:
+        if not lost:
+            checks = []
+            for active, name in (('wake_word_active', '_wake_consumer'),
+                                 ('continuous_active', '_continuous_consumer')):
+                consumer = getattr(app, name, None)
+                running = getattr(consumer, 'running', getattr(consumer, '_running', False))
+                if running or getattr(app, active, False):
+                    pause = getattr(consumer, 'pause_if_idle', None)
+                    if pause is None:
+                        raise RescanDeferred('Listener cannot pause safely')
+                    checks.append(paused.enter_context(pause()))
+            # A frame arriving while the other listener was being paused wins.
+            for check in checks:
+                check()
+            # Speech that won admission before the reservations stays intact.
+            if capture_busy(app):
+                raise RescanDeferred('Capture session is open')
+        yield
 
 
 # Callback progress, rather than queued data, proves a cue is playing. Allow
@@ -389,10 +424,10 @@ def refresh(app):
         raise RescanDeferred('Capture session is open')
     if ace is not None:
         ace.refresh(app.config, capture_rate=app.capture_rate,
-                    guard=lambda: rescan_transaction(app, sd))
+                    guard=lambda: _refresh_guard(app, sd, lost))
         set_state(app, ace.device_lost)
     else:
-        with rescan_transaction(app, sd):
+        with _refresh_guard(app, sd, lost):
             app._prepare_audio_rescan()
             if getattr(app, '_capture_device', None) is None:
                 set_state(app, True)
@@ -480,6 +515,7 @@ class DeviceChanges:
         self._input_pending = self._output_pending = False
         self._next_probe = self._retry_at = 0.0
         self._waiting_since = None
+        self._input_deferred = False
         self.notifications = True
         self._capture = None
         self._render = None
@@ -595,7 +631,7 @@ class DeviceChanges:
         ace = getattr(self.app, '_ace_engine', None)
         lost = getattr(ace, 'device_lost', self.app._no_microphone)
         name = getattr(ace, 'capture_name', None)
-        # An unrelated endpoint must never cycle a healthy chosen input.
+        # 1206: input additions must refresh the list even with a healthy preference.
         previous = matching_capture_endpoints(before, name)
         present = matching_capture_endpoints(current, name)
         if len(previous) > 1 or len(present) > 1:
@@ -611,7 +647,10 @@ class DeviceChanges:
         # A return needs one identifiable endpoint after absence; a change
         # among ambiguous matches must not cycle a healthy chosen input.
         returned = not configured_before and len(configured_present) == 1
-        if lost or removed or follows_default(self.app) or returned:
+        # Ambiguous aliases returning are not new inputs (1177); unrelated
+        # additions still refresh the list without changing the preference.
+        added = [endpoint for endpoint in current - before if endpoint[0] not in present]
+        if lost or removed or follows_default(self.app) or returned or added:
             if removed and ace is not None:
                 ace.mark_device_lost()
             self.request_input()
@@ -631,8 +670,7 @@ class DeviceChanges:
         with self._lock:
             pending = self._pending
             due = pending is not None and now - pending >= 0.75
-        poll = (not self.notifications and now >= self._next_probe
-                and (self.app._no_microphone or follows_default(self.app)))
+        poll = not self.notifications and now >= self._next_probe
         if due or poll:
             try:
                 self._observe()
@@ -650,13 +688,27 @@ class DeviceChanges:
             if self._input_pending:
                 refresh(self.app)
                 self._input_pending = False
+                if self._input_deferred:
+                    log.info('[MIC] Input refresh completed')
+                    self._input_deferred = False
                 self._output_pending = False  # Rescan already restored outputs.
                 self._restore_wake(now)
             elif self._output_pending:
                 restart_outputs(self.app)
                 self._output_pending = False
             self._waiting_since = None
-        except RescanDeferred:
+        except RescanDeferred as exc:
+            # A busy input must not starve independent default-output routing.
+            if self._output_pending:
+                try:
+                    restart_outputs(self.app)
+                except RescanDeferred:
+                    pass
+                else:
+                    self._output_pending = False
+            if self._input_pending and not self._input_deferred:
+                log.info('[MIC] Input refresh deferred: %s', exc)
+                self._input_deferred = True
             if self._waiting_since is None:
                 self._waiting_since = now
             # No blocking wait. After 30s, keep the request with a 5s backoff;
@@ -668,6 +720,8 @@ class DeviceChanges:
                 self._input_attempts += 1
                 if self._input_attempts >= 3:
                     self._input_pending = False
+                    log.info('[MIC] Input refresh given up after 3 failed attempts')
+                    self._input_deferred = False
                 log.warning('[MIC] Device refresh attempt %d/3 failed',
                             self._input_attempts, exc_info=True)
             else:

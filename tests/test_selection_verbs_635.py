@@ -360,8 +360,9 @@ def test_translation_question_admits_real_wake_polling_with_wake_off(rig, app, m
     app._release_wake_consumer = lambda _: None
     assert session.handle_utterance(app, "translate this")
     assert app._ava_question.opened
-    listener = wake_consumer.WakeConsumer.__new__(wake_consumer.WakeConsumer)
-    listener._app, listener._running = app, True
+    # 1206: initialise real frame-admission locks; keep wake-off reply polling.
+    listener = wake_consumer.WakeConsumer(SimpleNamespace(register_consumer=lambda _: None), app)
+    listener._running = True
     listener._stop_event = threading.Event()
     frame, received = object(), []
     listener._reader = SimpleNamespace(read_next=lambda: frame)

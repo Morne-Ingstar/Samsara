@@ -27,6 +27,7 @@ frame-list state against that race.
 """
 
 import threading
+from samsara.listener_rescan import pause_listener_if_idle, poll_listener_frame
 import time
 
 import numpy as np
@@ -67,6 +68,7 @@ class ContinuousConsumer:
         self._running = False
         self._thread: threading.Thread | None = None
         self._lifecycle_lock = threading.RLock()
+        self._rescan_lock = threading.Lock()
         self._stop_event = threading.Event()
         self.on_fatal = on_fatal  # Optional callback(exc); otherwise use app.play_sound('error').
         self._fatal_reported = False
@@ -83,6 +85,9 @@ class ContinuousConsumer:
         self._frames_lock = threading.Lock()
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    pause_if_idle = pause_listener_if_idle
+    _poll_frame = poll_listener_frame
 
     def start(self) -> bool:
         """Begin consuming only after the previous poll generation has exited."""
@@ -205,14 +210,8 @@ class ContinuousConsumer:
                     time.sleep(0.005)
                     continue
 
-                frame = self._reader.read_next()
-                if stop_event.is_set():
-                    break
-                if frame is EMPTY:
+                if not self._poll_frame(stop_event):
                     time.sleep(0.005)
-                    continue
-
-                self._process_frame(frame)
         except Exception as exc:
             self._handle_fatal(exc)
         finally:

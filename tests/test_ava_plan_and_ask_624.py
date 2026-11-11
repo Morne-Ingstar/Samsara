@@ -319,8 +319,9 @@ def test_reply_window_polls_audio_even_with_wake_word_mode_off(rig, monkeypatch)
     rig.app.wake_word_active = False
     rig.app.command_mode_active = False
     question(rig)
-    listener = wake_consumer.WakeConsumer.__new__(wake_consumer.WakeConsumer)
-    listener._app, listener._running = rig.app, True
+    # 1206: initialise real frame-admission locks; keep wake-off reply polling.
+    listener = wake_consumer.WakeConsumer(SimpleNamespace(register_consumer=lambda _: None), rig.app)
+    listener._running = True
     listener._stop_event = threading.Event()
     frame = object()
     listener._reader = SimpleNamespace(read_next=lambda: frame)

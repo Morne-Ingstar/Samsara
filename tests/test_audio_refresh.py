@@ -75,6 +75,11 @@ class TestCaptureSessionProtection:
         app, audio = case
         stream = app._ace_engine.rescan_stream
         setattr(app, attribute, True)
+        # 1206: idle listeners may refresh; uncommitted speech must retain capture.
+        if attribute == 'continuous_active':
+            app._continuous_consumer = types.SimpleNamespace(_speech_frames=[object()])
+        elif attribute == 'wake_word_active':
+            app._wake_consumer = types.SimpleNamespace(_utterance_frames=[object()])
         assert app._mic_refresh_blocked()
         assert app.refresh_audio_devices() is app.available_mics
         assert audio.events == [] and app._ace_engine.rescan_stream is stream
