@@ -1,14 +1,14 @@
 # Release Build CI
 
-## Signed-release asset safety
+## Release asset safety
 
-Releases are built and code-signed locally. CI must not modify GitHub Release
+Releases are built locally. CI must not modify GitHub Release
 assets automatically: tag pushes only build, verify, and upload workflow
 artifacts. Both release workflows require a manual `workflow_dispatch` with
 `upload_to_release=true` before attaching any assets, and refuse to continue
 when the target release already contains a `SamsaraSetup-*.exe` installer.
 Neither workflow enables same-name asset replacement: the Release action's
-`overwrite_files` input is explicitly `false`. Keep the locally signed
+`overwrite_files` input is explicitly `false`. Keep the local
 installer, archives, sidecars, and manifest as the release assets.
 
 Use the release-build workflow's upload input only for a deliberate CI upload
@@ -17,8 +17,8 @@ tag and a successful release-build run ID, revalidates that run and its
 artifacts, and applies the same installer guard.
 
 `.github/workflows/release-build.yml` builds and verifies the CPU build described in
-[RELEASING.md](../RELEASING.md), with full-commit-SHA action pins, a disabled
-SignPath stub, and additional headless-safe smoke assertions:
+[RELEASING.md](../RELEASING.md), with full-commit-SHA action pins and
+additional headless-safe smoke assertions:
 
 Tag pushes store build outputs as workflow artifacts only. Release assets are
 uploaded only after an explicit manual dispatch and installer-asset check.
@@ -44,9 +44,6 @@ On a push of a tag matching `v*.*.*`, or a manual `workflow_dispatch`:
 8. Tag pushes upload build outputs as workflow artifacts only. A release upload
    requires manual dispatch with `upload_to_release=true`; an existing
    installer asset makes the workflow fail before any upload.
-9. Has a disabled `if: false` SignPath signing step, commented with the exact
-   inputs it would need, sitting between packaging and the optional release
-   upload step.
 
 ### Note on `tools/release_manifest.py`
 
@@ -127,18 +124,13 @@ running or the checkout is dirty) was not wired in: a fresh Actions runner
 checkout is always clean and never has Samsara running, so the check would
 always trivially pass and adds no signal on CI.
 
-## Code signing policy and Windows metadata
-
-The [Code signing policy](../CODE_SIGNING_POLICY.md) publishes the intended
-attribution, author/reviewer/approver roles, MFA/manual approval requirements,
-and [privacy policy](../PRIVACY.md). The README and release-notes template link
-it. The website needs the same section before application.
+## Windows metadata
 
 `scripts/version_info.py` reads the package version with AST, without importing
 the app, and generates resources for `Samsara.exe` and `samsara-mcp.exe`. These
 are the only first-party PE outputs in the current spec. No separate compiled
 updater, own DLL or own `.pyd` target exists. Third-party DLLs/extensions and
-component ZIPs must not be submitted under Samsara's identity.
+component ZIPs retain their own identity.
 
 ProductName/CompanyName are `Samsara`; FileDescription is `Samsara voice control
 and dictation`; copyright includes AGPL-3.0. ProductVersion is the full package
@@ -151,84 +143,3 @@ AppVersion for its product text version; it has no SignTool. CI checks the two
 application PE resources before smoke/packaging. The checker reads every
 translated string and fixed version through Windows version.dll without
 executing the files.
-
-## Signing status and intended two-stage process
-
-**Integration is blocked pending an authoritative full commit SHA for the v3
-SignPath action and validation of the artifact configuration schema.** This
-change was prepared offline. The checked-in workflow retains its disabled
-signing stub. Adding a token alone does not yet activate signing; current
-artifacts must not be described as signed.
-
-The intended process, all on GitHub-hosted `windows-latest` runners:
-
-1. Build and smoke the tagged source. Stage A uploads only `Samsara.exe` and
-   `samsara-mcp.exe` using upload-artifact id `upload-unsigned-artifact`.
-2. Submit its artifact-id to `signpath/github-action-submit-signing-request`,
-   configuration `stage-a`, policy `release-signing`. Wait for manual approval,
-   download the result, validate both Authenticode signatures and PE identities,
-   and replace only these files in dist. Then build the portable ZIP and installer.
-3. Stage B uploads `SamsaraSetup-<version>.exe`, submits its artifact-id with
-   configuration `stage-b` and the same policy, waits for a second manual approval,
-   validates the result and replaces the installer.
-4. Compute SHA-256 sidecars from the final ZIP/installer, then upload those same
-   final files as artifacts. Signing failures must fail
-   the job; they must never fall back silently to unsigned output.
-
-`signpath/stage-a.xml` and `stage-b.xml` have ZIP roots because upload-artifact
-wraps even a single installer in a ZIP. Their allowlist excludes third-party PE
-files. XML well-formedness can be checked offline; SignPath schema validation
-is still required before activation.
-
-The guard design computes `SIGNPATH_ENABLED` in job env from the token's presence
-and guards every signing upload/request/restore step with that boolean. GitHub
-does not allow secrets directly in a step's `if` expression. Without the token,
-all signing steps skip and the existing packaging scripts continue. The token
-is passed only to the two requests. Organization/project come from repository
-variables `SIGNPATH_ORGANIZATION_ID` / `SIGNPATH_PROJECT_SLUG`; no extra enable
-variable is needed.
-
-## Foundation requirements and sources
-
-These requirements come from the brief's 2026-10-22 reading of the
-[Foundation terms](https://signpath.org/terms) and
-[SignPath documentation](https://docs.signpath.io/). They were not re-fetched
-in this offline implementation; recheck the primary sources during activation.
-
-- OSI-approved license, active maintenance, prior releases, no proprietary
-  components, and functionality described on the download page.
-- Own binaries built from own source; Code signing policy on home/download/release
-  pages; privacy disclosures; roles/permission links; GitHub and SignPath MFA;
-  review of non-committer changes; manual approval of every signing request.
-- ProductName `Samsara` and consistent ProductVersion. The certificate is provided
-  by SignPath Foundation and the signing service by SignPath.io.
-- SignPath GitHub App installed for trusted build-origin verification; all jobs
-  before submission on GitHub-hosted runners.
-
-No verified Foundation certificate reputation guidance was available in the
-offline material. This change makes no claim about when SmartScreen warnings
-disappear and does not assert that current docs are silent. Verify the current
-Foundation guidance before promising an outcome.
-
-## Remaining steps, in order
-
-1. Resolve/pin the official v3 action commit, validate both XML configurations
-   against SignPath's schema, install the reviewed two-stage workflow and rerun
-   its focused gates. This is a code-verification blocker, not an owner account step.
-2. The owner approved the policy wording/roles on 2026-10-23; add the same
-   **Code signing policy** section to the VPS site's home and download pages.
-3. Enable MFA for every GitHub team member and apply at
-   [SignPath Foundation](https://signpath.org/) with the
-   [repository](https://github.com/Morne-Ingstar/Samsara), policy and privacy links.
-4. After approval, enable MFA for every SignPath member; create the project,
-   `stage-a` / `stage-b` artifact configurations, a `release-signing` policy
-   requiring manual approval, and an API token allowed to submit requests.
-5. Install the SignPath GitHub App for this repository's origin verification.
-6. Add repository secret `SIGNPATH_API_TOKEN` and variables
-   `SIGNPATH_ORGANIZATION_ID` / `SIGNPATH_PROJECT_SLUG` using the account values.
-7. Push the next real matching version tag; approve both requests, inspect the
-   draft signatures/sidecars, and follow the normal release review/publish process.
-
-The account/API, hosted build, actual signing and reputation behavior have not
-been exercised here. Offline fixture packaging checks file routing only; it
-cannot establish trusted origin, genuine signatures or real build equivalence.

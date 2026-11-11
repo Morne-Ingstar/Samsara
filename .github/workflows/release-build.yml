@@ -1,9 +1,9 @@
-name: Release Build (CPU, SignPath-ready)
+name: Release Build (CPU)
 
 # Draft companion to the existing .github/workflows/release.yml -- see
-# docs/RELEASE_CI.md for why this file exists alongside it, what it adds
-# (full-commit-SHA action pinning, a disabled SignPath signing stub, and a
-# few extra headless-safe smoke assertions), and exactly how to first-run
+# Docs/RELEASE_CI.md for why this file exists alongside it, what it adds
+# (full-commit-SHA action pinning and a few extra headless-safe smoke
+# assertions), and exactly how to first-run
 # it. Tag pushes and ordinary manual builds produce CI artifacts only.
 # Release assets are uploaded only by an explicit workflow_dispatch opt-in,
 # after checking that the target release has no installer asset.
@@ -366,30 +366,6 @@ jobs:
             manifest.json
             dist\SamsaraSetup-*.exe
           retention-days: 30
-
-      # ----------------------------------------------------------------------
-      # SignPath signing stub -- DISABLED until a SignPath Foundation account
-      # exists (see docs/RELEASE_CI.md for the application process). Once
-      # approved, this step would run between packaging and the draft-release
-      # step below: submit the unsigned Samsara.exe (or the whole dist tree)
-      # to SignPath's signing API, wait for the signed artifact, and have the
-      # packaging step above zip *that* output instead of the unsigned one.
-      # `if: false` keeps it visible in the workflow graph as a placeholder
-      # without ever executing.
-      # ----------------------------------------------------------------------
-      - name: Sign build with SignPath (disabled -- no account yet)
-        if: false
-        # uses: signpath/github-action-submit-signing-request@<pin-exact-sha-when-adopted>
-        # with:
-        #   api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
-        #   organization-id: '<signpath-org-id>'
-        #   project-slug: 'samsara'
-        #   signing-policy-slug: 'release-signing'
-        #   artifact-configuration-slug: 'samsara-exe'
-        #   github-artifact-id: '${{ steps.package-unsigned.outputs.artifact-id }}'
-        #   wait-for-completion: true
-        #   output-artifact-directory: 'signed'
-        run: echo "SignPath signing not yet configured -- see docs/RELEASE_CI.md"
 
       # 554: an installed copy updates through SamsaraSetup only when its
       # checksum is published beside it. One ASCII line, the same shape as the

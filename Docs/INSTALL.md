@@ -43,10 +43,10 @@ Download `SamsaraSetup-0.42.1.exe` from the release page and run it.
   final page says so, and the components can be added any time later from
   the first-run wizard's Optional Components page or from Settings.
 
-The installer is not code-signed yet, so Windows SmartScreen shows "Windows
+The installer is not code-signed, so Windows SmartScreen shows "Windows
 protected your PC" on first run. Click "More info", then "Run anyway", after
 checking the file's SHA-256 against the `.sha256` beside it on the release
-page. [Installer documentation](../installer/README.md) explains what signing will take.
+page.
 
 ## 2. The ZIPs (corporate proxies, no network on the target machine)
 

@@ -94,15 +94,9 @@ scaling the pages, the component list and the buttons scale with the text
 (`WizardSizePercent=120` gives the list room at every scale), and
 `WizardResizable=yes` lets the user enlarge it further.
 
-## Signing (note only, no work here)
+## Windows SmartScreen
 
 An unsigned installer that then downloads and runs more code is the worst
-SmartScreen case: every first user sees "Windows protected your PC". Signing
-it needs a code-signing certificate held by a CA, which for a small open
-project means SignPath Foundation's free OSS signing. Their prerequisite is
-exactly what now exists: reproducible, verifiable CI builds, so that what is
-signed can be traced to a public commit and pipeline. The disabled SignPath
-step in `release-build.yml` stays where it is; once an account exists it
-signs `Samsara.exe` and this setup exe between packaging and the draft
-release. Until then, `docs/INSTALL.md` tells users what the warning means and
+SmartScreen case: every first user sees "Windows protected your PC".
+`Docs/INSTALL.md` tells users what the warning means and
 how to verify the download by SHA-256 instead.

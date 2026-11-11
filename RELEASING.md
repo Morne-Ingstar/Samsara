@@ -10,7 +10,7 @@ files, and `manifest-<version>.json` / `manifest-latest.json` to one fixed
 release tagged `addons`, titled **Samsara add-ons**, normal release and never
 Latest. Do not remove or rename any asset on 0.40.3 or older releases.
 The layout below supersedes the historical 0.40.3 asset list in this document.
-1002 owns the CI upload guards; tag-triggered CI must not replace signed local
+1002 owns the CI upload guards; tag-triggered CI must not replace local
 assets. Its deliberate CI upload path must follow this two-place allowlist
 before being used for 0.40.4+; this task does not change workflows.
 
@@ -18,11 +18,11 @@ before being used for 0.40.4+; this task does not change workflows.
    `gh release create addons --title "Samsara add-ons" --notes "Optional component downloads." --latest=false`.
    Keep existing version releases untouched. Copy previously verified packs
    to `addons` once, under their original filenames, with their checksum files.
-2. Build and sign the app and installer; assemble the final portable ZIP.
+2. Build the app and installer; assemble the final portable ZIP.
    Keep all final files in one artifacts directory. Generate the catalog
-   **after** signing; installer bytes must not change after their hash is taken.
+   **after** building; installer bytes must not change after their hash is taken.
    A provisional local `manifest.json` can supply installer component sizes
-   before signing. Re-run the generator afterward for publication.
+   before building. Re-run the generator afterward for publication.
 3. Run the following, substituting the final directory, version and commit.
    Omit `--reuse-manifest` on the first build with entirely new packs.
    A prior manifest explicitly approves its available optional packs for reuse;
@@ -58,14 +58,14 @@ therefore keep updating automatically. Clients from 0.40.4 verify the manifest
 hash without fetching sidecars. Historical component downloads remain valid
 because their release assets are preserved.
 
-## CPU build: signed locally, verified by CI
+## CPU build: built locally, verified by CI
 
-Release files are built and code-signed locally. CI must not touch GitHub
+Release files are built locally. CI must not touch GitHub
 Release assets automatically. A tag push runs verification and stores build
 outputs as workflow artifacts only; it does not create or update a Release.
 Both release workflows require an explicit `workflow_dispatch` input
 `upload_to_release=true` before uploading, and stop if the target Release
-already has a `SamsaraSetup-*.exe` asset. Never replace the locally signed
+already has a `SamsaraSetup-*.exe` asset. Never replace the local
 installer or its accompanying release files with CI outputs.
 
 - Before tagging, run `python tools\probes\inject_matrix.py --gate` on the machine that will produce the build.
@@ -91,10 +91,6 @@ tag, and `upload_to_release=true` to attach verified CI files. Both workflows
 check for an existing installer before upload and keep any created release as a
 draft with `make_latest: false`. Publication remains a separate release
 decision.
-
-This is the CI-traceability piece SignPath Foundation's code-signing program
-asks for: a build a third party can point at and confirm came from this
-repo's source at this commit, not from a laptop.
 
 ### Triggering a release
 
@@ -123,7 +119,7 @@ Replace `<tag>` with the release tag (for example, `v0.42.1`). These commands ar
 separate manual decisions and must not be added to either automated workflow.
 See the [GitHub CLI release edit reference](https://cli.github.com/manual/gh_release_edit).
 
-Or run the workflow manually (Actions tab -> Release Build (CPU, SignPath-ready) -> Run
+Or run the workflow manually (Actions tab -> Release Build (CPU) -> Run
 workflow) to sanity-check a build without cutting a tag. Leave
 `upload_to_release` unchecked; the run stores workflow artifacts only.
 
@@ -286,25 +282,9 @@ build begins.
 - **Publisher concurrency group** (`release-${{ inputs.version }}`)
   queues runs for the same tag (`cancel-in-progress: false`).
 
-## Code signing policy and release notes
-
-Include this section in every release's notes (use an absolute URL on GitHub):
-
-```markdown
-### Code signing policy
-
-See the [Code signing policy](https://github.com/Morne-Ingstar/Samsara/blob/master/CODE_SIGNING_POLICY.md)
-for signing status, SignPath.io and SignPath Foundation attribution, team roles,
-and the privacy policy. Check the individual assets' signatures; older unsigned
-releases remain unsigned.
-```
+## Windows metadata
 
 The package version generates Windows PE resources for `Samsara.exe` and
 `samsara-mcp.exe`. The installer reads its numeric version from the built app and
 its full product text version from AppVersion. CI checks both application PE
 resources before smoke or packaging. Company/publisher is `Samsara`.
-
-Signing integration remains pending verification of the SignPath action's full
-commit SHA and artifact schema. The checked-in workflow retains its disabled
-signing stub; do not describe its outputs as signed. See [Release CI](Docs/RELEASE_CI.md)
-for the intended two-stage process and activation steps.

@@ -85,9 +85,7 @@ if exist "%MANIFEST%" (
 )
 
 echo Building SamsaraSetup-%APP_VERSION%.exe with "%ISCC%"
-set "SIGN_ARGS="
-if "%SAMSARA_SIGN%"=="1" set SIGN_ARGS=/DSignedBuild=1 "/Ssamsara=powershell -NoProfile -ExecutionPolicy Bypass -File $q%REPO%\scripts\sign.ps1$q $f"
-"%ISCC%" /Qp %SIGN_ARGS% "/DAppVersion=%APP_VERSION%" "/DDistDir=%REPO%\dist\Samsara" "/DOutputDir=%REPO%\dist" "installer\samsara.iss"
+"%ISCC%" /Qp "/DAppVersion=%APP_VERSION%" "/DDistDir=%REPO%\dist\Samsara" "/DOutputDir=%REPO%\dist" "installer\samsara.iss"
 if errorlevel 1 (
     echo ISCC failed.
     popd & exit /b 1

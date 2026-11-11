@@ -162,17 +162,16 @@ class TestBuildCommand:
     def test_signed_build_is_opt_in_and_unsigned_path_has_no_signing_args(self):
         cmd = CMD.read_text(encoding="utf-8")
         compile_line = next(line for line in cmd.splitlines() if '"%ISCC%" /Qp' in line)
-        assert 'if "%SAMSARA_SIGN%"=="1"' in cmd
-        assert "/DSignedBuild=1" in cmd and "/Ssamsara=" in cmd
-        assert "%SIGN_ARGS%" in compile_line
-        assert compile_line.split("%SIGN_ARGS%", 1)[1].startswith(' "/DAppVersion=')
+        # 1212: the former signing opt-in is gone; keep the unsigned build path.
+        assert "SAMSARA_SIGN" not in cmd and "SIGN_ARGS" not in cmd
+        assert "/DSignedBuild" not in compile_line and "/Ssamsara=" not in compile_line
+        assert compile_line.startswith('"%ISCC%" /Qp "/DAppVersion=')
 
     def test_installer_signing_directives_are_conditional(self):
         setup = _section(ISS.read_text(encoding="utf-8"), "Setup")
-        assert re.search(
-            r"#ifdef SignedBuild\s+SignTool=samsara\s+SignedUninstaller=yes\s+#endif",
-            setup,
-        )
+        # 1212: remove the unused signing-only conditional with its caller.
+        assert "SignedBuild" not in setup
+        assert "SignTool=" not in setup and "SignedUninstaller=" not in setup
 
     def test_ci_has_one_installer_step_and_uploads_the_exe(self):
         import yaml
@@ -196,7 +195,8 @@ class TestBuildCommand:
         assert "/ComponentsDir=" in install and "Samsara-Windows-v0.42.1.zip" in install
         assert "SmartScreen" in install
         readme = README.read_text(encoding="utf-8")
-        assert "SignPath" in readme and "--fetch-components" in readme
+        # 1212: keep unsigned-download guidance after removing the signing plan.
+        assert "SmartScreen" in readme and "--fetch-components" in readme
         # 108: the dispatch is real now, so the README documents where it
         # LIVES rather than a snippet someone still has to paste in. Both
         # placement facts are asserted because both are load-bearing.

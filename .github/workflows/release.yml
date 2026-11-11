@@ -57,7 +57,7 @@ jobs:
         run: |
           $run = gh run view "${{ inputs.build_run_id }}" --json conclusion,event,headBranch,headSha,workflowName | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw "Could not read release-build run ${{ inputs.build_run_id }}" }
-          if ($run.workflowName -ne 'Release Build (CPU, SignPath-ready)' -or $run.conclusion -ne 'success' -or $run.event -ne 'push' -or $run.headBranch -ne "${{ inputs.version }}") {
+          if ($run.workflowName -ne 'Release Build (CPU)' -or $run.conclusion -ne 'success' -or $run.event -ne 'push' -or $run.headBranch -ne "${{ inputs.version }}") {
             throw "Selected run must be a successful tag-push run of Release Build for ${{ inputs.version }}"
           }
           echo "head_sha=$($run.headSha)" >> $env:GITHUB_OUTPUT
@@ -226,8 +226,7 @@ jobs:
       # guards) or require pulling a multi-GB CUDA torch wheel just to
       # harvest DLLs from it, then discarding torch itself. Two paths to
       # eventually running this on CI, for whenever the CUDA pack needs to be
-      # CI-traceable too (not needed for the CPU-build SignPath conversation
-      # starter this pass targets):
+      # CI-traceable too:
       #
       #   1. `pip install torch --index-url https://download.pytorch.org/whl/cu121`
       #      in a separate build-cuda job, set INCLUDE_CUDA=1, run PyInstaller

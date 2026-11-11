@@ -1,11 +1,9 @@
-"""Release identity and signing policy checks; no app execution or network."""
+"""Release identity and workflow checks; no app execution or network."""
 
 import ast
-import hashlib
 from pathlib import Path
 import shutil
 import sys
-import xml.etree.ElementTree as ET
 
 import pytest
 
@@ -90,38 +88,14 @@ def test_both_spec_targets_embed_resource_and_installer_uses_app_identity():
     assert not any(line.strip().lower().startswith("signtool=") for line in installer.splitlines())
 
 
-def test_published_policy_attribution_roles_and_privacy():
-    policy = (ROOT / "CODE_SIGNING_POLICY.md").read_text(encoding="utf-8")
-    # 866: pin the complete owner-approved policy, including its final section.
-    assert hashlib.sha256(policy.encode("utf-8")).hexdigest() == "4c4d719c66ec907a6d404b39a0fb241b0882c5a07f27759d7183d7a4e4e3cf5f"
-    for phrase in ("Code signing policy", "Free code signing is provided by", "SignPath.io",
-                   "SignPath Foundation", "Author", "Reviewer", "Approver", "Morne",
-                   "settings/access", "PRIVACY.md", "manual approval", "MFA",
-                   "GitHub Actions build of", "tagged commit"):
-        assert phrase in policy
-    assert "CODE_SIGNING_POLICY.md" in (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "CODE_SIGNING_POLICY.md" in (ROOT / "RELEASING.md").read_text(encoding="utf-8")
-
-
-@pytest.mark.parametrize("stage, filenames", [
-    ("stage-a", ["Samsara.exe", "samsara-mcp.exe"]),
-    ("stage-b", ["SamsaraSetup-*.exe"]),
-])
-def test_artifact_configuration_first_party_allowlist(stage, filenames):
-    config = ET.parse(ROOT / "signpath" / f"{stage}.xml").getroot()
-    ns = {"s": "http://signpath.io/artifact-configuration/v1"}
-    assert config.tag == "{" + ns["s"] + "}artifact-configuration"
-    archive = config.find("s:zip-file", ns)
-    assert archive is not None
-    files = archive.findall("s:pe-file", ns)
-    assert [item.attrib["path"] for item in files] == filenames
-    assert all(item.find("s:authenticode-sign", ns) is not None for item in files)
-
-
 def test_workflow_checks_pe_metadata_before_smoke_and_packaging():
     import yaml
 
     workflow = yaml.safe_load((ROOT / ".github/workflows/release-build.yml").read_text(encoding="utf-8"))
+    # 1212: the publisher must select the renamed CPU build workflow exactly.
+    publisher = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    assert workflow["name"] == "Release Build (CPU)"
+    assert f"$run.workflowName -ne '{workflow['name']}'" in publisher
     job = workflow["jobs"]["build-cpu"]
     assert job["runs-on"] == "windows-latest"
     steps = job["steps"]
@@ -134,14 +108,35 @@ def test_workflow_checks_pe_metadata_before_smoke_and_packaging():
     assert "--exe dist\\Samsara\\samsara-mcp.exe" in steps[index]["run"]
 
 
+def test_published_policy_attribution_roles_and_privacy():
+    # 1212: the retired policy and public signing promises must stay removed.
+    assert not (ROOT / "CODE_SIGNING_POLICY.md").exists()
+    readme = (ROOT / "README.md").read_text(encoding="utf-8").lower()
+    assert "code signing policy" not in readme
+    assert "signpath" not in readme
+
+
+@pytest.mark.parametrize("stage, filenames", [
+    ("stage-a", ["Samsara.exe", "samsara-mcp.exe"]),
+    ("stage-b", ["SamsaraSetup-*.exe"]),
+], ids=["stage-a-filenames0", "stage-b-filenames1"])
+def test_artifact_configuration_first_party_allowlist(stage, filenames):
+    # 1212: keep the original node IDs as guards against restoring SignPath files.
+    assert not (ROOT / "signpath" / f"{stage}.xml").exists()
+    assert not (ROOT / "signpath").exists()
+
+
 def test_signing_stays_inert_until_verified_activation():
+    import re
     import yaml
 
-    workflow = yaml.safe_load((ROOT / ".github/workflows/release-build.yml").read_text(encoding="utf-8"))
-    steps = workflow["jobs"]["build-cpu"]["steps"]
-    signing = [step for step in steps if "SignPath" in step.get("name", "")]
-    assert len(signing) == 1
-    assert signing[0]["if"] is False
-    assert "uses" not in signing[0]
-    assert signing[0]["run"].startswith("echo ")
-    assert not any("signpath/" in step.get("uses", "").lower() for step in steps)
+    # 1212: neither release workflow may retain a signing step or credentials.
+    for filename in ("release-build.yml", "release.yml"):
+        source = (ROOT / ".github/workflows" / filename).read_text(encoding="utf-8")
+        assert "signpath" not in source.lower()
+        workflow = yaml.safe_load(source)
+        for job in workflow["jobs"].values():
+            for step in job.get("steps", []):
+                assert not re.search(r"\b(?:sign|signing|signtool|authenticode)\b",
+                                     str(step), re.IGNORECASE)
+    assert not (ROOT / "scripts/sign.ps1").exists()
