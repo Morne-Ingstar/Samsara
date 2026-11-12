@@ -401,7 +401,9 @@ def test_no_healthy_device_polling_and_event_bursts_debounce(monkeypatch):
     for t in (0, 5, 10):
         now[0] = t
         changes.tick()
-    snapshot.assert_not_called()
+    # 1217: observe Windows every five seconds even when callbacks registered.
+    assert snapshot.call_count == 3
+    snapshot.reset_mock()
     for t in (11.0, 11.2, 11.4):
         now[0] = t
         changes.notify()
@@ -603,7 +605,8 @@ def test_finish1_missing_sixty_seconds_never_rescans_or_cancels(monkeypatch):
         clock.advance(0.5)
         changes.tick()
     assert audio.events == []
-    snapshot.assert_not_called()
+    # 1217: observation detects lost callbacks; it must still never rescan here.
+    assert snapshot.call_count == 12
     app.tts_engine.cancel_all.assert_not_called()
     app.tts_engine.shutdown.assert_not_called()
     app.stop_sound_stream.assert_not_called()

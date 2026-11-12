@@ -232,7 +232,9 @@ def test_deferral_logs_once_then_completion(mic_change, caplog):
         app.recording = False
         now[0] += 5
         changes.tick()
-    messages = [r.message for r in caplog.records if '[MIC] Input refresh' in r.message]
+    # 1217: the new once-per-refresh audit is separate from lifecycle messages.
+    messages = [r.message for r in caplog.records if '[MIC] Input refresh' in r.message
+                and '[MIC] Input refresh:' not in r.message]
     assert len(messages) == 2
     assert 'deferred: Capture session is open' in messages[0]
     assert messages[1] == '[MIC] Input refresh completed'

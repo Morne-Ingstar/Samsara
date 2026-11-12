@@ -19,6 +19,7 @@ log = logging.getLogger('Samsara')
 MISSING_MESSAGE = 'No microphone. Connect a microphone to dictate.'
 FALLBACK_MESSAGE = 'Your chosen microphone is not connected. Using the system default microphone.'
 BOOT_MIC_GRACE_SECONDS = 5.0
+INPUT_REFRESH_TIMEOUT = 120.0
 
 
 def needs_setup(config_path, *, sleep=time.sleep):
@@ -332,12 +333,12 @@ def output_busy(app):
 
 
 @contextmanager
-def _take(lock):
+def _take(lock, owner):
     if lock is None:
         yield
         return
     if not lock.acquire(blocking=False):
-        raise RescanDeferred('Audio owner is busy')
+        raise RescanDeferred(f'Audio owner is busy: {owner}')
     try:
         yield
     finally:
@@ -355,9 +356,16 @@ def rescan_transaction(app, sd):
     tts = getattr(app, 'tts_engine', None)
     local = getattr(tts, '_fallback_engine', None) or tts
     ace = getattr(app, '_ace_engine', None)
+    # 1217: prepare_rescan runs synchronously inside ACE.refresh. The outer
+    # transaction already holds Edge's NON-reentrant worker lock. Reacquiring
+    # it after closing capture used to refuse our own admitted transaction.
+    owner = threading.get_ident()
+    if getattr(app, '_rescan_owner', None) == owner:
+        yield
+        return
     with ExitStack() as held:
-        held.enter_context(_take(getattr(router, '_dispatch_lock', None)))
-        held.enter_context(_take(app._audio_refresh_lock))
+        held.enter_context(_take(getattr(router, '_dispatch_lock', None), 'TTS dispatch'))
+        held.enter_context(_take(app._audio_refresh_lock, 'sound output lifecycle'))
         if output_busy(app):
             app._rescan_idle_since = None
             raise RescanDeferred('Speech or earcon is playing')
@@ -370,14 +378,24 @@ def rescan_transaction(app, sd):
         # An empty software buffer may still have a last block in hardware.
         if time.monotonic() < getattr(app, '_audio_output_idle_after', 0):
             raise RescanDeferred('Output tail is playing')
-        held.enter_context(_take(getattr(tts, '_worker_lock', None)))
+        held.enter_context(_take(getattr(tts, '_worker_lock', None), 'TTS worker'))
         guard = getattr(sd, '_samsara_stream_guard', None)
         if guard is None:
             raise RescanDeferred('Audio stream ownership is not registered')
         owned = (getattr(ace, 'rescan_stream', None), getattr(app, '_sound_stream', None),
                  getattr(local, '_tts_stream', None))
-        held.enter_context(guard.reserve(owned))
-        yield
+        try:
+            held.enter_context(guard.reserve(owned))
+        except RescanDeferred as exc:
+            streams = tuple(getattr(guard, 'streams', {}).values())
+            names = [type(s).__name__ for s in streams
+                     if all(s is not allowed for allowed in owned)]
+            raise RescanDeferred(f'{exc}; busy_owner={",".join(names) or str(exc)}') from exc
+        app._rescan_owner = owner
+        try:
+            yield
+        finally:
+            app._rescan_owner = None
 
 
 def prepare_rescan(app, sd):
@@ -398,6 +416,8 @@ def prepare_rescan(app, sd):
                 sd._terminate()
                 sd._initialize()
             app.available_mics = app.get_available_microphones()
+            # Proof of BOTH a successful backend reset and a fresh enumeration.
+            app._input_rescan_serial = getattr(app, '_input_rescan_serial', 0) + 1
             reconcile(app, sd)
             if app._capture_device is not None:
                 app.capture_rate = int(sd.query_devices(app._capture_device, kind='input')['default_samplerate'])
@@ -416,6 +436,7 @@ def prepare_rescan(app, sd):
 def refresh(app):
     """User Refresh or a queued capture-endpoint change authorizes one scan."""
     import sounddevice as sd
+    serial = getattr(app, '_input_rescan_serial', 0)
     ace = getattr(app, '_ace_engine', None)
     lost = getattr(ace, 'device_lost', getattr(app, '_no_microphone', False))
     if ace is not None and not ace.running and not lost:
@@ -440,16 +461,17 @@ def refresh(app):
                     app._continuous_consumer.start()
     if not getattr(app, '_no_microphone', False):
         changes_for(app).request_wake()
+    if getattr(app, '_input_rescan_serial', 0) == serial:
+        raise RuntimeError('Input refresh did not reinitialise PortAudio and reread devices')
     return app.available_mics
 
 
 def request_refresh(app):
     """UI callers always get their last list; deferred intent stays queued."""
-    try:
-        return refresh(app)
-    except Exception:
-        changes_for(app).request_input()
-        return app.available_mics
+    changes = changes_for(app)
+    changes.request_input()
+    changes._refresh_input(changes.clock())
+    return app.available_mics
 
 
 def capture_endpoints():
@@ -479,8 +501,8 @@ def restart_outputs(app):
     """Preserve HEAD's default-output rule, without interrupting speech."""
     if getattr(app, 'output_device', None) is not None:
         return
-    with _take(getattr(getattr(app, 'audio_coordinator', None), '_dispatch_lock', None)):
-        with _take(app._audio_refresh_lock):
+    with _take(getattr(getattr(app, 'audio_coordinator', None), '_dispatch_lock', None), 'TTS dispatch'):
+        with _take(app._audio_refresh_lock, 'sound output lifecycle'):
             if output_busy(app) or time.monotonic() < getattr(app, '_audio_output_idle_after', 0):
                 raise RescanDeferred('Output is playing')
             app.stop_sound_stream()
@@ -511,11 +533,16 @@ class DeviceChanges:
         self._wake_attempts = 0
         self._wake_retry_at = 0.0
         self._lock = threading.Lock()
+        self._input_refresh_lock = threading.Lock()
         self._pending = None
         self._input_pending = self._output_pending = False
         self._next_probe = self._retry_at = 0.0
         self._waiting_since = None
         self._input_deferred = False
+        self._input_busy_owner = 'none'
+        self._input_before = []
+        self._input_selection = None
+        self._input_stale = False
         self.notifications = True
         self._capture = None
         self._render = None
@@ -537,8 +564,16 @@ class DeviceChanges:
             self._pending = self.clock()
 
     def request_input(self):
+        self._input_stale = True
         if not self._input_pending:
             self._input_attempts = 0
+            self._input_deferred = False
+            self._input_busy_owner = 'none'
+            # 1217: startup recovery must not depend on audit data being ready.
+            self._input_before = [mic['name'] for mic in getattr(self.app, 'available_mics', ())]
+            self._input_selection = getattr(self.app, 'config', {}).get('microphone_name', 'System default')
+            self._waiting_since = self.clock()
+            self._retry_at = 0.0
         self._input_pending = True
         if self._waiting_since is None:
             self._waiting_since = self.clock()
@@ -548,6 +583,67 @@ class DeviceChanges:
             self._wake_attempts = 0
             self._wake_retry_at = 0.0
         self._wake_pending = True
+
+    def _finish_input(self, now, *, rescanned, reason):
+        after = [mic['name'] for mic in getattr(self.app, 'available_mics', ())]
+        selected = getattr(self.app, 'config', {}).get('microphone_name', 'System default')
+        log.info('[MIC] Input refresh: rescanned=%s devices_before=%d devices_after=%d '
+                 'added=%s removed=%s selected=%s selection_changed=%s waited_ms=%d busy_owner=%s',
+                 rescanned, len(self._input_before), len(after),
+                 sorted(set(after) - set(self._input_before)),
+                 sorted(set(self._input_before) - set(after)), selected,
+                 selected != self._input_selection,
+                 round((self.clock() - self._waiting_since) * 1000), self._input_busy_owner)
+        log.info('[MIC] Input refresh %s', reason)
+        self._input_pending = self._input_deferred = False
+        self._input_stale = not rescanned
+        self._waiting_since = None
+
+    def _refresh_input(self, now):
+        # UI Refresh and the watcher may arrive together. Only one owns the
+        # request's scan, deadline, completion log and state cleanup.
+        if not self._input_refresh_lock.acquire(blocking=False):
+            return
+        try:
+            if self._input_pending:
+                self._attempt_input(now)
+        finally:
+            self._input_refresh_lock.release()
+
+    def _attempt_input(self, now):
+        if now < self._retry_at:
+            return
+        if now - self._waiting_since >= INPUT_REFRESH_TIMEOUT:
+            self._finish_input(now, rescanned=False, reason='given up after 2 minutes')
+            return
+        try:
+            refresh(self.app)
+        except RescanDeferred as exc:
+            self._input_busy_owner = str(exc).rsplit('busy_owner=', 1)[-1].removeprefix('Audio owner is busy: ')
+            if not self._input_deferred:
+                log.info('[MIC] Input refresh deferred: %s', exc)
+                self._input_deferred = True
+            self._retry_at = now + (5.0 if now - self._waiting_since >= 30 else 0.5)
+            # A busy capture cannot starve default-output routing.
+            if self._output_pending:
+                try:
+                    restart_outputs(self.app)
+                except RescanDeferred:
+                    pass
+                else:
+                    self._output_pending = False
+        except Exception:
+            self._input_attempts += 1
+            log.warning('[MIC] Device refresh attempt %d/3 failed',
+                        self._input_attempts, exc_info=True)
+            self._retry_at = now + 5.0
+            if self._input_attempts >= 3:
+                self._finish_input(now, rescanned=False,
+                                   reason='given up after 3 failed attempts')
+        else:
+            self._finish_input(now, rescanned=True, reason='completed')
+            self._output_pending = False  # Rescan already restored outputs.
+            self._restore_wake(now)
 
     def _restore_wake(self, now):
         app = self.app
@@ -670,7 +766,8 @@ class DeviceChanges:
         with self._lock:
             pending = self._pending
             due = pending is not None and now - pending >= 0.75
-        poll = not self.notifications and now >= self._next_probe
+        # 1217: notifications can be lost even after successful registration.
+        poll = now >= self._next_probe
         if due or poll:
             try:
                 self._observe()
@@ -686,46 +783,17 @@ class DeviceChanges:
         self._restore_wake(now)
         try:
             if self._input_pending:
-                refresh(self.app)
-                self._input_pending = False
-                if self._input_deferred:
-                    log.info('[MIC] Input refresh completed')
-                    self._input_deferred = False
-                self._output_pending = False  # Rescan already restored outputs.
-                self._restore_wake(now)
+                self._refresh_input(now)
             elif self._output_pending:
                 restart_outputs(self.app)
                 self._output_pending = False
-            self._waiting_since = None
+            if not self._input_pending:
+                self._waiting_since = None
         except RescanDeferred as exc:
-            # A busy input must not starve independent default-output routing.
-            if self._output_pending:
-                try:
-                    restart_outputs(self.app)
-                except RescanDeferred:
-                    pass
-                else:
-                    self._output_pending = False
-            if self._input_pending and not self._input_deferred:
-                log.info('[MIC] Input refresh deferred: %s', exc)
-                self._input_deferred = True
-            if self._waiting_since is None:
-                self._waiting_since = now
-            # No blocking wait. After 30s, keep the request with a 5s backoff;
-            # never force closure, cancel speech or abandon the user's request.
-            self._retry_at = now + (5.0 if now - self._waiting_since >= 30 else 0.5)
+            self._retry_at = now + 0.5
         except Exception:
             self._retry_at = now + 5.0
-            if self._input_pending:
-                self._input_attempts += 1
-                if self._input_attempts >= 3:
-                    self._input_pending = False
-                    log.info('[MIC] Input refresh given up after 3 failed attempts')
-                    self._input_deferred = False
-                log.warning('[MIC] Device refresh attempt %d/3 failed',
-                            self._input_attempts, exc_info=True)
-            else:
-                log.warning('[MIC] Device refresh deferred', exc_info=True)
+            log.warning('[MIC] Output refresh deferred', exc_info=True)
 
 
 def changes_for(app):
