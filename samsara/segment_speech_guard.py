@@ -28,16 +28,20 @@ def _number(value):
         return None
 
 
-def _overlaps(item, bounds, rate, origin, *, fraction=.6):
+def _overlaps(item, bounds, rate, origin, *, fraction=.6, point=False):
     times = [getattr(item, key, None) for key in ('start', 'end')]
     if any(value is None for value in times):
         return None
     start, end = map(_number, times)
     if start is None or end is None:
         return False
-    if not 0 <= start < end:
+    if not 0 <= start <= end or (start == end and not point):
         return False
     start, end = start + origin, end + origin
+    if start == end:
+        # 1216 A: word alignment can collapse a spoken word to an instant.
+        # Bounds already include the guard's speech padding; add none here.
+        return any(a / rate <= start <= b / rate for a, b in bounds)
     overlap = sum(max(0., min(end, b / rate) - max(start, a / rate)) for a, b in bounds)
     return overlap > 0 and overlap + 1e-9 >= fraction * (end - start)
 
@@ -58,7 +62,17 @@ def _anomalous_word(word):
 def _supported_word(word, segment, bounds, rate, origin, params):
     if _anomalous_word(word):
         return False
-    if _overlaps(word, bounds, rate, origin) is True:
+    start, end = (_number(getattr(word, key, None)) for key in ('start', 'end'))
+    if start is not None and start == end and any(
+            other is not word
+            and _number(getattr(other, 'start', None)) == start
+            and _number(getattr(other, 'end', None)) == end
+            for other in getattr(segment, 'words', None) or ()):
+        # 1216 A: several words collapsed onto one instant cannot each claim
+        # that instant's speech. Keep the original rejection for this ambiguous
+        # alignment; only an isolated point can supply a word's support.
+        return False
+    if _overlaps(word, bounds, rate, origin, point=True) is True:
         return True
     # 1192: Whisper can stretch a genuine word across seconds of silence, or
     # place it on the quiet part of a confidently decoded speech segment.
@@ -87,6 +101,44 @@ def _supported_word(word, segment, bounds, rate, origin, params):
             and 0 <= start <= a < b <= end)
 
 
+def _leading_prefix(segment, following, bounds, rate, origin, params):
+    """1216 B: corroborate the decoder's displaced 0-2 s opening fragment.
+
+    Only an unfinished single word from the first native window qualifies.
+    Its immediate, accepted continuation must share complete healthy native
+    telemetry. Re-anchor the fragment's duration immediately before that
+    continuation: the first speech onset must lie in that span, allowing the
+    same 250 ms alignment tolerance used to pad the measured speech islands.
+    This is evidence for keeping text, not a replacement decoder timestamp.
+    """
+    if (origin != 0. or not bounds or getattr(segment, 'words', None)
+            or _number(getattr(segment, 'start', None)) != 0.
+            or _number(getattr(segment, 'end', None)) != 2.
+            or getattr(segment, 'seek', None) != 0
+            or getattr(following, 'seek', None) != 0
+            or len(_token(segment.text)) != 1
+            or not segment.text.strip()[-1:].isalnum()
+            or len(_token(following.text)) < 2):
+        return False
+    threshold = _number(params.get('log_prob_threshold', -1.))
+    score, silence, compression, temperature = values = [
+        _number(getattr(segment, key, None)) for key in
+        ('avg_logprob', 'no_speech_prob', 'compression_ratio', 'temperature')]
+    if (threshold is None or score is None or score < threshold
+            or silence is None or not 0 <= silence <= .6
+            or compression is None or not 0 <= compression <= 2.4
+            or temperature != 0.
+            or values != [_number(getattr(following, key, None)) for key in
+                          ('avg_logprob', 'no_speech_prob', 'compression_ratio', 'temperature')]):
+        return False
+    words = getattr(following, 'words', None)
+    anchor = _number(getattr(words[0] if words else following, 'start', None))
+    if anchor is None or anchor <= 2.:
+        return False
+    onset, end = (value / rate for value in bounds[0])
+    return anchor - 2. <= onset <= anchor + .25 and anchor <= end
+
+
 def screen(segments, bounds, rate, origin, params):
     """Remove unsupported words only after the existing acceptance decisions.
 
@@ -100,6 +152,7 @@ def screen(segments, bounds, rate, origin, params):
     from samsara.hold_final_policy import current_audit
     audit = current_audit.get()
     kept, removed_words, removed_segments = [], 0, 0
+    segments = list(segments)
     for segment in segments:
         score = _number(getattr(segment, 'avg_logprob', None))
         threshold = _number(params.get('log_prob_threshold', -1.))
@@ -141,6 +194,13 @@ def screen(segments, bounds, rate, origin, params):
                 removed_segments += 1
                 continue
         kept.append(segment)
+    # Only the immediate next segment can corroborate a rejected opening.
+    # Requiring its original identity also rules out a partially rejected
+    # continuation; no rejected words can supply their own support.
+    if (len(segments) >= 2 and kept and kept[0] is segments[1]
+            and _leading_prefix(segments[0], segments[1], bounds, rate, origin, params)):
+        kept.insert(0, segments[0])
+        removed_segments -= 1
     if removed_words or removed_segments:
         if audit is not None:
             audit.drop('unsupported_speech', max(1, removed_segments))
@@ -161,8 +221,7 @@ def screen_commit(result, audio, rate, params):
     segments, info = result
 
     def screened():
-        for segment in segments:
-            yield from screen([segment], bounds, rate, 0., params)
+        yield from screen(list(segments), bounds, rate, 0., params)
 
     return screened(), info
 
