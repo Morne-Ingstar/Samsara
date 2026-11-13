@@ -6,6 +6,32 @@ All notable changes to Samsara are documented here.
 
 - **Hands-free by voice** - Say the wake word and "hands free" (or "start hands free", "dictate mode") to start hands-free dictation without touching a key; "hands free" also works as a command. Needs the hands-free key set to Toggle.
 
+## [0.42.2] - 2026-11-13
+
+0.42.2 - cleaner dictation that keeps your words and joins your sentences, easier hands-free, and more voice commands.
+
+- **Your words kept.** Short words at the start of a sentence, like "I", slow or loosely spoken words, and soft last words are kept.
+- **Recordings you can keep.** Recordings saved for problem reports and "keep that" hold the whole take.
+- **One History entry.** A cancelled or failed recording leaves a single History entry with Try again.
+- **Report a problem.** Shows useful details with private information removed, and can send the report directly.
+- **Typing instead of pasting.** When dictation has to type instead of paste, it tells you why.
+- **Cleaner text.** Dictation stays closer to what you said, without random extra words, with tidier punctuation and endings.
+- **Clean mode.** Leaves out stutters, false starts and more filler sounds.
+- **One sentence across holds.** A sentence spoken across several holds reads as one sentence.
+- **Hands-free clean up.** Turns a halting dictation with pauses into sentences.
+- **Mouse 5 hold to talk.** More reliable: the hold ends when you let go, and it recovers quickly if the button drops out.
+- **Messages that tidy themselves.** Warnings and errors on the listening display fade on their own, and clear as soon as the problem is fixed.
+- **Ask before it matters.** Commands that send, delete or change something ask first, and the question shows on both the Compact and Full displays.
+- **Say what you see.** Every button on screen can be said by its label, such as "clear draft" in hands-free.
+- **Stop Ava reading.** Say "stop" or click Stop and she stops at once.
+- **Private by default.** Text Samsara pastes stays out of Windows clipboard history and cloud clipboard sync.
+- **One name per feature.** Wake word, Hands-free and Hold to talk mean the same thing everywhere, and more than one wake word can listen at once.
+- **One pause slider.** How long you can pause is a single setting.
+- **Game mode.** Switches on for real games and copes with fast alt-tabbing.
+- **Media players by name.** Pause, play, skip and volume for VLC, iTunes, Apple Music, Media Player, foobar2000, AIMP and Spotify.
+- **More voice commands.** New commands for on-screen messages, memo playback, dictation modes, searching History and commands, copying selected text and more.
+- **Tidier Help.** Help keeps its layout, with Quick Reference and Offline explanations in the guide menu.
+
 ## [0.42.1] - 2026-11-07
 
 0.42.1 - steadier dictation that keeps every word, easier hands-free, clearer messages, and more voice commands.

@@ -11,7 +11,7 @@ body:
     id: version
     attributes:
       label: Samsara version
-      placeholder: v0.42.1
+      placeholder: v0.42.2
     validations:
       required: true
 
@@ -71,4 +71,3 @@ body:
       label: Follow-up
       options:
         - label: I am willing to answer follow-up questions or test a focused fix.
-

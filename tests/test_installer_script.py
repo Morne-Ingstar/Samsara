@@ -192,7 +192,8 @@ class TestBuildCommand:
     def test_docs_explain_both_routes_and_signing(self):
         install = INSTALL_DOC.read_text(encoding="utf-8")
         # 914: the guide names the exact assets for its versioned release page.
-        assert "/ComponentsDir=" in install and "Samsara-Windows-v0.42.1.zip" in install
+        # 1214b: pin the current release; retain historical release checks.
+        assert "/ComponentsDir=" in install and "Samsara-Windows-v0.42.2.zip" in install
         assert "SmartScreen" in install
         readme = README.read_text(encoding="utf-8")
         # 1212: keep unsigned-download guidance after removing the signing plan.

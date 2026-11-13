@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release tag (for example v0.42.1)'
+        description: 'Release tag (for example v0.42.2)'
         required: true
         type: string
       build_run_id:

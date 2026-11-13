@@ -10,14 +10,15 @@ ROOT = Path(__file__).resolve().parents[1]
 DOCUMENTS = (ROOT / "README.md", ROOT / "PRIVACY.md", ROOT / "RELEASING.md",
              *sorted((ROOT / "Docs").rglob("*.md")))
 RELEASE_ASSETS = frozenset({
-    "SamsaraSetup-0.42.1.exe",
-    "SamsaraSetup-0.42.1.exe.sha256",
-    "Samsara-Windows-v0.42.1.zip",
-    "Samsara-Windows-v0.42.1.zip.sha256",
-    "Samsara-GestureControl-v0.42.1.zip",
-    "Samsara-GestureControl-v0.42.1.zip.sha256",
-    "Samsara-WakeWord-Models-v0.42.1.zip",
-    "Samsara-WakeWord-Models-v0.42.1.zip.sha256",
+    # 1214b: pin the current release; retain historical release checks.
+    "SamsaraSetup-0.42.2.exe",
+    "SamsaraSetup-0.42.2.exe.sha256",
+    "Samsara-Windows-v0.42.2.zip",
+    "Samsara-Windows-v0.42.2.zip.sha256",
+    "Samsara-GestureControl-v0.42.2.zip",
+    "Samsara-GestureControl-v0.42.2.zip.sha256",
+    "Samsara-WakeWord-Models-v0.42.2.zip",
+    "Samsara-WakeWord-Models-v0.42.2.zip.sha256",
     "manifest.json",
 })
 
@@ -61,7 +62,7 @@ def asset_error(target):
     tag, _, asset = unquote(parsed.path[len(prefix):]).partition("/")
     # Current download links must target this release's exact assets. Historical
     # filenames in prose (e.g. the separate CUDA pack) are not current links.
-    if tag == "v0.42.1" and asset in RELEASE_ASSETS:
+    if tag == "v0.42.2" and asset in RELEASE_ASSETS:
         return None
     return f"unexpected release target: {target}"
 
@@ -84,9 +85,9 @@ def test_readme_does_not_offer_an_old_beta_as_current():
 
 
 @pytest.mark.parametrize("target", [
-    "https://github.com/Morne-Ingstar/Samsara/releases/download/v0.42.1/SamsaraSetup-v0.42.1.exe",
-    "https://github.com/Morne-Ingstar/Samsara/releases/download/v0.42.1/Samsara-Windows-0.42.1.zip",
-    "https://github.com/Morne-Ingstar/Samsara/releases/download/latest/Samsara-Windows-v0.42.1.zip",
+    "https://github.com/Morne-Ingstar/Samsara/releases/download/v0.42.2/SamsaraSetup-v0.42.2.exe",
+    "https://github.com/Morne-Ingstar/Samsara/releases/download/v0.42.2/Samsara-Windows-0.42.2.zip",
+    "https://github.com/Morne-Ingstar/Samsara/releases/download/latest/Samsara-Windows-v0.42.2.zip",
 ])
 def test_wrong_download_names_are_rejected(target):
     assert asset_error(target)
@@ -94,4 +95,4 @@ def test_wrong_download_names_are_rejected(target):
 
 @pytest.mark.parametrize("asset", sorted(RELEASE_ASSETS))
 def test_exact_release_download_names_are_accepted(asset):
-    assert asset_error(f"https://github.com/Morne-Ingstar/Samsara/releases/download/v0.42.1/{asset}") is None
+    assert asset_error(f"https://github.com/Morne-Ingstar/Samsara/releases/download/v0.42.2/{asset}") is None
