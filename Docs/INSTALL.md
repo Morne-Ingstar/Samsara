@@ -4,22 +4,28 @@ Two routes. Both end with the same application; pick by your situation.
 
 Open the [latest published release](https://github.com/Morne-Ingstar/Samsara/releases/latest).
 The [v0.42.2 release page](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.42.2)
-will provide the versioned assets below once the pre-release is published.
+will provide the installer and portable ZIP below once the pre-release is published.
 The latest-release link may point to a different version.
 
 | File | Purpose |
 | --- | --- |
 | `SamsaraSetup-0.42.2.exe` | Installer for a normal Windows installation. |
 | `Samsara-Windows-v0.42.2.zip` | Portable app; extract before running. |
-| `Samsara-WakeWord-Models-v0.42.2.zip` | Optional wake-word models. |
-| `Samsara-GestureControl-v0.42.2.zip` | Optional webcam gesture control. |
-| `manifest.json` | Component sizes and SHA-256 hashes. |
 
 Each EXE/ZIP above also has a matching `.sha256` file. GitHub's source-code
-archives are not the Windows application. The optional CUDA pack is an older,
-separate download; it is not a v0.42.2 asset.
+archives are not the Windows application.
 
-From 0.40.4 the optional packs (wake-word models, gesture control, CUDA) and `manifest.json` are on the separate [Samsara add-ons](https://github.com/Morne-Ingstar/Samsara/releases/tag/addons) release; Samsara's Components page downloads them for you.
+Use Samsara's Components page to download optional wake-word models, gesture
+control and CUDA acceleration. The packs and `manifest.json` are on the
+separate [Samsara add-ons](https://github.com/Morne-Ingstar/Samsara/releases/tag/addons)
+release. Version 0.42.2 reuses these packs:
+
+| File | Purpose |
+| --- | --- |
+| `Samsara-WakeWord-Models-v0.40.3.zip` | Optional wake-word models. |
+| `Samsara-GestureControl-v0.40.3.zip` | Optional webcam gesture control. |
+| `Samsara-CUDA-Pack-v0.40.3.zip` | Optional NVIDIA GPU acceleration. |
+| `manifest.json` | Component sizes and SHA-256 hashes. |
 
 ## 1. The installer (most people)
 
@@ -50,14 +56,15 @@ page.
 
 ## 2. The ZIPs (corporate proxies, no network on the target machine)
 
-Every component is also a plain ZIP on the release page, and `manifest.json`
-beside them lists each one's size and SHA-256.
+The portable app ZIP is on the versioned release page. Optional component
+ZIPs are on the [Samsara add-ons](https://github.com/Morne-Ingstar/Samsara/releases/tag/addons)
+release; `manifest.json` there lists each one's size and SHA-256.
 
 1. Download `Samsara-Windows-v0.42.2.zip` and unpack it anywhere; run
    `Samsara.exe` from that folder.
-2. Wake-word models: unpack `Samsara-WakeWord-Models-v0.42.2.zip` into
+2. Wake-word models: unpack `Samsara-WakeWord-Models-v0.40.3.zip` into
    `Samsara\_internal\openwakeword\resources\models`.
-3. GPU acceleration: unpack `Samsara-CUDA-Pack-v0.20.0.zip` into
+3. GPU acceleration: unpack `Samsara-CUDA-Pack-v0.40.3.zip` into
    `Samsara\_internal\ctranslate2` (all ten DLLs; see [CUDA guide](CUDA.md)).
 
 The component ZIPs do not include the transcription model. A fresh machine
