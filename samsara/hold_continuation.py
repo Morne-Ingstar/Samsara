@@ -87,7 +87,13 @@ def _preserve(word, decoded):
         return True
     if len(letters) > 1 and (letters.isupper() or any(c.isupper() for c in letters[1:])):
         return True
-    # A name needs the decoder's own mid-sentence capitalization evidence.
+    # Reuse pause cleanup's ordinary vocabulary and pronouns. Unknown words
+    # keep the decoder's capital: a stray capital is safer than a damaged name.
+    from samsara.ava_edit.selection import _LOWERCASE_WORDS
+    from samsara.ava_edit.pause_cleanup import _SUBJECTS
+    if word.casefold() not in _LOWERCASE_WORDS | _SUBJECTS:
+        return True
+    # Even an ordinary spelling can have mid-sentence name evidence.
     tokens = list(_WORD.finditer(decoded))
     return any(token[0] == word and token[0][0].isupper()
                and not re.search(r'[.!?]\s*["\'“‘(]*$', decoded[:token.start()])

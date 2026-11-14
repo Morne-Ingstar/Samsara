@@ -49,6 +49,40 @@ def test_evidenced_mid_sentence_names_survive(app, text):
     assert hc.prepare(app, text, text) == text
 
 
+@pytest.mark.parametrize('word', [
+    'Sarah', 'London', 'Zuri', 'Quizzical',
+    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
+    'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+    'September', 'October', 'November', 'December',
+])
+def test_single_name_or_uncertain_word_keeps_capital(app, word):
+    previous(app, 'I called ')
+    text = word + ' yesterday.'
+    assert hc.prepare(app, text, text) == text
+
+
+@pytest.mark.parametrize('word', [
+    'Because', 'And', 'The', 'So', 'Then', 'It', 'There', 'They', 'You',
+    'He', 'She', 'We',
+])
+def test_known_ordinary_first_word_still_lowers(app, word):
+    previous(app)
+    text = word + ' mattered.'
+    assert hc.prepare(app, text, text) == word.lower() + ' mattered.'
+
+
+@pytest.mark.parametrize('text', ['"Sarah tomorrow."', '(Sarah tomorrow.)',
+                                  '“Sarah tomorrow.”', "Sarah's turn."])
+def test_single_name_survives_openers_and_possessive(app, text):
+    previous(app, 'I called ')
+    assert hc.prepare(app, text, text) == text
+
+
+def test_single_name_keeps_capital_and_gets_missing_space(app):
+    previous(app, 'I met')
+    assert hc.prepare(app, 'Sarah tomorrow.', 'Sarah tomorrow.') == ' Sarah tomorrow.'
+
+
 def test_sentence_initial_repeat_is_not_proper_noun_evidence(app):
     previous(app)
     text = 'Because it mattered. Because we cared.'
