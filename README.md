@@ -51,8 +51,8 @@ or **“double click 7.”**
 | --- | --- |
 | [**Latest published release**](https://github.com/Morne-Ingstar/Samsara/releases/latest) | Install the published Windows build. |
 
-v0.42.2 is the upcoming release. Its download filenames are
-listed in the [install guide](Docs/INSTALL.md); its [release page](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.42.2)
+v0.42.3 is the upcoming release. Its download filenames are
+listed in the [install guide](Docs/INSTALL.md); its [release page](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.42.3)
 will offer the installer and portable ZIP once published.
 
 Samsara is still evolving; “public release” does not mean every workflow is

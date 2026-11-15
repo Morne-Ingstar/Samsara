@@ -15,6 +15,7 @@ RELEASE_SUMMARIES = {
     "0.42.0": "0.42.0 - steadier dictation, easier hands-free, clearer messages, and more voice commands.",
     "0.42.1": "0.42.1 - steadier dictation that keeps every word, easier hands-free, clearer messages, and more voice commands.",
     "0.42.2": "0.42.2 - cleaner dictation that keeps your words and joins your sentences, easier hands-free, and more voice commands.",
+    "0.42.3": "0.42.3 - cleaner dictation that keeps more of your words and carries a sentence across holds, easier hands-free, and more voice commands.",
 }
 
 

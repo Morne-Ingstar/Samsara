@@ -3,14 +3,14 @@
 Two routes. Both end with the same application; pick by your situation.
 
 Open the [latest published release](https://github.com/Morne-Ingstar/Samsara/releases/latest).
-The [v0.42.2 release page](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.42.2)
+The [v0.42.3 release page](https://github.com/Morne-Ingstar/Samsara/releases/tag/v0.42.3)
 will provide the installer and portable ZIP below once the pre-release is published.
 The latest-release link may point to a different version.
 
 | File | Purpose |
 | --- | --- |
-| `SamsaraSetup-0.42.2.exe` | Installer for a normal Windows installation. |
-| `Samsara-Windows-v0.42.2.zip` | Portable app; extract before running. |
+| `SamsaraSetup-0.42.3.exe` | Installer for a normal Windows installation. |
+| `Samsara-Windows-v0.42.3.zip` | Portable app; extract before running. |
 
 Each EXE/ZIP above also has a matching `.sha256` file. GitHub's source-code
 archives are not the Windows application.
@@ -18,7 +18,7 @@ archives are not the Windows application.
 Use Samsara's Components page to download optional wake-word models, gesture
 control and CUDA acceleration. The packs and `manifest.json` are on the
 separate [Samsara add-ons](https://github.com/Morne-Ingstar/Samsara/releases/tag/addons)
-release. Version 0.42.2 reuses these packs:
+release. Version 0.42.3 reuses these packs:
 
 | File | Purpose |
 | --- | --- |
@@ -29,7 +29,7 @@ release. Version 0.42.2 reuses these packs:
 
 ## 1. The installer (most people)
 
-Download `SamsaraSetup-0.42.2.exe` from the release page and run it.
+Download `SamsaraSetup-0.42.3.exe` from the release page and run it.
 
 - It installs for your user account only, no administrator rights needed.
   Choose "all users" in the first dialog if you want that instead.
@@ -60,7 +60,7 @@ The portable app ZIP is on the versioned release page. Optional component
 ZIPs are on the [Samsara add-ons](https://github.com/Morne-Ingstar/Samsara/releases/tag/addons)
 release; `manifest.json` there lists each one's size and SHA-256.
 
-1. Download `Samsara-Windows-v0.42.2.zip` and unpack it anywhere; run
+1. Download `Samsara-Windows-v0.42.3.zip` and unpack it anywhere; run
    `Samsara.exe` from that folder.
 2. Wake-word models: unpack `Samsara-WakeWord-Models-v0.40.3.zip` into
    `Samsara\_internal\openwakeword\resources\models`.
@@ -74,7 +74,7 @@ Or let the installer do the unpacking from a folder you carried over: put
 the ZIPs and their matching `manifest.json` in one folder and run
 
 ```
-SamsaraSetup-0.42.2.exe /ComponentsDir="D:\samsara-components"
+SamsaraSetup-0.42.3.exe /ComponentsDir="D:\samsara-components"
 ```
 
 The installer then verifies and installs the selected components from that
@@ -83,7 +83,7 @@ folder instead of the network. `/NoFetch` skips components entirely.
 ## Verifying a download
 
 ```
-certutil -hashfile SamsaraSetup-0.42.2.exe SHA256
+certutil -hashfile SamsaraSetup-0.42.3.exe SHA256
 ```
 
 Compare with the `.sha256` file on the release page, or with `manifest.json`
