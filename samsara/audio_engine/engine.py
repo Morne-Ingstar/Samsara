@@ -328,6 +328,12 @@ class AudioCaptureEngine:
         self._before_reopen = before_reopen
         self._stream_lock = threading.RLock()
         self._using_default_fallback = False
+        # 1229: bounded diagnostic references only; never used for decisions.
+        self._last_callback_status = None
+        self._last_callback_exception = None
+        self._last_frame_at = None
+        self._open_cursor = 0
+        self._loss_diagnostics = None
 
     # ── Stream lifecycle ──────────────────────────────────────────────────────
 
@@ -359,7 +365,7 @@ class AudioCaptureEngine:
                 if self._try_reopen_locked(phase='device change', rescan=True):
                     return True
                 self._recovering = already_recovering
-                self._on_stream_finished()
+                self._on_stream_finished(origin="unknown")
                 return False
 
     @property
@@ -372,7 +378,7 @@ class AudioCaptureEngine:
 
     def mark_device_lost(self):
         """A Windows capture-endpoint removal is equivalent to stream death."""
-        self._on_stream_finished()
+        self._on_stream_finished(origin="endpoint-removed")
 
     def start(self) -> None:
         with self._stream_lock:
@@ -458,6 +464,10 @@ class AudioCaptureEngine:
             f"blocksize={self._blocksize}"
         )
 
+        self._open_cursor = getattr(self._ring, 'write_cursor', 0)
+        self._last_callback_status = None
+        self._last_callback_exception = None
+        self._last_frame_at = None
         self._stream = sd.InputStream(
             samplerate       = self._native_rate,
             channels         = 1,
@@ -536,7 +546,7 @@ class AudioCaptureEngine:
 
     # ── Disconnect/reconnect recovery ─────────────────────────────────────────
 
-    def _on_stream_finished(self) -> None:
+    def _on_stream_finished(self, *, origin="portaudio-finished") -> None:
         """sounddevice finished_callback -- fires whenever the stream stops,
         for ANY reason (deliberate stop() or an unexpected device death).
 
@@ -549,7 +559,15 @@ class AudioCaptureEngine:
             return  # deliberate stop() already cleared this -- not a death
         if self._recovering:
             return  # already handling a prior death; avoid a second thread
-        logger.error("[ACE] Input stream died unexpectedly -- entering recovery")
+        # Snapshot before any reopen can reset callback metadata. No exception
+        # instance/traceback, audio, or exception message is retained.
+        self._loss_diagnostics = (
+            "callback-error" if self._last_callback_exception else origin,
+            time.perf_counter(), self._last_frame_at,
+            self._last_callback_status, self._last_callback_exception,
+            getattr(self._ring, 'write_cursor', 0), self._open_cursor,
+            self._device_identity, getattr(self._ring, 'device_epoch', None),
+        )
         self._recovering = True
         self._device_lost = True
         thread_registry.spawn("ace-recovery", self._recovery_loop, daemon=True)
@@ -566,6 +584,8 @@ class AudioCaptureEngine:
         when no name was stored (older config, or "auto" device selection,
         where None always means "whatever the OS default is right now").
         """
+        self._log_stream_loss()
+
         # Moved here from _on_stream_finished (the PortAudio finished-
         # callback thread) so play_sound('error') -- which opens an output
         # stream -- never runs on the PortAudio thread during a device-death
@@ -603,6 +623,48 @@ class AudioCaptureEngine:
                 self._slow_probe_loop()
         finally:
             self._recovering = False
+
+    def _log_stream_loss(self):
+        """1229: format only on the worker; labels describe observed origin.
+
+        PortAudio finished is not proof of a native cause. No backend error
+        code is supplied here, so a failed refresh is explicitly unknown.
+        """
+        loss = self._loss_diagnostics
+        if loss is None:
+            return
+        origin, stopped, last, status, exception, cursor, opened, identity, epoch = loss
+        if origin not in ("portaudio-finished", "callback-error", "endpoint-removed",
+                          "device-invalidated", "unknown"):
+            origin = "unknown"
+        app = getattr(self._on_stream_death, '__self__', None)
+        hold = getattr(app, '_hotkey_recording', None)
+        game = getattr(getattr(app, '_game_mode', None), 'active', None)
+        logger.error(
+            "[CAPTURE] Stream stopped unexpectedly origin=%s "
+            "callback_status=%s frames_since_open=%s ms_since_last_frame=%s "
+            "callback_exception=%s device=%r host_api=%r device_epoch=%s "
+            "hold_active=%s game_mode=%s context_at=worker-entry",
+            origin, str(status) if status is not None else "unknown", cursor - opened,
+            round((stopped - last) * 1000, 3) if last is not None else "unknown",
+            exception.__name__ if exception else "none",
+            identity[0] if identity else self._device_name,
+            identity[1] if identity else "unknown", epoch,
+            "unknown" if hold is None else ("yes" if hold else "no"),
+            "unknown" if game is None else ("on" if game else "off"),
+        )
+
+    def _log_recovery_gap(self):
+        loss = self._loss_diagnostics
+        if loss is None:
+            return
+        logger.info(
+            "[CAPTURE] Stream recovered gap_ms=%.3f audio_arrived_during_gap=%s "
+            "gap_basis=stop-notification-to-reopen",
+            (time.perf_counter() - loss[1]) * 1000,
+            "yes" if getattr(self._ring, 'write_cursor', 0) > loss[5] else "no",
+        )
+        self._loss_diagnostics = None
 
     def _resolve_device(self):
         """The device argument for a reopen: an INDEX whenever possible.
@@ -646,6 +708,7 @@ class AudioCaptureEngine:
             return False
         if note:
             logger.warning("[ACE] Recovered on a different backend -- %s", note)
+        self._log_recovery_gap()
         logger.info("[ACE] Recovery succeeded -- stream rebuilt")
         self._recovering = False
         self._device_lost = False
@@ -704,42 +767,50 @@ class AudioCaptureEngine:
             this exact callback while torch was mid-import elsewhere.
           - write_cursor increment is the commit fence (see ring.py).
         """
-        t = time.perf_counter()
+        try:
+            t = time.perf_counter()
+            self._last_callback_status = status
 
-        if status:
-            self._overflow_count += 1   # GIL-atomic plain int
+            if status:
+                self._overflow_count += 1   # GIL-atomic plain int
 
-        flat = indata[:, 0]   # mono float32, length = blocksize
+            flat = indata[:, 0]   # mono float32, length = blocksize
 
-        # Resample native rate → 16kHz int16. _resample_state is bound in
-        # _open_stream() — no filter design, no scipy, no import cost here.
-        if self._resample_state is not None:
-            h_padded, taps_per_phase, n_pre_remove, n_out = self._resample_state
-            resampled = _polyphase_resample(
-                flat, self._up, self._down,
-                h_padded, taps_per_phase, n_pre_remove, n_out,
-            )
-        else:
-            resampled = flat
+            # Resample native rate → 16kHz int16. _resample_state is bound in
+            # _open_stream() — no filter design, no scipy, no import cost here.
+            if self._resample_state is not None:
+                h_padded, taps_per_phase, n_pre_remove, n_out = self._resample_state
+                resampled = _polyphase_resample(
+                    flat, self._up, self._down,
+                    h_padded, taps_per_phase, n_pre_remove, n_out,
+                )
+            else:
+                resampled = flat
 
-        n = len(resampled)
-        if n == FRAME_SIZE:
-            pcm_f32 = resampled
-        elif n < FRAME_SIZE:
-            # Pad with zeros — set flag for metric logging outside callback
-            pcm_f32 = np.zeros(FRAME_SIZE, dtype=np.float32)
-            pcm_f32[:n] = resampled
-            self._size_warned = True
-        else:
-            # Truncate — set flag for metric logging outside callback
-            pcm_f32 = resampled[:FRAME_SIZE]
-            self._size_warned = True
+            n = len(resampled)
+            if n == FRAME_SIZE:
+                pcm_f32 = resampled
+            elif n < FRAME_SIZE:
+                # Pad with zeros — set flag for metric logging outside callback
+                pcm_f32 = np.zeros(FRAME_SIZE, dtype=np.float32)
+                pcm_f32[:n] = resampled
+                self._size_warned = True
+            else:
+                # Truncate — set flag for metric logging outside callback
+                pcm_f32 = resampled[:FRAME_SIZE]
+                self._size_warned = True
 
-        pcm = np.clip(pcm_f32 * 32767.0, -32768, 32767).astype(np.int16)
+            pcm = np.clip(pcm_f32 * 32767.0, -32768, 32767).astype(np.int16)
 
-        self._ring.write(pcm, t, self._ring.device_epoch)
+            self._ring.write(pcm, t, self._ring.device_epoch)
+            self._last_frame_at = t
 
-        self._cb_durations.append(time.perf_counter() - t)
+            self._cb_durations.append(time.perf_counter() - t)
+        except BaseException as exc:
+            # Keep the class only; preserve sounddevice's existing abort/stop
+            # semantics by re-raising the very same exception.
+            self._last_callback_exception = type(exc)
+            raise
 
     # ── Consumer management ───────────────────────────────────────────────────
 
