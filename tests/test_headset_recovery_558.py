@@ -282,8 +282,8 @@ def test_f4_unique_mme_prefix_marks_real_capture_lost(monkeypatch):
     endpoints[0] -= {('usb', MIC)}
     changes._observe()
     assert changes._input_pending
-    assert app._ace_engine.device_lost
-    assert len(queued) == 1
+    assert not app._ace_engine.device_lost  # 1218: settle the removal without a second recovery worker.
+    assert not queued  # Native stream errors still retain their existing recovery path.
     app._ace_engine.stop()
 
 
@@ -303,7 +303,7 @@ def test_f4_ambiguous_mme_prefix_warns_once_without_refresh(monkeypatch, caplog)
     assert not app._ace_engine.device_lost
     messages = [r.getMessage() for r in caplog.records if 'ambiguous' in r.getMessage()]
     assert messages == ['[MIC] Capture endpoint name is ambiguous; leaving audio unchanged']
-    assert MIC not in caplog.text
+    assert MIC not in '\n'.join(messages)  # 1218: audit lines now intentionally include endpoint names.
     assert audio.events == []
     app._ace_engine.stop()
 
@@ -348,9 +348,9 @@ def test_g3_ambiguous_name_still_requests_lost_or_fallback_input(monkeypatch, st
     changes.prime()
     endpoints[0] |= {('other', 'Microphone (Realtek(R) Audio)')}
     changes._observe()
-    assert changes._input_pending
+    assert changes._input_pending == (state == 'lost')  # 1218: an unrelated addition cannot cycle healthy fallback.
     assert not audio.events
-    assert MIC not in caplog.text
+    assert MIC not in '\n'.join(r.message for r in caplog.records if 'ambiguous' in r.message)  # 1218: audit names are required.
     app._ace_engine.stop()
 
 

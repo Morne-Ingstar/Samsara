@@ -4,23 +4,29 @@ import logging
 from PySide6.QtWidgets import QMenu, QMessageBox
 
 from samsara.audio_devices import handsfree_warning, microphone_choice, microphone_label, preferred_microphone_name
-from samsara.microphone_recovery import selection_name, select_microphone, select_system_default
+from samsara.microphone_recovery import display_microphones, selection_name, select_microphone, select_system_default
 from samsara.ui import theme
 
 log = logging.getLogger(__name__)
 
 
 def build_microphone_menu(app, add):
-    changes = getattr(app, '_microphone_changes', None)
-    if changes is not None and (changes._input_pending or changes._pending is not None
-                                or getattr(changes, '_input_stale', False)):
-        changes.request_input()  # 1206: keep stale-list intent queued during speech.
+    changes = vars(app).get('_microphone_changes')
+    if (changes is not None and getattr(changes, '_input_stale', False)
+            and not changes._input_pending):
+        # 1218: retry a given-up scan without shortening a pending burst's wait.
+        changes.request_input()
     if not app._mic_refresh_blocked():
         try:
+            # 1218: keep 901's cached-index/name reconciliation before the
+            # label. Reading PortAudio's table does not reset or close capture.
             app.available_mics = app.get_available_microphones()
+            if changes is not None:
+                changes._backend_mics = list(app.available_mics)
             app._reconcile_microphone_selection()
         except Exception as exc:
             log.debug('Microphone menu refresh: %s', exc)
+    display_microphones(app)
     menu = QMenu(f'[MIC]  {selection_name(app)}')
     menu.setStyleSheet(f'QMenu::item:disabled {{ color: {theme.TEXT_DISABLED}; }}')
     current_name = selection_name(app)
@@ -30,7 +36,7 @@ def build_microphone_menu(app, add):
         message = handsfree_warning(mic['name'], app.available_mics)
         if message:
             QMessageBox.information(None, 'Microphone quality', message)
-        select_microphone(app, mic['id'], app.switch_microphone_and_refresh)
+        select_microphone(app, mic['id'], app.switch_microphone_and_refresh, name=mic['name'])
 
     add(menu, 'System default',
         lambda _checked: select_system_default(app, app.switch_microphone_and_refresh),

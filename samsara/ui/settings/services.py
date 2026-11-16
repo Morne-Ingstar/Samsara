@@ -10,6 +10,9 @@ def apply_microphone_choice(app, updates):
     """
     if 'microphone' not in updates:
         return
+    from samsara.microphone_recovery import apply_display_choice
+    if apply_display_choice(app, updates):
+        return
     requested = updates['microphone']
     name = updates.get('microphone_name')
     if requested is None:

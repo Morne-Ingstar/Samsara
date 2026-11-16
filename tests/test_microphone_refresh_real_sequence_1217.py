@@ -126,6 +126,7 @@ def test_busy_then_real_rescan_keeps_capture_and_selection(sequence, caplog, bus
     lives.clear()
     app._rescan_idle_since = None  # First of the owner's five lines.
     changes.notify()
+    changes.request_input()  # 1218: unrelated arrival needs no reset; test explicit admission.
     with caplog.at_level('INFO'):
         for step in range(1, 4 + busy_attempts):
             now[0] = step * .5
@@ -165,7 +166,7 @@ def test_busy_forever_gives_up_without_touching_any_stream(sequence, caplog):
             changes.tick()
     assert not changes._input_pending and changes._input_stale
     assert not audio.events and not lives
-    assert [m['name'] for m in app.available_mics] == [CHOSEN]
+    assert {m['name'] for m in app.available_mics} == {CHOSEN, HEADSET}  # 1218: live display even while reset waits.
     assert not app._no_microphone
     assert guard.attempts < 85  # Backoff, not a tight retry loop.
     assert len(audits(caplog)) == 1
@@ -219,7 +220,7 @@ def test_ace_false_return_cannot_clear_request(sequence, monkeypatch, caplog):
     with caplog.at_level('INFO'):
         changes.tick()
     assert changes._input_pending and not audio.events
-    assert len(app.available_mics) == 1
+    assert len(app.available_mics) == 2  # 1218: display is independent of failed backend refresh.
     assert not audits(caplog)
     assert not any('completed' in r.message for r in caplog.records)
 
@@ -241,7 +242,7 @@ def test_tray_next_open_has_new_list_and_can_retry_after_giveup(sequence, monkey
     changes._input_stale = True  # A previous bounded attempt gave up.
     first = []
     tray.build_microphone_menu(app, lambda menu, label, *a, **kw: first.append(label))
-    assert changes._input_pending and len(first) == 2  # Default + cached Focusrite.
+    assert changes._input_pending and len(first) == 3  # 1218: Default + both ACTIVE inputs immediately.
     now[0] = .5
     changes.tick()
     second = []
@@ -257,7 +258,7 @@ def test_new_windows_default_does_not_change_named_selection(sequence):
     now[0] = 1
     changes.tick()
     assert app.config['microphone_name'] == CHOSEN
-    assert app._capture_device == 0
+    assert app._ace_engine.capture_name == CHOSEN and not audio.events  # 1218: no reset for another default.
 
 
 def test_system_default_selection_follows_new_default(sequence):

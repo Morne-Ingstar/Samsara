@@ -29,7 +29,7 @@ from datetime import datetime
 
 from samsara import autostart
 from samsara.audio_devices import handsfree_warning, microphone_choice, microphone_label, preferred_microphone_name
-from samsara.microphone_recovery import FALLBACK_MESSAGE
+from samsara.microphone_recovery import FALLBACK_MESSAGE, display_microphones
 from samsara.config_transfer import (
     ConfigTransferError,
     export_config,
@@ -156,6 +156,17 @@ def _microphone_updates(combo):
     return {key: choice[key] for key in ('microphone', 'microphone_name') if key in choice}
 
 
+class _MicrophoneComboBox(QComboBox):
+    def __init__(self, app):
+        super().__init__()
+        self.app = app
+
+    def showPopup(self):
+        choice = self.currentData(_MIC_CHOICE_ROLE) or self.app.config
+        _populate_microphone_combo(self, display_microphones(self.app), choice)
+        super().showPopup()
+
+
 class GeneralPage:
     """Methods of the General settings page (moved from _SettingsWindow)."""
 
@@ -265,8 +276,8 @@ class GeneralPage:
         )
         layout.addWidget(audio_card)
 
-        mics = list(getattr(self.app, 'available_mics', None) or [])
-        mic_combo = QComboBox()
+        mics = display_microphones(self.app)
+        mic_combo = _MicrophoneComboBox(self.app)
         mic_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         mic_combo.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         # "System default" mirrors output_combo's pattern (~line 1211):

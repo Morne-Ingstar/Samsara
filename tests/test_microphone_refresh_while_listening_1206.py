@@ -53,6 +53,7 @@ def add_microphone(audio, changes, now, endpoints):
     audio.pending = [dev('Chosen microphone'), dev('New microphone')]
     endpoints[0] |= {('new', 'New microphone')}
     changes.notify()  # Same scheduling entry point as endpoint-added callbacks.
+    changes.request_input()  # 1218: exercise explicit reset admission; unrelated arrivals only update display.
     # Cross the debounce, the 30-second backoff boundary and two 5-second retries.
     for step in range(1, 91):
         now[0] = step * 0.5
@@ -247,7 +248,7 @@ def test_idle_removal_keeps_existing_device_lost_path(mic_change):
     app._ace_engine.mark_device_lost = lost
     endpoints[0] = frozenset()
     changes._observe()
-    lost.assert_called_once_with()
+    lost.assert_not_called()  # 1218: let the burst settle; do not start a second recovery worker.
     assert changes._input_pending
 
 
@@ -273,7 +274,7 @@ def test_menu_requests_known_stale_list_even_during_speech(mic_change, monkeypat
     monkeypatch.setattr(tray, 'QMenu', lambda label: menu)
     add = Mock()
     assert tray.build_microphone_menu(app, add) is menu
-    assert changes._input_pending and not audio.events
+    assert not changes._input_pending and not audio.events  # 1218: opening an up-to-date list needs no reset.
     assert len(app.available_mics) == 1
 
 
@@ -361,5 +362,5 @@ def test_unrelated_input_refreshes_even_with_ambiguous_capture_aliases(mic_chang
     now[0] = 1
     changes.tick()
     assert not changes._input_pending
-    assert len(app.available_mics) == 2
+    assert len(app.available_mics) == 3  # 1218: Windows ACTIVE endpoints, including both ambiguous aliases.
     assert app.config['microphone_name'] == 'Chosen microphone'

@@ -19,6 +19,10 @@ def test_unplug_then_return_reopens_and_revives_without_restart_loop(monkeypatch
         audio.default.device = (-1, -1)
         default_id[0], endpoints[0] = None, frozenset()
         event(changes, now)
+        # 1218: observation queues one reset; it must not fabricate stream death.
+        assert not capture.device_lost and changes._input_pending
+        now[0] += 2.5
+        changes.tick()
         assert capture.device_lost and app._no_microphone
         app.restart_hands_free.assert_not_called()
         audio.pending = [dict(name='Second', hostapi=0, max_input_channels=1, default_samplerate=16000)]
@@ -29,13 +33,16 @@ def test_unplug_then_return_reopens_and_revives_without_restart_loop(monkeypatch
             app._hands_free_fault = None
         app.restart_hands_free.side_effect = restart
         event(changes, now)
+        # 1218: the default change also waits for the final endpoint snapshot.
+        now[0] += 2.5
+        changes.tick()
         assert not capture.device_lost and not app._no_microphone
         app.restart_hands_free.assert_called_once_with(source='device-change')
         for _ in range(20):
             now[0] += 5
             changes.tick()
         assert app.restart_hands_free.call_count == 1
-        assert len(workers) == 1
+        assert len(workers) == 1  # Recovery after the actual failed reopen only.
     finally:
         capture.stop()
 

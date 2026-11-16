@@ -48,7 +48,7 @@ def test_default_change_with_armed_wake_keeps_stream_and_queues_refresh(monkeypa
         assert audio.opened == [0]  # A live armed capture keeps its stream.
         assert changes._input_pending and app._wake_consumer.running
         app.wake_word_active = False  # Wake word no longer armed: queued refresh runs.
-        now[0] += 1
+        now[0] += 3  # 1218: allow the 2.5-second endpoint burst to settle.
         changes.tick()
         assert audio.opened == [0, 1]
         assert not capture.device_lost
@@ -80,6 +80,9 @@ def test_device_event_revives_stopped_consumer_and_clears_fault(monkeypatch):
         audio.default.device = (1, -1)
         default_id[0] = 'second'
         event(changes, now)
+        # 1218: revival follows the coalesced reset, not the first observation.
+        now[0] += 2.5
+        changes.tick()
         app.restart_hands_free.assert_called_once_with(source='device-change')
         assert audio.opened == [0, 1] and app._hands_free_fault is None
     finally:
@@ -117,7 +120,7 @@ def test_input_change_waits_for_real_capture_to_finish(monkeypatch, blocked):
         event(changes, now)
         assert audio.opened == [0]
         setattr(app, blocked, False)
-        now[0] += 1
+        now[0] += 3  # 1218: preserve the idle guard after burst settling.
         changes.tick()
         assert audio.opened == [0, 1]
     finally:

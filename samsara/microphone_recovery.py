@@ -82,11 +82,25 @@ def selection_name(app):
     return name or app.get_current_microphone_name() or 'System default'
 
 
-def select_microphone(app, mic_id, switch=None):
+def select_microphone(app, mic_id, switch=None, *, name=None):
     """A named tray choice wins even when its ID used to belong to another mic."""
     entry = next((mic for mic in app.available_mics if mic['id'] == mic_id), None)
-    if entry is None:
+    if entry is None and name is None:
         return
+    name = name or entry['name']
+    changes = vars(app).get('_microphone_changes')
+    try:
+        active = changes.endpoints() if changes is not None else None
+    except Exception:
+        active = None
+    # 1218: display-only endpoint IDs never reach PortAudio. Revalidate even
+    # an old open menu's numeric choice before using its cached backend index.
+    if (entry is None or entry['name'] != name or str(mic_id).startswith('endpoint:') or (active is not None
+            and not matching_capture_endpoints(active, name))):
+        with getattr(app, '_config_lock', None) or nullcontext():
+            app.config.update(microphone=None, microphone_name=name)
+        app.persist_config()
+        return request_refresh(app)
     if (app.config.get('microphone') == mic_id
             and app.config.get('microphone_name') != entry['name']):
         with getattr(app, '_config_lock', None) or nullcontext():
@@ -416,6 +430,7 @@ def prepare_rescan(app, sd):
                 sd._terminate()
                 sd._initialize()
             app.available_mics = app.get_available_microphones()
+            changes_for(app)._backend_mics = list(app.available_mics)
             # Proof of BOTH a successful backend reset and a fresh enumeration.
             app._input_rescan_serial = getattr(app, '_input_rescan_serial', 0) + 1
             reconcile(app, sd)
@@ -476,9 +491,74 @@ def request_refresh(app):
 
 def capture_endpoints():
     """Windows endpoint identities, not PortAudio's cached table; no stream IO."""
-    from pycaw.pycaw import AudioUtilities
-    devices = AudioUtilities.GetAllDevices(data_flow=1, device_state=1)
-    return frozenset((d.id, d.FriendlyName) for d in devices)
+    from samsara.audio_devices import _ensure_com_initialized
+    owned = _ensure_com_initialized()
+    try:
+        from pycaw.pycaw import AudioUtilities
+        devices = AudioUtilities.GetAllDevices(data_flow=1, device_state=1)
+        return frozenset((d.id, d.FriendlyName) for d in devices)
+    finally:
+        if owned:
+            import ctypes
+            ctypes.windll.ole32.CoUninitialize()
+
+
+def display_microphones(app, *, current=None, trigger='menu'):
+    """Offer ACTIVE Windows inputs without resetting PortAudio or capture."""
+    changes = vars(app).get('_microphone_changes')
+    if changes is None:
+        # 1218: before watcher startup, retain the existing picker choices.
+        # Opening Settings must not create an independent endpoint observer.
+        return getattr(app, 'available_mics', [])
+    try:
+        current = changes.endpoints() if current is None else current
+    except Exception:
+        changes.warn_once('[MIC] Display endpoint observation unavailable; keeping last list')
+        return getattr(app, 'available_mics', [])
+    from samsara.audio_devices import _SKIP_KEYWORDS
+    before = list(getattr(app, 'available_mics', ()))
+    cached = changes._backend_mics
+    offered = []
+    show_all = getattr(app, 'config', {}).get('show_all_audio_devices', False)
+    for identity, friendly in sorted(current, key=lambda endpoint: (endpoint[1], endpoint[0])):
+        key = friendly.strip().casefold()
+        if not key or (not show_all and (any(word in key for word in _SKIP_KEYWORDS)
+                or friendly.strip() == 'Microphone ()' or '@System32\\drivers\\' in friendly)):
+            continue
+        if any(mic['name'] == friendly for mic in offered):
+            continue  # Existing name-based selection cannot distinguish duplicates.
+        match = next((mic for mic in cached
+                      if isinstance(mic['id'], int)
+                      and matching_capture_endpoints(current, mic['name']) == (identity,)), None)
+        offered.append(dict(match) if match else
+                       {'id': 'endpoint:' + identity, 'name': friendly, 'channels': 0})
+    app.available_mics = offered
+    if (not changes._input_pending
+            and {mic['name'] for mic in before} != {mic['name'] for mic in offered}):
+        selected = getattr(app, 'config', {}).get('microphone_name', 'System default')
+        old, new = {mic['name'] for mic in before}, {mic['name'] for mic in offered}
+        log.info('[MIC] Input refresh: rescanned=False devices_before=%d devices_after=%d '
+                 'added=%s removed=%s selected=%s selection_changed=False waited_ms=0 '
+                 'busy_owner=none trigger=%s', len(before), len(offered),
+                 sorted(new - old), sorted(old - new), selected, trigger)
+    return offered
+
+
+def apply_display_choice(app, updates):
+    """Intercept a new/disappeared Settings choice before legacy ID switching."""
+    mic_id, name = updates.get('microphone'), updates.get('microphone_name')
+    if mic_id is None or not name or name in ('System default', 'Default'):
+        return False
+    try:
+        changes = getattr(app, '_microphone_changes', None)
+        missing = changes is not None and not matching_capture_endpoints(changes.endpoints(), name)
+    except Exception:
+        missing = False
+    if str(mic_id).startswith('endpoint:') or missing:
+        select_microphone(app, mic_id, name=name)
+        updates.update({key: app.config.get(key) for key in ('microphone', 'microphone_name')})
+        return True
+    return False
 
 
 def default_capture_id():
@@ -543,11 +623,16 @@ class DeviceChanges:
         self._input_before = []
         self._input_selection = None
         self._input_stale = False
+        self._backend_mics = list(getattr(app, 'available_mics', ()))
+        self._input_trigger = 'menu'
+        self._input_not_before = 0.0
+        self._event_trigger = 'state'
         self.notifications = True
         self._capture = None
         self._render = None
         self._name_ambiguity_reported = False
         self._reported = set()
+        app._microphone_changes = self
 
     def warn_once(self, message):
         if message not in self._reported:
@@ -559,11 +644,16 @@ class DeviceChanges:
         self._capture = self.endpoints()
         self._input_default = self.input_id()
 
-    def notify(self, *_args):
+    def notify(self, trigger='state', *_args):
         with self._lock:
             self._pending = self.clock()
+            self._event_trigger = trigger if trigger in ('added', 'removed', 'state', 'default') else 'state'
 
-    def request_input(self):
+    def request_input(self, trigger='menu', *, settle=0.0):
+        if self._input_pending and self._input_trigger == 'menu' and settle:
+            return  # An explicit Refresh already owns this transaction.
+        self._input_trigger = trigger
+        self._input_not_before = self.clock() + settle
         self._input_stale = True
         if not self._input_pending:
             self._input_attempts = 0
@@ -588,12 +678,13 @@ class DeviceChanges:
         after = [mic['name'] for mic in getattr(self.app, 'available_mics', ())]
         selected = getattr(self.app, 'config', {}).get('microphone_name', 'System default')
         log.info('[MIC] Input refresh: rescanned=%s devices_before=%d devices_after=%d '
-                 'added=%s removed=%s selected=%s selection_changed=%s waited_ms=%d busy_owner=%s',
+                 'added=%s removed=%s selected=%s selection_changed=%s waited_ms=%d busy_owner=%s trigger=%s',
                  rescanned, len(self._input_before), len(after),
                  sorted(set(after) - set(self._input_before)),
                  sorted(set(self._input_before) - set(after)), selected,
                  selected != self._input_selection,
-                 round((self.clock() - self._waiting_since) * 1000), self._input_busy_owner)
+                 round((self.clock() - self._waiting_since) * 1000), self._input_busy_owner,
+                 self._input_trigger)
         log.info('[MIC] Input refresh %s', reason)
         self._input_pending = self._input_deferred = False
         self._input_stale = not rescanned
@@ -611,8 +702,10 @@ class DeviceChanges:
             self._input_refresh_lock.release()
 
     def _attempt_input(self, now):
-        if now < self._retry_at:
+        if now < self._retry_at or now < self._input_not_before:
             return
+        if self._input_trigger != 'menu' and self._pending is not None:
+            return  # A new notification must be observed before resetting.
         if now - self._waiting_since >= INPUT_REFRESH_TIMEOUT:
             self._finish_input(now, rescanned=False, reason='given up after 2 minutes')
             return
@@ -641,6 +734,8 @@ class DeviceChanges:
                 self._finish_input(now, rescanned=False,
                                    reason='given up after 3 failed attempts')
         else:
+            if self._capture is not None:
+                display_microphones(self.app, current=self._capture, trigger=self._input_trigger)
             self._finish_input(now, rescanned=True, reason='completed')
             self._output_pending = False  # Rescan already restored outputs.
             self._restore_wake(now)
@@ -712,22 +807,27 @@ class DeviceChanges:
 
     def _observe(self):
         self.observe_output()
+        # 1218: a failed capture observation cannot publish a partial snapshot
+        # or queue input work that starves the independently observed outputs.
+        current = self.endpoints()
         default = self.input_id()
         old_default, self._input_default = self._input_default, default
         if default != old_default and follows_default(self.app):
-            self.request_input()
-        current = self.endpoints()
+            self.request_input('default', settle=2.5)
         before, self._capture = self._capture, current
         if before is None:
             if current and self.app._no_microphone:
                 self.request_input()  # Initial observation failed; a device is now visible.
+            if hasattr(self.app, 'available_mics'):
+                display_microphones(self.app, current=current, trigger=self._event_trigger)
             return
         if current == before:
             return
         ace = getattr(self.app, '_ace_engine', None)
         lost = getattr(ace, 'device_lost', self.app._no_microphone)
         name = getattr(ace, 'capture_name', None)
-        # 1206: input additions must refresh the list even with a healthy preference.
+        # 1218: only the actual capture loss or a preferred input returning
+        # needs backend work. Unrelated endpoint changes update display only.
         previous = matching_capture_endpoints(before, name)
         present = matching_capture_endpoints(current, name)
         if len(previous) > 1 or len(present) > 1:
@@ -743,13 +843,18 @@ class DeviceChanges:
         # A return needs one identifiable endpoint after absence; a change
         # among ambiguous matches must not cycle a healthy chosen input.
         returned = not configured_before and len(configured_present) == 1
-        # Ambiguous aliases returning are not new inputs (1177); unrelated
-        # additions still refresh the list without changing the preference.
-        added = [endpoint for endpoint in current - before if endpoint[0] not in present]
-        if lost or removed or follows_default(self.app) or returned or added:
-            if removed and ace is not None:
-                ace.mark_device_lost()
-            self.request_input()
+        trigger = self._event_trigger if self._pending is not None else (
+            'removed' if before - current and not current - before else
+            'added' if current - before and not before - current else 'state')
+        fallback_changed = (getattr(self.app, '_using_default_mic', False)
+                            and configured_before != configured_present)
+        if lost or removed or returned or fallback_changed:
+            # Do not manufacture stream death here: it starts ACE's independent
+            # recovery worker before this burst can settle. Real stream death
+            # still follows ACE's unchanged native-error path.
+            settle = 2.5 if removed or self._input_pending else 0.0
+            self.request_input(trigger, settle=settle)
+        display_microphones(self.app, current=current, trigger=trigger)
 
     def tick(self):
         if not hasattr(self.app, '_no_microphone'):
@@ -767,7 +872,7 @@ class DeviceChanges:
             pending = self._pending
             due = pending is not None and now - pending >= 0.75
         # 1217: notifications can be lost even after successful registration.
-        poll = now >= self._next_probe
+        poll = pending is None and now >= self._next_probe
         if due or poll:
             try:
                 self._observe()
@@ -808,10 +913,10 @@ def register_notifications(notify):
     from pycaw.callbacks import MMNotificationClient
     from pycaw.pycaw import AudioUtilities
     class Notifications(MMNotificationClient):
-        on_device_added = lambda self, *args: notify()
-        on_device_removed = lambda self, *args: notify()
-        on_device_state_changed = lambda self, *args: notify()
-        on_default_device_changed = lambda self, *args: notify()
+        on_device_added = lambda self, *args: notify('added')
+        on_device_removed = lambda self, *args: notify('removed')
+        on_device_state_changed = lambda self, *args: notify('state')
+        on_default_device_changed = lambda self, *args: notify('default')
     receiver = Notifications()
     enumerator = AudioUtilities.GetDeviceEnumerator()
     enumerator.RegisterEndpointNotificationCallback(receiver)
