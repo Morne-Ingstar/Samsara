@@ -29,6 +29,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      # pytest creates/clears each basetemp leaf, but not its parent. Prepare
+      # the shared parent even if an earlier check prevents the main suite.
+      - name: Prepare pytest temporary directories
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/.pytest-tmp" | Out-Null
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:

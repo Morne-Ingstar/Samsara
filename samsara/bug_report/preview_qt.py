@@ -1,5 +1,5 @@
 """Review a finished ZIP before a single explicit send or browser handoff."""
-import threading
+from samsara.runtime import thread_registry
 from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QApplication, QDialog, QHBoxLayout, QLabel,
@@ -182,7 +182,7 @@ class ReportPreview(QDialog):
             except RuntimeError:
                 pass  # Closed preview; upload/fallback still completes without another attempt.
 
-        threading.Thread(target=worker, name="problem-report-upload", daemon=True).start()
+        thread_registry.spawn("problem-report-upload", worker, daemon=True)
         return True
 
     def _upload_done(self, result):
