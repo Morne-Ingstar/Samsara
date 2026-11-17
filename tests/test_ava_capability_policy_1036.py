@@ -191,6 +191,9 @@ def test_t3_email_plan_reuses_native_preview_and_attempts_once(runtime, monkeypa
     assert plan(request(runtime), ['submit']).state == 'queued'
     op = policy.pending_operation()
     assert message.preview() in op.prompt and 'Send?' in op.prompt
+    # 1242: plan questions also separate their spoken text from the visible body.
+    assert message.spoken_preview() in runtime.spoken[-1]
+    assert message.body not in runtime.spoken[-1]
     assert op.handling == effects.CONFIRM and op._ttl_s == 30
     assert callable(op.message_readback) and runtime.app.effects == []
     if change == 'body':

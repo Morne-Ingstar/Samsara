@@ -246,7 +246,7 @@ def ask(app, runner, kind, text, options, *, operation=None, duration=None, labe
         if kind == "teaching":
             _feedback(app, label, q)
         _tick(app, q)  # Also retires a question if speech is cancelled or AI is switched off.
-        spoken = text + (" " + "; ".join(options) + "." if options else "")
+        spoken = getattr(operation, "message_spoken_prompt", text) + (" " + "; ".join(options) + "." if options else "")
         if operation is not None:
             from samsara.consent_feedback import prioritize_confirmation
             prioritize_confirmation(app)

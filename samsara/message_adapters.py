@@ -50,6 +50,19 @@ class Message:
         return (f"Slack from {self.account}, conversation {self.conversation}, "
                 f"to {self.label} ({', '.join(self.recipients)}): {body}")
 
+    def spoken_preview(self):
+        """1242: identify the recipients and subject without reading the body."""
+        # PLACEHOLDER COPY (1242): speech only; visible preview/full readback stay intact.
+        if self.provider == "outlook":
+            recipients = f"Email to {', '.join(self.recipients) or 'none'}"
+            if self.cc:
+                recipients += f". CC: {', '.join(self.cc)}"
+            if self.bcc:
+                recipients += f". BCC: {', '.join(self.bcc)}"
+        else:
+            recipients = f"Slack to {self.label} ({', '.join(self.recipients)})"
+        return f"{recipients}. Subject: {self.subject.strip() or 'none'}"
+
 
 @dataclass(frozen=True)
 class Receipt:

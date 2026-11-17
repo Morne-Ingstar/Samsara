@@ -1481,7 +1481,7 @@ def listen_for_confirmation(app, prompt):
         # Hosts without microphone routing retain spoken/keyed replies.
         from plugins.commands import ask_ollama as ava
         prioritize_confirmation(app)
-        return ava.speak(app, text, category="confirmation")
+        return ava.speak(app, getattr(op, "message_spoken_prompt", text), category="confirmation")
     runner = _ConfirmationListener(app, op)
     if callable(getattr(op, "message_readback", None)):
         runner.missed = lambda reason: None  # 1031c: do not persist private preview/body on a missed answer.

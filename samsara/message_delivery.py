@@ -205,13 +205,16 @@ def stage(app, inv, message, probe, send, *, timer_factory=None, launch=None, se
         op.handling = mode
         preview = message.preview() + ". Say cancel or send now."  # PLACEHOLDER COPY (1031c)
         ep._chip(app, preview, "pending")
-        if not _speak(app, preview, on_done=op.start):
+        spoken = message.spoken_preview() + ". Say cancel or send now."
+        if not _speak(app, spoken, on_done=op.start):
             op.start()
     else:
         op = ep.stage_pending(app, inv, prompt, on_approve=approve,
                               refusal_guard=refusal, record_type="action")
         op.voice_reply_filter = lambda *args: _reply_filter(app, *args)
         op.message_readback = lambda: _speak(app, message.preview(full=True))
+        if not setup:
+            bind_email_question(app, op, message)
         ep._chip(app, prompt, "pending")
         ep.listen_for_confirmation(app, prompt)
     op.message_readback = lambda: _speak(app, message.preview(full=True))
@@ -295,6 +298,8 @@ def bind_email_question(app, op, message):
     if message is not None:
         op.voice_reply_filter = lambda *args: _reply_filter(app, *args)
         op.message_readback = lambda: _speak(app, message.preview(full=True))
+        op.message_spoken_prompt = (message.spoken_preview()
+            + ". Send? Say read full message for the full body. Say yes to confirm or no to cancel.")
 
 
 def email_input(app, message, run):

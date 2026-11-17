@@ -80,7 +80,9 @@ def test_known_dm_has_one_second_grace_and_sent_receipt(rig):
     assert [t.seconds for t in rig.timers] == [1.0]
     assert not rig.sends
     delivery._speak.assert_called_once()
-    assert "one two three four five six seven eight" in delivery._speak.call_args.args[1]
+    # 1242: the body excerpt stays visible and is no longer spoken by default.
+    assert rig.message.spoken_preview() in delivery._speak.call_args.args[1]
+    assert "one two three four five six seven eight" not in delivery._speak.call_args.args[1]
     rig.timers[-1].fire()
     assert rig.sends == [rig.message]
     assert list(rig.app._message_attempts.values()) == [adapters.Receipt("sent", "provider-id")]
