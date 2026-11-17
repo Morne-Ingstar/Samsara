@@ -15,6 +15,7 @@ from PySide6.QtGui import QFontMetrics
 from samsara.ui import theme, tutorial_qt
 from samsara import tutorial_capture, typed_delivery
 from samsara.dictionary_store import get_dictionary_store
+from samsara.vocabulary_decode import log_vocabulary, transcribe_with_vocabulary
 from samsara.ui.widgets.step_indicator import StepIndicator
 from PySide6.QtWidgets import QWidget
 
@@ -33,6 +34,9 @@ def compile_method(node, **names):
     namespace = dict(describe_text=describe_text, safe_exception=safe_exception,
                      logger=logging.getLogger(__name__), tutorial_capture=tutorial_capture, **names)
     namespace.setdefault("typed_delivery", typed_delivery)
+    # 1230 / 006cd684: extracted decoder methods use the shared vocabulary boundary.
+    namespace.setdefault('log_vocabulary', log_vocabulary)
+    namespace.setdefault('transcribe_with_vocabulary', transcribe_with_vocabulary)
     exec(compile(ast.Module(body=[node], type_ignores=[]), node._tutorial_source, 'exec'), namespace)
     return namespace[node.name]
 

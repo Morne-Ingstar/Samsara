@@ -271,6 +271,7 @@ class TestScopeChecks:
         assert 'outside allowed' in reason
 
     def test_scope_allows_configured_dir(self, tmp_path):
+        (tmp_path / 'notes.md').write_text('Synthetic note', encoding='utf-8')  # 1230 / 1031e: an existing personal target.
         d = _make_dispatcher(config={
             'allowed_directories': [str(tmp_path)],
             'personal_append_files': [str(tmp_path / 'notes.md')],  # 1031e: an exact personal target is required.

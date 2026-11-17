@@ -33,7 +33,9 @@ jobs:
       # the shared parent even if an earlier check prevents the main suite.
       - name: Prepare pytest temporary directories
         shell: pwsh
-        run: New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/.pytest-tmp" | Out-Null
+        # 1230: synthetic corpus tests exercise the repository privacy guard.
+        # Their temporary data must live outside the checkout, like local temp.
+        run: New-Item -ItemType Directory -Force -Path "${{ runner.temp }}/samsara-pytest" | Out-Null
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -100,7 +102,7 @@ jobs:
         # Keep each file together so its module/session state stays local.
         # The supervisor starts first and runs pytest as its background child.
         # It also covers collection, the controller, gaps and interpreter exit.
-        run: python -u tools/ci_hang_reporter.py --state-dir ci-hang-report --junit-path junit.xml -- pytest --basetemp="${{ github.workspace }}/.pytest-tmp/coverage" -m "not requires_desktop" -n 2 --dist loadfile --max-worker-restart=100 --timeout=120 --timeout-method=thread --cov=. --cov-report=xml --cov-report=term-missing --junitxml=junit.xml -v
+        run: python -u tools/ci_hang_reporter.py --state-dir ci-hang-report --junit-path junit.xml -- pytest --basetemp="${{ runner.temp }}/samsara-pytest/coverage" -m "not requires_desktop" -n 2 --dist loadfile --max-worker-restart=100 --timeout=120 --timeout-method=thread --cov=. --cov-report=xml --cov-report=term-missing --junitxml=junit.xml -v
 
       - name: Run native desktop tests
         if: always() && matrix.shard == 0
@@ -110,7 +112,7 @@ jobs:
         run: |
           Remove-Item Env:\QT_QPA_PLATFORM -ErrorAction SilentlyContinue
           $env:QT_QPA_PLATFORM = 'windows' # 899: collection imports must not select offscreen for native tests.
-          python -m pytest --basetemp="${{ github.workspace }}/.pytest-tmp/native" -m requires_desktop -p no:cacheprovider --timeout=120 --timeout-method=thread -v
+          python -m pytest --basetemp="${{ runner.temp }}/samsara-pytest/native" -m requires_desktop -p no:cacheprovider --timeout=120 --timeout-method=thread -v
 
       # File balancing can move the icon tests between shards. Capture on
       # every shard, including failed test jobs, so the relevant runner is kept.

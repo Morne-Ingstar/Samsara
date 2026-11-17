@@ -37,10 +37,14 @@ def _make_app():
         'cleanup_mode': 'clean',
         'hotkey': 'ctrl+shift',
         'model_size': 'base',
+        'notifications_level': 'all',  # 1230 / c55de286: tests exercise admitted notifications.
     }
     app.available_mics = [{'id': 'mic-1', 'name': 'Test Microphone'}]
     app._mic_refresh_blocked = Mock(return_value=True)  # skip the mic re-enumeration branch
     app.get_current_microphone_name = Mock(return_value='Test Microphone')
+    app._bug_report_failures = None  # 1230 / 192c766e: lazy real cache, not a fabricated Mock.
+    app._settings_qt = None  # 1230: Mock must not invent the notification Settings host.
+    app._config_lock = None  # Real microphone selection accepts an optional lock.
     app.snoozed = False
     app.cheat_sheet = None
 
@@ -424,7 +428,8 @@ _HANDLERS = (
     "open_correction_capture", "open_stress_test_wizard", "recalibrate_mic", "set_cleanup_mode",
     "open_dictation_diagnostics", "open_log_viewer",
     "calibrate_echo_cancellation", "open_config_folder", "preview_first_run",
-    "open_main_log", "quit_app",
+    "open_main_log", "quit_app", "open_passive_review",  # 1230 / 1001: new review action.
+    "persist_config", "refresh_audio_devices",  # Saved microphone identity refresh.
 )
 
 
@@ -442,6 +447,10 @@ def _stub_tray(monkeypatch, app, *, raising=False):
     boom = RuntimeError("boom")
     started = Mock(side_effect=boom if raising else None)
     monkeypatch.setattr(tray_qt.os, "startfile", started, raising=False)
+    monkeypatch.setattr('samsara.ui.passive_review.open_review',
+                        lambda host: host.open_passive_review())
+    monkeypatch.setattr('samsara.ui.context_help_qt.open_help',
+                        Mock(side_effect=boom if raising else None))
     monkeypatch.setattr(tray_qt, "open_support_tab", Mock(side_effect=boom if raising else None))
     monkeypatch.setattr(SamsaraTrayQt, "_open_update_dialog",
                         Mock(side_effect=boom if raising else None))
@@ -640,7 +649,7 @@ class TestUpdateEntryIsBehindAFlag:
 
 
 class TestMenuGrouping61:
-    TOP = ["Show Samsara", "Snooze", "Wake Word  (samsara)", "[MIC]  Test Microphone",
+    TOP = ["Show Samsara", "Review on-screen messages", "Snooze", "Wake Word  (samsara)", "[MIC]  System default",
            "Mode:  Hold", "Quick Reference", "Settings", "Something wrong?",
            "Workspace", "Tools", "Developer", "Restart Samsara", "Exit"]
 

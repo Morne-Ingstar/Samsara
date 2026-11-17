@@ -144,7 +144,7 @@ def test_uninstall_checks_exact_install_and_retains_retry_on_failure():
     assert "if UninstallSilent() then begin UninstallCloseCancelled := True; Abort; end;" in ISS
     stop = ISS.split("procedure EnsureInstallStopped();", 1)[1].split("function CleanPayload", 1)[0]
     assert stop.index("RequestInstallQuit(Processes);") < stop.index("WaitForInstallExit(Processes, WaitForm, Status)") < stop.index("TerminateProcess(Handle, 0)")
-    handler = ISS.split("procedure CurUninstallStepChanged", 1)[1].split("end;", 1)[0]
+    handler = ISS.split("procedure CurUninstallStepChanged", 1)[1]  # 1230: 994 data cleanup adds nested begin/end blocks.
     assert "usAppMutexCheck" in handler and "usUninstall" in handler
     assert handler.index("EnsureInstallStopped();") < handler.index("CleanPayload")
     assert handler.index("False, True") < handler.index("True, True")

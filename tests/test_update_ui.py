@@ -318,7 +318,7 @@ def test_tray_update_action_changes_to_install_and_notifies(qapp, monkeypatch):
     )
     # 61: the tray entry is behind updates.tray_menu_entry (default off);
     # "Check for Updates" lives in Tools, a found update is offered top level.
-    tray = SamsaraTrayQt(_tray_app({"updates": {"tray_menu_entry": True}}))
+    tray = SamsaraTrayQt(_tray_app({"updates": {"tray_menu_entry": True}, "notifications_level": "all"}))  # 1230 / c55de286.
     message = Mock()
     monkeypatch.setattr(tray._tray, "showMessage", message)
     try:
@@ -381,7 +381,7 @@ def test_tray_confirms_update_only_after_full_startup(qapp, monkeypatch):
     monkeypatch.setattr(
         update_qt, "maybe_start_automatic_update_check", automatic,
     )
-    app = _tray_app()
+    app = _tray_app({"notifications_level": "all"})  # 1230 / c55de286: informational updates are opt-in.
     tray = SamsaraTrayQt(app)
     message = Mock()
     monkeypatch.setattr(tray._tray, "showMessage", message)
@@ -396,7 +396,7 @@ def test_tray_confirms_update_only_after_full_startup(qapp, monkeypatch):
             on_error=tray._show_automatic_update_failure,
         )
         assert message.call_args.args[:2] == (
-            "Samsara updated", "Updated to Samsara v0.22.1.",
+            "Samsara updated", "Updated to Samsara v0.22.1.\n\nClick to change Windows notifications.",
         )
 
         tray._poll_startup_health()
@@ -422,7 +422,7 @@ def test_tray_warns_on_cleanup_pending_after_full_startup(qapp, monkeypatch):
     monkeypatch.setattr(
         update_qt, "maybe_start_automatic_update_check", automatic,
     )
-    app = _tray_app()
+    app = _tray_app({"notifications_level": "all"})  # 1230 / c55de286: informational notice.
     tray = SamsaraTrayQt(app)
     message = Mock()
     monkeypatch.setattr(tray._tray, "showMessage", message)

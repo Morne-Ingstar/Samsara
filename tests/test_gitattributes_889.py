@@ -24,7 +24,9 @@ def _binary_extensions():
     found = set()
     for current, directories, filenames in os.walk(ROOT):
         directories[:] = [name for name in directories
-                          if name not in {".git", "__pycache__", ".pytest_cache", ".venv", "venv"}]
+                          # 1230: CI runtime data is not a shipped repository asset.
+                          if name not in {".git", "__pycache__", ".pytest_cache", ".pytest-tmp", ".venv", "venv"}
+                          and name != "ci-hang-report"]
         for filename in filenames:
             path = Path(current, filename)
             with path.open("rb") as stream:

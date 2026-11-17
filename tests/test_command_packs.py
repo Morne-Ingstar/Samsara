@@ -42,6 +42,7 @@ def _register_builtin(matcher, phrase, pack='core'):
 
 def _register_plugin(matcher, phrase, pack='core', aliases=None):
     handler = MagicMock(return_value=True)
+    handler.whole_utterance = False  # 1230: a Mock must not invent a whole-utterance-only handler.
     matcher._entries[phrase] = CommandEntry(
         phrase=phrase, source='plugin', cmd_type='plugin',
         handler=handler, aliases=aliases or [], pack=pack)
@@ -75,6 +76,7 @@ class TestPackFiltering:
         m = _make_matcher(enabled_packs={'core', 'browsers'})
         # 'find tab' is browsers (enabled)
         _register_plugin(m, 'find tab', pack='browsers')
+        m._entries['find tab'].param_schema = {'remainder': {'type': 'text', 'required': True}}  # 1230 / 291: declared argument.
         # 'find' is in a disabled pack
         _register_builtin(m, 'find', pack='text-editing')
         m.freeze()
@@ -332,7 +334,7 @@ class TestBrowserPackScope:
             assert rows[canonical]["pack"] == "browsers"
             assert rows[canonical]["scope"] == scope
         close_tab = rows["builtin.close_tab"]
-        assert close_tab["risk"] == "destructive" and close_tab["undoable"] is True
+        assert close_tab["risk"] == "destructive" and close_tab["undoable"] is False  # 1230 / 1031d: reopening a tab cannot restore every lost form.
         assert "Reopen tab" in close_tab["description"]
 
     def test_find_and_dynamic_tab_use_native_accelerators_without_text_logs(self, monkeypatch):

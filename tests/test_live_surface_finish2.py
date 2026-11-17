@@ -110,7 +110,8 @@ def bind_host_cancel(app, posted):
     tree = ast.parse((Path(__file__).parents[1]/'dictation.py').read_text(encoding='utf-8'))
     cls = next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='DictationApp')
     names = {'cancel_recording','_cancel_recording_impl','_on_streaming_session_finished'}
-    ns = {'logger':Mock()}
+    from samsara import typed_delivery
+    ns = {'logger':Mock(), 'typed_delivery': typed_delivery}  # 1230 / 1bf8481f.
     exec(compile(ast.Module(body=[n for n in cls.body if isinstance(n,ast.FunctionDef)
                                  and n.name in names],type_ignores=[]),'host_cancel_ast','exec'),ns)
     for name in names:setattr(app,name,MethodType(ns[name],app))

@@ -25,7 +25,9 @@ def test_waiting_hook_cannot_override_ordinary_target_guard():
                    tutorial_dictation=True) is False
     receive.assert_not_called()
     assert app._tutorial_hooks['dictation'] is receive
-    assert transport.call_args.kwargs['before_paste'] is guard
+    # 1230 / 1bf8481f: delivery wraps the target guard with its cancellation fence.
+    assert transport.call_args.kwargs['before_paste']() is False
+    guard.assert_called_once_with()
 
 
 def registration(monkeypatch, *, foreground=True, visible=True, minimized=False):

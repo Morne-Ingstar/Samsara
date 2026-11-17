@@ -21,6 +21,7 @@ import wave
 import numpy as np
 
 from samsara.benchmark_store import _to_int16_pcm
+from samsara.config_defaults import cfg_get
 from samsara.paths import samsara_home_dir
 
 log = logging.getLogger(__name__)
@@ -254,9 +255,9 @@ def capture(app, audio, raw, final, path, **kwargs):
             kwargs['tail_evidence'] = tail_fields(app)
         policy = getattr(app, '_game_mode', None)
         model = (getattr(policy, '_active_name', None) if getattr(policy, 'active', False)
-                 else getattr(policy, '_primary_name', None)) or app.config.get('model_size', '')
+                 else getattr(policy, '_primary_name', None)) or cfg_get(app.config, 'model_size')
         device = getattr(getattr(app, 'model', None), '_device', None) or getattr(
-            app, 'device_type', app.config.get('device', ''))
+            app, 'device_type', cfg_get(app.config, 'device'))
         return store_for(app).remember(audio, getattr(app, 'model_rate', 16000), raw, final,
             path=path, model=str(model), device=str(device), **kwargs)
     except Exception:

@@ -107,7 +107,7 @@ class TestPillStaysPut:
         size = (indicator.width(), indicator.height())
 
         indicator.show_outcome("MISS", "error", ttl_ms=None)
-        indicator.clear_outcome()
+        indicator.dismiss_error()  # 1230 / 1141: a persistent error needs explicit dismissal.
         _pump(qapp)
 
         assert (indicator.width(), indicator.height()) == size
@@ -183,7 +183,10 @@ class TestExistingContract:
         indicator.show()
         indicator.show_outcome("MISS", "error", ttl_ms=None)
         indicator.hide()
-        assert indicator._active_chip() is None
+        assert indicator._active_chip() == ('MISS', 'error')  # 1230 / 1141: hiding does not dismiss a problem.
+        assert indicator.isVisible()
+        indicator.dismiss_error()
+        indicator.hide()
         assert not indicator.isVisible()
 
 
@@ -448,6 +451,7 @@ class TestArmedIsNotRecording:
         monkeypatch.setattr(li, "_reduced_motion", lambda: False)
         monkeypatch.setattr(dictation.time, "sleep", lambda _s: None)
         app = Mock()
+        app._hold_capture_lifecycle_lock = __import__('threading').RLock()  # 1230 / 1052b: real lifecycle lock.
         app.model_loaded = True
         app._request_wake_models.return_value = True
         app.config = {"wake_word_config": {"phrase": "samsara"}}

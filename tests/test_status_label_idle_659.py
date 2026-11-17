@@ -89,6 +89,7 @@ def test_one_status_change_has_at_most_two_paints_then_stays_idle(home):
     _assert_idle(home)
 
 
+@pytest.mark.requires_desktop  # 1230: shared/offscreen runners do not provide an idle desktop budget.
 def test_home_idle_cpu_stays_below_tenth_of_one_core(home, request):
     import psutil
 

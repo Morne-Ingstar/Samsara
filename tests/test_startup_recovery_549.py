@@ -28,8 +28,10 @@ def combo(qapp):
 ])
 def test_absent_choice_submits_neither_key_and_never_switches(combo, config):
     _populate_microphone_combo(combo, [], config)
-    assert combo.currentIndex() == 1
-    assert '(not connected)' in combo.currentText()
+    # 1230 / 558 recovery: active fallback is shown, saved preference is retained.
+    assert combo.currentIndex() == 0
+    assert not combo.model().item(1).isEnabled()
+    assert '(not connected)' in combo.itemText(1)  # 1230: disabled preference follows the active fallback.
     assert _microphone_updates(combo) == {}
     app = SimpleNamespace(config=dict(config), switch_microphone=Mock())
     apply_microphone_choice(app, _microphone_updates(combo))
@@ -60,7 +62,8 @@ def test_name_wins_over_reused_id(combo):
 def test_absent_name_does_not_select_unrelated_device_at_old_id(combo):
     _populate_microphone_combo(combo, [{'id': 9, 'name': 'Other'}],
                                {'microphone': 9, 'microphone_name': 'Saved headset'})
-    assert combo.currentText() == 'Saved headset (not connected)'
+    assert combo.currentText() == 'System default'
+    assert not combo.model().item(combo.count() - 1).isEnabled()
     assert _microphone_updates(combo) == {}
 
 
@@ -81,7 +84,8 @@ def test_refresh_preserves_missing_then_reselects_reconnected_name(combo):
     config = {'microphone': 9, 'microphone_name': 'Saved headset'}
     _populate_microphone_combo(combo, [], config)
     _populate_microphone_combo(combo, [], combo.currentData(_MIC_CHOICE_ROLE))
-    assert combo.currentText() == 'Saved headset (not connected)'
+    assert combo.currentText() == 'System default'
+    assert not combo.model().item(combo.count() - 1).isEnabled()
     _populate_microphone_combo(combo, [{'id': 24, 'name': 'Saved headset'}],
                                combo.currentData(_MIC_CHOICE_ROLE))
     assert _microphone_updates(combo)['microphone'] == 24
@@ -90,6 +94,7 @@ def test_refresh_preserves_missing_then_reselects_reconnected_name(combo):
 def test_refresh_keeps_explicit_default_even_when_headset_returns(combo):
     _populate_microphone_combo(combo, [], {'microphone': 9, 'microphone_name': 'Saved headset'})
     combo.setCurrentIndex(0)
+    combo.activated.emit(0)  # 1230: deliberately reselect the fallback to clear the preference.
     _populate_microphone_combo(combo, [{'id': 24, 'name': 'Saved headset'}],
                                combo.currentData(_MIC_CHOICE_ROLE))
     assert _microphone_updates(combo) == {'microphone': None, 'microphone_name': 'System default'}
@@ -106,6 +111,7 @@ def test_explicit_default_name_reaches_resolver_before_audio_switch(combo, old_i
     app.refresh_audio_devices = Mock(side_effect=capture)
     _populate_microphone_combo(combo, [], app.config)
     combo.setCurrentIndex(0)
+    combo.activated.emit(0)  # 1230: it is already the active fallback.
     updates = _microphone_updates(combo)
     apply_microphone_choice(app, updates)
     app.config.update(updates)  # The subsequent locked bulk save.
@@ -133,7 +139,8 @@ class FakeAPI:
         self.calls = []
 
     def RegisterWindowMessageW(self, name):
-        return 0xC123
+        # 1230 / 994: activation and uninstall are distinct registered messages.
+        return 0xC124 if name == instance.UNINSTALL_QUIT_MESSAGE else 0xC123
 
     def FindWindowW(self, cls, title):
         self.calls.append(('find', title))
@@ -325,7 +332,7 @@ def test_unrelated_apply_preserves_missing_microphone(settings_window, qapp, mon
     win.app.switch_microphone = Mock()
     win.show_tab('Audio')
     qapp.processEvents()
-    assert win._widgets['mic_combo'].currentText() == 'Saved headset (not connected)'
+    assert win._widgets['mic_combo'].currentText() == 'System default'  # 1230: active fallback.
     win._widgets['auto_capitalize'].setChecked(False)
     win._apply_and_close()
     assert win.app.config['microphone'] == 9

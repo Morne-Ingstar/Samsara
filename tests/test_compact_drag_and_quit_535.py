@@ -435,7 +435,8 @@ def test_render_and_grab_include_receipt_without_mask_shift(pill):
     _, _, body, chip = pill._layout()
     for picture in (image, grabbed):
         sample = picture.pixelColor(int(chip.x()+4), int(chip.center().y()))
-        expected = QColor(theme.ERROR)
+        # 1230 / 1141: problem receipts use the shared tinted panel fill.
+        expected = QColor(theme._mix(theme.ERROR, theme.BG0, .80))
         assert sample == expected
         assert picture.pixelColor(int(body.x()+4), int(body.center().y())).alpha() > 0
     assert pill.mask().isEmpty()

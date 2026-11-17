@@ -45,7 +45,8 @@ def test_every_page_rows_have_one_full_width_hairline_and_right_edge(settings, q
                     assert margins.top() == margins.bottom() == theme.SPACE_1 // 2
                     assert not (len(following) > 1 and following[1].property('settingsRowDivider'))
         edges = [row.value.mapTo(page.widget(), QPoint(row.value.width(), 0)).x()
-                 for row in page.findChildren(SettingRow) if row.isVisibleTo(page)]
+                 for row in page.findChildren(SettingRow)
+                 if row.isVisibleTo(page) and row.value.isVisibleTo(page)]  # 1230 / 9831b2b3: custom Game header hides its value holder.
         if edges:
             assert max(edges) - min(edges) <= 1, edges
         for scroll in (page, *page.findChildren(QScrollArea)):
@@ -166,12 +167,13 @@ def test_component_rows_receive_dividers_after_a_manifest_rebuild(settings, qapp
     original = components._manifest
     try:
         components._manifest = {'components': [dict(id=f'fixture{i}', name=f'Example component {i}',
-            size_bytes=12000000, description='Example capability.', available=False,
+            size_bytes=12000000, description='Example capability.', available=True, kind='feature',  # 1230 / 1003: published optional packs only.
             install_dir='fixture', requires=[], default=False) for i in range(3)]}
         components._rebuild()
         page = settings._tool_pages['Components']
         settings._stack.setCurrentWidget(page)
         settle(qapp)
+        assert len(components._rows) == 3
         assert all(controls['_settings_card'].property('settingsToolRow') for controls in components._rows.values())
         lines = components._rows_host.findChildren(QFrame, 'settingsRowHairline')
         assert sum(not line.isHidden() for line in lines) == 2

@@ -80,7 +80,9 @@ def test_voice_restart_handoff_error_is_visible_and_retryable(monkeypatch):
         quit_app=lambda **kwargs: events.append(("quit", kwargs)),
     )
     tray = SimpleNamespace(_app=app, _tray=SimpleNamespace(
-        showMessage=lambda *args: messages.append(args)))
+        showMessage=lambda *args: messages.append(args)),
+        # 1230 / c55de286: restart reports through the notification gate.
+        _notify=lambda level, *args: messages.append(args))
     tray._restart_samsara = lambda: SamsaraTrayQt._restart_samsara(tray)
     app.tray_icon = tray
     monkeypatch.setattr(qt_runtime, "post", posted.append)

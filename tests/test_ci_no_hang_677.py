@@ -38,6 +38,7 @@ def test_headless_typing_refuses_within_one_second(rig, monkeypatch, desktop):
     typing_tests.test_switch_save_failure_restores_state,
     typing_tests.test_approval_style_default_persistence_and_disabled_state,
 ], ids=['switch', 'save-failure', 'approval-style'])
+@pytest.mark.requires_desktop  # 1230: one-second GC CPU budget requires an uncontended native desktop.
 def test_typing_ui_is_destroyed_before_worker_gc(
         rig, qapp, qt_deferred_delete, monkeypatch, exercise):
     from PySide6.QtCore import Qt

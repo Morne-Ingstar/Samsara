@@ -600,7 +600,14 @@ class TestApplyAndCloseSnapshot:
 
         snapshot_path = Path(__file__).parent / "fixtures" / "settings_apply_and_close_snapshot.json"
         expected = json.loads(snapshot_path.read_text())
-        # 1144: regenerated fixture includes all landed settings/default changes.
+        # 1230: preserve the historical fixture and apply only landed decisions:
+        # 1031 retires the blanket cancel window; 1040 owns pause; 1020 owns
+        # notification policy; 1161 adds the optional Keep this dictation key.
+        expected['command_mode'].pop('cancel_window_all_commands')
+        expected['command_mode'].pop('cancel_window_s')
+        expected['accessibility']['speech_pause_s'] = 2.0
+        expected.update(notifications_level='important', keep_dictation_hotkey='')
+        expected['kept_dictations'] = {'enabled': False, 'maximum': 50}
         stub = _StubApp()
         win = _SettingsWindow(stub)
         win._apply_and_close()

@@ -107,6 +107,14 @@ def test_toggle_utterance_fifo_drains_every_chunk_in_capture_order():
     assert app._touch_session_activity.call_count == 0
 
 
+@pytest.fixture(autouse=True)
+def ordinary_editor(monkeypatch):
+    # 1230 / 9217bb0c: formatting tests supply an editor, never inspect the desktop.
+    from samsara.delivery_text import SessionTextDelivery
+    monkeypatch.setattr(SessionTextDelivery.__init__, '__kwdefaults__',
+                        {'single_line_probe': lambda: False})
+
+
 def _buffered_dictation_app(config_overrides=None):
     """A DictationApp stand-in wired for buffered toggle-session DICTATE,
     with every side-effecting call mocked so tests can assert on it.

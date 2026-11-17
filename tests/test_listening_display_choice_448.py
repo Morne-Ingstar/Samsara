@@ -62,6 +62,8 @@ def test_setup_question_saves_both_choices_on_finish(qapp, tmp_path, monkeypatch
             assert button.accessibleDescription() == display.DESCRIPTIONS[option]
             assert button.focusPolicy() != 0
         page.group.button(display.VALUES.index(value)).setChecked(True)
+        # 1230 / 7f4e5bdf: this preference is now an optional setup page.
+        page.save_to(window._config)
         window._config['microphone'] = 1
         window._step = len(wizard._STEPS) - 1
         window._finish()
@@ -295,6 +297,7 @@ def test_legacy_reader_detector_checks_code_and_ignores_comments(tmp_path):
     assert _legacy_reads(path) == [2, 3, 5]
 
 
+# 1230 / 7f4e5bdf: retain each old node ID and visit its current page.
 @pytest.mark.parametrize('step', range(8), ids=[
     'welcome', 'use-case', 'microphone', 'components',
     'model', 'shortcuts', 'listening-display', 'complete',
@@ -308,7 +311,12 @@ def test_every_setup_page_keeps_stage_titles_above_rule(qapp, tmp_path, monkeypa
     window = wizard._WizardWindow(tmp_path / 'setup.json')
     try:
         window.resize(860, 760)
-        window._step = step
+        names = ['Welcome', 'Talking', 'Microphone', 'Components', 'Recognition',
+                 'Talking', display.LABEL, 'Complete']
+        desired = names[step]
+        window._optional_step = desired if desired in dict(wizard._OPTIONAL_STEPS) else None
+        window._step = next((i for i, (name, _) in enumerate(wizard._STEPS)
+                            if name == desired), 0)
         window._show_step()
         window.show()
         qapp.processEvents()
@@ -320,7 +328,7 @@ def test_every_setup_page_keeps_stage_titles_above_rule(qapp, tmp_path, monkeypa
         gap = rule.y() - (indicator.y() + indicator.height())
         assert STEP_LABEL_GAP == 12  # Same accepted gap as tutorial 378.
         assert rule.frameShape() == QFrame.Shape.HLine
-        assert gap >= STEP_LABEL_GAP, (wizard._STEPS[step][0], gap)
+        assert gap >= STEP_LABEL_GAP, (desired, gap)
         # Device pixels must preserve the margin on scaled displays too.
         assert gap * indicator.devicePixelRatioF() >= STEP_LABEL_GAP * indicator.devicePixelRatioF()
     finally:

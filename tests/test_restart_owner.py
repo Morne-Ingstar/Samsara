@@ -162,7 +162,9 @@ def test_tray_launch_failure_keeps_old_app_and_can_retry(monkeypatch):
         quit_app=lambda **kwargs: quit_calls.append(kwargs),
     )
     tray = SimpleNamespace(_app=app, _tray=SimpleNamespace(
-        showMessage=lambda *args: messages.append(args)))
+        showMessage=lambda *args: messages.append(args)),
+        # 1230 / c55de286: restart reports through the notification gate.
+        _notify=lambda level, *args: messages.append(args))
     monkeypatch.setattr(app_restart, "start_handoff", lambda *_a, **_k: (
         _ for _ in ()).throw(OSError("dummy launch blocked")))
     SamsaraTrayQt._restart_samsara(tray)

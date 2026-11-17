@@ -202,8 +202,9 @@ def test_936_optional_buttons_return_to_done_without_saving(tutorial, qapp, monk
     settle(qapp)
     assert tutorial._active_key() == 'done'
     assert tutorial._step == 3
-    assert not tutorial._display_demo.timer.isActive()
-    assert not tutorial._try_page.timer.isActive()
+    # 1230 / 7f4e5bdf: optional pages create their timers only when visited.
+    assert tutorial._display_demo.timer is None or not tutorial._display_demo.timer.isActive()
+    assert tutorial._try_page.timer is None or not tutorial._try_page.timer.isActive()
     assert tutorial._app.config == before
     tutorial._app.persist_config.assert_not_called()
     assert not tutorial._completed and not tutorial._skipped_steps

@@ -19,6 +19,14 @@ def setup_mic(qapp, tmp_path, monkeypatch):
     notifications = []
     unregister = Mock()
     streams = []
+    # 1230 / 342f7ac5: System default is now resolved during setup construction.
+    # Supply that OS query too, rather than touching the developer's devices.
+    import sounddevice as sd
+    def default_input(**kwargs):
+        if not devices:
+            raise RuntimeError('no synthetic input')
+        return {'name': devices[0]['name']}
+    monkeypatch.setattr(sd, 'query_devices', default_input)
 
     def register(callback):
         notifications.append(callback)
@@ -41,6 +49,9 @@ def setup_mic(qapp, tmp_path, monkeypatch):
     win._on_mic_result('_load_done_', '')
     win._step = 1
     win._show_step()
+    # 1230 / 342f7ac5: setup now starts on System default. These hot-plug
+    # cases begin with a deliberate device choice, rather than assuming it.
+    win._mic_combo.setCurrentIndex(win._mic_combo.findText(REALTEK['name']))
     win.show()
     qapp.processEvents()
     win._mic_page._debounce.stop()
@@ -72,7 +83,7 @@ def test_notification_refreshes_list_offers_new_input_without_switching(setup_mi
     s.notify()
     QTest.qWait(450)
     assert s.app.refresh_audio_devices.call_count == 1
-    assert s.win._mic_combo.count() == 2
+    assert s.win._mic_combo.count() == 3  # 1230: includes System default.
     assert s.win._mic_combo.currentText() == REALTEK['name']
     assert s.win._mic_notice.isVisible()
     assert s.win._mic_notice_text.text() == f"{HEADSET['name']} was plugged in."
@@ -172,7 +183,7 @@ def test_hidden_page_ignores_even_queued_notifications_and_stops_watch(setup_mic
     s.notify()
     s.qapp.processEvents()
     s.app.refresh_audio_devices.assert_not_called()
-    assert s.win._mic_combo.count() == 1
+    assert s.win._mic_combo.count() == 2  # 1230: includes System default.
 
 
 def test_hidden_changes_are_reconciled_when_page_is_shown_again(setup_mic):
@@ -183,7 +194,7 @@ def test_hidden_changes_are_reconciled_when_page_is_shown_again(setup_mic):
     s.win._step = 1
     s.win._show_step()
     s.flush()
-    assert s.win._mic_combo.count() == 2
+    assert s.win._mic_combo.count() == 3  # 1230: includes System default.
     assert s.win._mic_combo.currentText() == REALTEK['name']
     assert s.win._mic_notice.isVisible()
 
@@ -249,7 +260,8 @@ def test_default_unavailable_does_not_silently_choose_first_input(setup_mic, mon
     s.devices[:] = [dict(OTHER)]
     s.notify()
     s.flush()
-    assert s.win._mic_combo.currentIndex() == -1
+    assert s.win._mic_combo.currentIndex() == 0  # 1230: fallback remains visible even if unavailable.
+    assert s.win._get_current_mic_id() is None
     assert not s.win._next_btn.isEnabled()
     assert 'Using the system default' not in s.win._mic_notice_text.text()
 

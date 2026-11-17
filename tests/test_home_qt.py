@@ -555,9 +555,17 @@ class TestProblemNotice:
             line_height = home._notice_text.fontMetrics().height()
             assert home._notice_text.property("typeRole") == "note"
             assert home._notice_text.height() <= 2 * line_height + 2
-            assert home._notice_card.height() <= (
-                2 * line_height + home._notice_btn.height() +
-                3 * home_qt.GRID + 4)
+            # 1230 / 192c766e: the Report action joins recovery and Dismiss.
+            # At large text sizes those actions wrap vertically by design.
+            from PySide6.QtWidgets import QBoxLayout
+            actions = home._notice_btn.parentWidget()
+            layout = actions.layout()
+            controls = [layout.itemAt(i).widget() for i in range(layout.count())
+                        if layout.itemAt(i).widget().isVisibleTo(actions)]
+            heights = [control.height() for control in controls]
+            action_height = (sum(heights) + layout.spacing() * (len(heights) - 1)
+                             if layout.direction() == QBoxLayout.Direction.TopToBottom else max(heights))
+            assert home._notice_card.height() <= 2 * line_height + action_height + 3 * home_qt.GRID + 4
         finally:
             font.setPointSizeF(old_size)
             qapp.setFont(font)

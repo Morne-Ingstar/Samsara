@@ -284,7 +284,7 @@ def test_the_delivery_path_is_the_one_that_preserves_the_clipboard():
 
     app_src = (REPO / "dictation.py").read_text(encoding="utf-8")
     body = app_src.split("def _paste_preserving_clipboard(", 1)[1].split("\n    def ", 1)[0]
-    assert "return _paste.paste_preserving_clipboard(" in body
+    assert "return typed_delivery.deliver(_paste.paste_preserving_clipboard," in body  # 1230 / 1bf8481f.
     # Delivery moved behind this facade; check the real implementation too.
     paste_src = (REPO / "samsara" / "paste.py").read_text(encoding="utf-8")
     body = paste_src.split("def paste_preserving_clipboard(", 1)[1].split("\ndef ", 1)[0]

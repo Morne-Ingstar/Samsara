@@ -18,6 +18,13 @@ DECISIONS = FIXTURES / "help_decisions.md"
 # Explicit changes since the historical synthetic 359 inventory. New schema
 # keys still fail unless a decision is recorded here or in that inventory.
 DECISION_UPDATES = {
+    # 1230: explicit homes for the settings added by 1040, 1042b, 1161 and 1186.
+    'accessibility.speech_pause_s': ('DROP', 'The speech-pause slider explains the value.'),
+    'wake_word_config.phrases': ('DROP', 'The working wake-model chooser owns this list.'),
+    'keep_dictation_hotkey': ('DROP', 'The Keep this dictation shortcut owns this binding.'),
+    'kept_dictations.enabled': ('DROP', 'The Keep this dictation workflow explains this opt-in.'),
+    'kept_dictations.maximum': ('DROP', 'Config-only retention limit for kept recordings.'),
+    'report_upload_contact': ('DROP', 'The problem-report preview owns the optional contact value.'),
     # 899: 881's optional folder has its documented config-only home.
     'plugins.personal_dir': ('DROP', 'Optional external plugin folder; see Docs/SETTINGS.md#personal-command-plugins.'),
     # 826b/834r/862/877 / 888a: explicitly account for landed preference additions.

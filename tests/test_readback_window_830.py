@@ -97,7 +97,10 @@ def test_real_decode_skip_or_empty_reprompts_once_and_records_question(rig, monk
     assert rig.db.recent()[0]['raw_text'] == q.text
 
 
-def test_initial_and_retry_deadlines_start_at_speech_end_and_silence_has_one_retry(rig):
+def test_initial_and_retry_deadlines_start_at_speech_end_and_silence_has_one_retry(rig, monkeypatch):
+    # 1230: Windows can give consecutive history writes the same timestamp.
+    monkeypatch.setattr('samsara.history.datetime', SimpleNamespace(
+        now=lambda: SimpleNamespace(isoformat=lambda: '2026-01-01T00:00:00')))
     rig.app.defer_speech = True
     q = readback(rig)
     assert not q.opened

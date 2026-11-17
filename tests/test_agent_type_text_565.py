@@ -844,6 +844,7 @@ def test_real_clipboard_path_has_no_unicode_injection_or_fallback(rig, monkeypat
         if case == 'clipboard_copy_failed': raise RuntimeError('fake failure')
         copied.append(text)
     monkeypatch.setattr(clipboard, 'pyperclip', SimpleNamespace(copy=copy))
+    monkeypatch.setattr(clipboard, 'copy_private_text', copy)  # 1230 / 9217bb0c.
     monkeypatch.setattr(clipboard, 'save_clipboard', lambda: snapshot)
     monkeypatch.setattr(clipboard, 'restore_clipboard', lambda saved: restored.append(saved) or True)
     monkeypatch.setattr(clipboard, 'get_clipboard_sequence_number', lambda: 10)

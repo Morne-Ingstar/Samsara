@@ -8,7 +8,7 @@ import sys
 import pytest
 
 
-def test_all_output_boundaries_record_without_devices(silent_audio, request):
+def test_all_output_boundaries_record_without_devices(silent_audio, request, qapp):
     import ctypes
     import sounddevice as sd
     import winsound
@@ -172,9 +172,17 @@ print('POLICY_OK')
 
 
 def test_python_child_cannot_bypass_guard(silent_audio):
+    from tests.clipboard_guard import ClipboardAccessError, guard
     for flag in ('-I', '-E', '-S'):
-        with pytest.raises(RuntimeError, match='silent audio guard requires'):
-            subprocess.run([sys.executable, flag, '-c', 'pass'], check=True)
+        # 1230 / 1148: the clipboard guard may refuse first. Consume only
+        # this expected denial; either boundary must stop before child launch.
+        start = len(guard.violations)
+        try:
+            with pytest.raises((RuntimeError, ClipboardAccessError),
+                               match='silent audio guard requires|Python child disabled clipboard guard startup'):
+                subprocess.run([sys.executable, flag, '-c', 'pass'], check=True)
+        finally:
+            del guard.violations[start:]
 
 
 def test_callback_audio_is_drained_into_memory_only(silent_audio):

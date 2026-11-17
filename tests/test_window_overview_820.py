@@ -52,6 +52,7 @@ def overview(monkeypatch):
     import win32gui
     monkeypatch.setattr(win32gui, 'ShowWindow', Mock())
     monkeypatch.setattr(win32gui, 'PostMessage', Mock())
+    monkeypatch.setattr(win32gui, 'SendMessageTimeout', Mock(return_value=1))  # 1230: fake native close boundary.
     monkeypatch.setattr(cube, 'handle_show_cube', Mock(return_value=True))
     return app, rows, panel
 

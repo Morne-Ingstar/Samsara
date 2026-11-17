@@ -530,6 +530,7 @@ def app_dispatch(harness):
         setattr(h.app, name, MethodType(getattr(adapted.DictationApp, name), h.app))
     h.app._ava_session_dispatch_lock = threading.Lock()
     h.app._ava_session_dispatch_queue = deque(maxlen=3)
+    h.app.ava_thinking_since = None  # 1230: model the real constructor state.
     h.app._ava_session_request_in_flight = False
     h.app._try_cancel_pending_ava_utterance = lambda text: False
     h.app._try_ava_edit = lambda text: False
@@ -667,8 +668,12 @@ def test_real_dispatch_scheduling_failure_releases_current_request(
         app_dispatch, monkeypatch, failure):
     h = app_dispatch
     original = getattr(ava_turn_queue.thread_registry, failure)
-    monkeypatch.setattr(ava_turn_queue.thread_registry, failure,
-                        Mock(side_effect=RuntimeError("synthetic scheduling failure")))
+    def fail_queue(name, *args, **kwargs):
+        # 1230 / 1036: allow source-snapshot expiry; fail actual queue scheduling.
+        if failure == "timer" and name == "ava-edit-source-expiry":
+            return original(name, *args, **kwargs)
+        raise RuntimeError("synthetic scheduling failure")
+    monkeypatch.setattr(ava_turn_queue.thread_registry, failure, fail_queue)
     with pytest.raises(RuntimeError, match="synthetic scheduling failure"):
         h.app._ava_session_agent_dispatch_fn("Synthetic failed question?", None)
     assert not h.app._ava_session_request_in_flight
@@ -802,7 +807,9 @@ def test_real_dispatch_bump_between_capture_and_inflight_releases_stale_entry(ap
     def capture(app):
         nonlocal armed
         generation = original(app)
-        if armed:
+        import inspect
+        # 1230 / 1036: the source snapshot reads generation before dispatch captures it.
+        if armed and inspect.currentframe().f_back.f_code.co_name == "_ava_session_agent_dispatch_fn":
             armed = False
             execution_policy.bump_generation(app, "synthetic capture interleaving")
         return generation

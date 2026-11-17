@@ -125,8 +125,13 @@ def test_notices_needing_room_keep_all_text_and_existing_controls(widgets, qapp,
     w.refresh(replace(base, notice=notice), animate=False); qapp.processEvents()
     assert w._chip is None and w._band.isVisible()
     assert w._band.toolTip() == message
-    assert len(w._band.label.text().splitlines()) <= 2
-    assert w._band.elided
+    # 1230 / 1141: persistent problems show every line; questions stay bounded.
+    if kind in (NoticeKind.ERROR, NoticeKind.WARNING):
+        assert len(w._band.label.text().splitlines()) > 2
+        assert not w._band.elided
+    else:
+        assert len(w._band.label.text().splitlines()) <= 2
+        assert w._band.elided
     assert w._band.label.height() >= 2*w._band.label.fontMetrics().lineSpacing()
     assert w._band.rect().contains(w._band.label.geometry())
     assert w._band.label.font().pixelSize() == theme.TYPE_BODY

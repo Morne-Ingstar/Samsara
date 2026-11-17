@@ -143,8 +143,10 @@ def test_arguments_only_in_explicit_lanes_unless_old_behavior_chosen(rig, monkey
     if lane == 'ordinary' and not old:
         assert tuple(result) == (text, False) and not calls
     else:
-        assert result.state is State.COMPLETED
-        assert calls == [('close', 'firefox')]
+        # 1230 / e6ca0f58: unknown close targets require approval, on every admitted lane.
+        assert result.state is State.QUEUED
+        executor._stage_confirmation.assert_called()
+        assert calls == []
 
 
 def test_reminders_cannot_bypass_the_literal_gate(rig, monkeypatch):
@@ -208,8 +210,9 @@ def test_hands_free_probe_rejects_targets_before_forced_dispatch(rig, monkeypatc
             assert match is None, text
     match = app._probe_hands_free_command('command close firefox')
     assert match is not None and match.dispatch_text == 'command close firefox'
-    assert executor.process_text(match.dispatch_text, force_commands=True).state is State.COMPLETED
-    assert calls == [('close', 'firefox')]
+    assert executor.process_text(match.dispatch_text, force_commands=True).state is State.QUEUED
+    executor._stage_confirmation.assert_called()  # 1230 / 1031d: admitted close still asks.
+    assert calls == []
 
 
 def test_settings_default_save_and_help(qapp, monkeypatch, qt_widget_scope):
@@ -258,8 +261,9 @@ def test_latched_dictate_state_is_not_the_command_lane(rig, monkeypatch):
     parse.assert_not_called()
     assert not calls
     app._session_mode_manager.mode = SessionMode.COMMAND
-    assert executor.process_text('close firefox').state is State.COMPLETED
-    assert calls == [('close', 'firefox')]
+    assert executor.process_text('close firefox').state is State.QUEUED
+    executor._stage_confirmation.assert_called()  # 1230 / 1031d.
+    assert calls == []
 
 
 def test_hands_free_stress_and_prose_stay_in_dictate(rig, monkeypatch):
@@ -288,8 +292,9 @@ def test_hands_free_stress_and_prose_stay_in_dictate(rig, monkeypatch):
         for phrase, _argument in calls:
             assert not executor._takes_argument(executor._registry_entry(phrase)), text
     manager.reset(SessionMode.COMMAND); calls.clear()
-    manager.dispatch_utterance('close firefox', signals)
-    assert calls == [('close', 'firefox')]
+    outcome = manager.dispatch_utterance('close firefox', signals)
+    assert calls == []  # 1230 / e6ca0f58: COMMAND admission still asks before closing.
+    executor._stage_confirmation.assert_called()
 
 
 def test_real_user_alias_is_a_whole_literal_command(rig):

@@ -17,7 +17,9 @@ def test_visible_settings_titles_share_the_page_left_edge(settings, qapp):
         settle(qapp)
         rows = [row for row in settings._destination_rows
                 if row.page_name == name and row.isVisibleTo(page)]
-        regular = [row for row in rows if row.widget_keys[0] not in DEPENDENTS]
+        # 1230 / 9831b2b3: Game mode has an icon header, rather than a plain row title.
+        regular = [row for row in rows if row.widget_keys[0] not in DEPENDENTS
+                   and row.objectName() != 'gameModeSection']
         edges = {row.title: row.heading.mapTo(page.widget(), QPoint()).x()
                  for row in regular}
         assert edges, name

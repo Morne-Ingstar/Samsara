@@ -165,7 +165,7 @@ def test_all_200_corpus_rows_before_and_after(rig, monkeypatch):
     assert len(before) == len(after) == 200
     for old, new in zip(before, after, strict=True):
         if new['tag'] == 'exact':
-            if new['expected']['canonical_id'] in {'builtin.close_window', 'builtin.close_tab'}:
+            if new['expected']['canonical_id'] in {'builtin.close_window', 'builtin.close_tab', 'app_verbs.close'}:
                 # 1144: 1031d intentionally asks before closing an unknown window.
                 assert new['state'] == old['state'] == 'queued'
                 assert new['ids'] == old['ids'] == []
@@ -177,7 +177,7 @@ def test_all_200_corpus_rows_before_and_after(rig, monkeypatch):
             assert new['calls'] == old['calls']
     # 1144: 1031d's close-window confirmation removes one legacy prefix effect.
     assert sum(bool(r['calls']) for r in before if r['tag'] == 'dictation') == 13
-    assert sum(bool(r['calls']) for r in after if r['tag'] == 'dictation') == 3
+    assert sum(bool(r['calls']) for r in after if r['tag'] == 'dictation') == 2  # 1230 / 1031d: app close also asks.
 
 
 def test_mechanical_remainder_reader_audit_and_legacy_behavior(rig, monkeypatch):
@@ -250,9 +250,18 @@ def test_mechanical_remainder_reader_audit_and_legacy_behavior(rig, monkeypatch)
         # reading that validation input does not declare a free-text argument.
         if (handler.__module__ == 'plugins.commands.selection_edit'
                 and not executor._takes_argument(entry)):
-            assert any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
-                       and n.func.id == 'command_for_utterance' for n in ast.walk(fn))
+            # 1230 / 1137: draft-review handlers also share this discovery module.
+            # Their observable remainder refusal is the contract below.
             assert handler(None, 'sample argument') is False, entry.phrase
+            continue
+        if (handler.__module__ == 'plugins.commands.music' and not executor._takes_argument(entry)
+                and any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                        and n.func.id in {'_generic_transport', '_named_fallthrough'} for n in ast.walk(fn))):
+            # 1230 / 1153: these wrappers inspect names only to refuse an unsupported
+            # named-player route; they still cannot swallow a free-text remainder.
+            calls.clear()
+            assert executor.process_text(entry.phrase + ' sample argument', force_commands=True).state is State.MISS
+            assert not calls
             continue
         if any(isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and n.id == parameter
                for statement in body for n in ast.walk(statement)):

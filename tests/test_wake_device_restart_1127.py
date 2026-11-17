@@ -1,5 +1,6 @@
 """1127: default-input events and stopped wake word revival, with no live audio."""
 from types import SimpleNamespace
+from contextlib import nullcontext
 from unittest.mock import Mock
 import sys
 
@@ -18,7 +19,9 @@ def rig(monkeypatch, *, default=True):
                   'wake_word_enabled': True}
     app._no_microphone = False
     app.wake_word_active = True
-    app._wake_consumer = SimpleNamespace(running=True)
+    # 1230 / 1218: a listener must reserve an idle pause before PortAudio reset.
+    app._wake_consumer = SimpleNamespace(running=True,
+                                        pause_if_idle=lambda: nullcontext(lambda: None))
     app._publish_hands_free_fault = Mock()
     app._hands_free_fault = None
     app.restart_hands_free = Mock()

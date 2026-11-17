@@ -142,10 +142,19 @@ def test_a_prerelease_installation_reaches_the_network():
     assert calls == [updater.GITHUB_RELEASES_API]
 
 
-def test_the_shipped_version_reaches_the_network():
+def test_the_shipped_version_reaches_the_network(monkeypatch):
     calls: list = []
+    # 1230 / 1003: modern installed versions also verify the offered manifest.
+    # Keep this version-parser test offline, with a matching synthetic asset.
+    from samsara import components
+    payload = _release_payload('v9.9.9')
+    asset = payload['assets'][0]
+    monkeypatch.setattr(components, 'load_release_manifest', lambda tag, **kwargs: {
+        'app_version': '9.9.9', 'release_tag': tag, 'components': [],
+        'release_assets': [{'filename': asset['name'], 'url': asset['browser_download_url'],
+                            'size_bytes': asset['size'], 'sha256': 'a' * 64}]})
     updater.check_for_update(samsara.__version__,
-                             opener=_opener(_release_payload("v9.9.9"), calls))
+                             opener=_opener(payload, calls))
     assert calls == [updater.GITHUB_RELEASES_API]
 
 

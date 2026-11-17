@@ -327,7 +327,9 @@ def test_exact_dictation_handoff_forwards_source_detail_duration_and_hold_purpos
     c.app._show_hold_pending_chip(); c.drain()
     assert c.view().notice.purpose is FeedbackPurpose.RUNNING
     c.app._show_outcome_chip('Synthetic result', 'warning', 7000); c.drain()
-    assert c.view().notice.kind is NoticeKind.WARNING and c.view().notice.expires_at == 2.5  # 888b / 775.
+    # 1230: 1140 warnings use the shared reading duration, with a four-second floor.
+    assert c.view().notice.kind is NoticeKind.WARNING
+    assert c.view().notice.expires_at == message_duration_ms('Synthetic result', 'warning', 7000) / 1000
     c.app._show_dispatch_outcome_chip(SimpleNamespace(kind='command_awaiting_confirmation', detail={'phrase': 'synthetic action'})); c.drain()
     assert c.view().notice.purpose is FeedbackPurpose.QUESTION
     c.app._show_outcome_chip('Ordinary result', 'success', 1800); c.drain()

@@ -162,6 +162,7 @@ def test_native_topmost_call_has_no_activation_or_geometry_change(monkeypatch):
     from samsara.ui import passive_topmost
     set_pos = Mock()
     monkeypatch.setattr(passive_topmost.sys, 'platform', 'win32')
+    monkeypatch.setattr(passive_topmost.QGuiApplication, 'platformName', lambda: 'windows')  # 1230: fake native QPA too.
     monkeypatch.setattr(passive_topmost.ctypes, 'windll',
                         SimpleNamespace(user32=SimpleNamespace(SetWindowPos=set_pos)))
     widget = SimpleNamespace(isVisible=lambda: True, winId=lambda: 2**40)

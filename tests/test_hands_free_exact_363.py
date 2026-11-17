@@ -13,6 +13,13 @@ from tests.test_wake_pause_311 import production as _production
 from tools.dump_command_metadata import build_executor
 
 SIGNALS = UtteranceSignals(True, (1.0,))
+
+
+@pytest.fixture(autouse=True)
+def ordinary_editor(monkeypatch):
+    # 1230 / 9217bb0c: synthetic delivery must not query the real focused control.
+    monkeypatch.setattr('samsara.delivery_text.focused_single_line', lambda: False)
+
 # Empty draft unless the final column supplies the immediately preceding thought.
 ROWS = [
     ('scroll down', 'hands_free_command_executed', None),
@@ -193,3 +200,6 @@ def test_replay_fixture_other_command_is_not_a_dictation_label():
     other = [row for row in groups['intent_eval'] if row['text'] == 'turn on alarm']
     assert other and not any(row['dictation'] for row in other)
     assert len(groups['398_dictation']) == 40
+
+
+pytestmark = pytest.mark.usefixtures('bound_submit_target')

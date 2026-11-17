@@ -191,6 +191,7 @@ def test_partial_decode_uses_configured_terminal_token(monkeypatch, partial, wor
     sm.set_commit_phrase(word)
     consumer, app, preview = preview_fixture(word=word)
     app._wake_consumer = consumer
+    app._game_mode = None  # 1230 / efd4d818: a bare Mock invents an active game policy.
     app.model_lock = threading.Lock()
     app.get_transcription_params = lambda **_: {}
     app.model = SimpleNamespace(transcribe=lambda *args, **kwargs: ([SimpleNamespace(text=partial)], None))

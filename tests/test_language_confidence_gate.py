@@ -29,6 +29,10 @@ def load_gate_methods():
     languages = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(languages)
     module = hf_bench.load_production_adapter()
+    # 1230 / 006cd684: the extracted methods use the shared vocabulary decoder.
+    from samsara.vocabulary_decode import log_vocabulary, transcribe_with_vocabulary
+    module.__dict__.update(log_vocabulary=log_vocabulary,
+                           transcribe_with_vocabulary=transcribe_with_vocabulary)
     module.__dict__.update(_languages=languages, collections=collections, math=math, time=time,
                            StageTiming=StageTiming,
                            config_defaults=config_defaults, diagnostics=diagnostics,
@@ -349,7 +353,9 @@ def test_preview_filters_before_display_without_learning_or_feedback(app):
     tree = ast.parse(path.read_text(encoding="utf-8"))
     cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "DictatePreviewSession")
     method = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "_transcribe_partial")
-    namespace = {"logger": app.production.logger}
+    # 1230 / efd4d818: the preview also reads the game-mode partial policy.
+    from samsara.game_mode import partials_enabled
+    namespace = dict(vars(app.production), partials_enabled=partials_enabled)
     exec(compile(ast.Module(body=[method], type_ignores=[]), str(path), "exec"), namespace)
     preview = SimpleNamespace(app=app, _snapshot_audio=lambda: np.zeros(16000), _partial_params=lambda: {})
     assert namespace["_transcribe_partial"](preview) == ""

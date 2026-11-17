@@ -1017,7 +1017,8 @@ class TestTrayMouseHotkeyItems:
         tray._tray.showMessage = lambda *a: shown.append(a)
         tray.notify_warning("Samsara mouse hotkey disabled", "why")
         qapp.processEvents()
-        assert shown and shown[0][0] == "Samsara mouse hotkey disabled" and shown[0][1] == "why"
+        assert shown and shown[0][0] == "Samsara mouse hotkey disabled"
+        assert shown[0][1] == "why\n\nClick to change Windows notifications."  # 1230 / c55de286.
 
 
 class TestSettingsHotkeyRowReflectsReality:

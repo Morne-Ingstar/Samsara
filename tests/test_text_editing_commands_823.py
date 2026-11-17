@@ -11,6 +11,8 @@ from samsara import delivery_verify as dv, text_selection as ts
 from samsara.ava_edit import intent, model, selection, session
 from tests.test_clean_up_selection_632 import app, rig, executor, SOURCE, RESULT
 
+REAL_REWRITE = model.rewrite
+
 
 @pytest.fixture
 def global_executor(executor):
@@ -60,7 +62,7 @@ def test_complete_instruction_survives_canonical_policy_route(rig, app, executor
     seen = []
     monkeypatch.setattr(session, "enabled", lambda _: True)
     monkeypatch.setattr(model, "resolve_backend", lambda _: "ollama")
-    monkeypatch.setattr(model, "rewrite", lambda original, instruction, app:
+    monkeypatch.setattr(model, "rewrite", lambda original, instruction, app, **kwargs:
                         (seen.append(instruction) or RESULT, None))
     assert executor.process_text("make the selection shorter", app, force_commands=True).claimed
     assert seen == ["make the selection shorter"]
@@ -79,10 +81,15 @@ def test_no_selection_explains_recovery(rig, app, executor):
 @pytest.mark.parametrize("enabled", [False, True])
 def test_rewrite_without_authorized_backend_never_calls_model(rig, app, executor, monkeypatch, enabled):
     monkeypatch.setattr(session, "enabled", lambda _: enabled)
+    # 1230 / 1036: backend admission now lives inside the real rewrite facade.
+    if enabled:
+        monkeypatch.setattr(model, 'rewrite', REAL_REWRITE)
     monkeypatch.setattr(model, "resolve_backend", lambda _: None if enabled else
                         pytest.fail("disabled Ava probed a backend"))
     assert executor.process_text("make the selection shorter", app, force_commands=True).claimed
-    assert app.spoken[-1] == "This edit needs Ava. Turn Ava on and choose a model first."
+    expected = ("I did not change anything: no model available." if enabled else
+                "This edit needs Ava. Turn Ava on and choose a model first.")
+    assert app.spoken[-1] == expected
     assert session.pending() is None and not rig.pasted
 
 
@@ -90,7 +97,7 @@ def test_rewrite_without_authorized_backend_never_calls_model(rig, app, executor
 def test_selected_cleanup_uses_model_only_with_ava_enabled(rig, app, executor, monkeypatch, enabled):
     calls = []
     monkeypatch.setattr(session, "enabled", lambda _: enabled)
-    monkeypatch.setattr(model, "rewrite", lambda original, instruction, app:
+    monkeypatch.setattr(model, "rewrite", lambda original, instruction, app, **kwargs:
                         (calls.append((original, instruction)) or RESULT, None))
     assert session.source_text(app) == ""  # No staged draft is needed to edit selected text.
     assert executor.process_text("clean up selection", app, force_commands=True).claimed

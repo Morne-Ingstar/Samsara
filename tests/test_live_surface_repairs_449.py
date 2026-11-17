@@ -95,8 +95,11 @@ def test_pending_does_not_replace_a_persistent_fault(surface):
     indicator.show_outcome('Waiting for confirmation', 'pending', None); c.drain()
     assert c.view().notice.kind is NoticeKind.ERROR
     assert c.view().notice.message == 'Persistent fault'
-    assert c.view().secondary_notice.kind is NoticeKind.PENDING
-    assert c.view().secondary_notice.message == 'Waiting for confirmation'
+    # 1230 / 1141: the lower-priority message waits behind the persistent fault.
+    assert c.view().secondary_notice is None
+    c.dismiss_error(); c.drain()
+    assert c.view().notice.kind is NoticeKind.PENDING
+    assert c.view().notice.message == 'Waiting for confirmation'
 
 
 @pytest.mark.parametrize('kind,ttl_ms,expires', [('success', 3000, 3.0), ('warning', 3000, 3.0),

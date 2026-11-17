@@ -106,7 +106,7 @@ def test_status_bar_suspends_wake_only_during_hands_free():
     app.command_mode_active = False
     main_window_qt._MainWindow._refresh_status(target)
     assert target._lbl_wake.text() == 'or say "jarvis"'  # 824: enabled wake is an instruction.
-    assert target._badge.text() == 'Mic ready'  # 824: armed wake is neutral readiness.
+    assert target._badge.text() == 'Waiting for "jarvis"'  # 1230: actionable wake status.  # 824: armed wake is neutral readiness.
 
 
 def test_wake_phrase_dropdown_lists_models_and_saves_selection(qapp, monkeypatch):
@@ -150,15 +150,16 @@ def test_wake_phrase_dropdown_lists_models_and_saves_selection(qapp, monkeypatch
     window = _SettingsWindow(StubApp())
     combo = window._widgets["wake_word_phrase"]
     assert isinstance(combo, QComboBox)
-    assert [combo.itemText(i) for i in range(combo.count())] == ["jarvis", "computer"]
-    assert combo.currentText() == "jarvis"
+    assert [combo.itemText(i) for i in range(combo.count())] == ["Jarvis", "More wake words coming soon"]  # 1230 / 2804b8ef.
+    assert combo.currentData() == "jarvis"
 
-    combo.setCurrentText("computer")
+    assert not combo.model().item(1).isEnabled()
+    combo.setCurrentIndex(0)
     # Settings now has one aggregate destination-save callback at index zero.
     updates = window._save_fns[0]({})
-    assert updates["wake_word_config"]["phrase"] == "computer"
+    assert updates["wake_word_config"]["phrase"] == "jarvis"
     labels = " ".join(label.text() for label in window.findChildren(QLabel))
-    assert "Wake phrases are trained models. Custom phrases need a custom model." in labels
+    assert "More wake words coming soon" in [combo.itemText(i) for i in range(combo.count())]
 
 
 def test_one_wake_model_still_uses_a_dropdown(qapp):
@@ -191,5 +192,5 @@ def test_one_wake_model_still_uses_a_dropdown(qapp):
     window = _SettingsWindow(StubApp())
     combo = window._widgets["wake_word_phrase"]
     assert isinstance(combo, QComboBox)
-    assert combo.count() == 1
-    assert combo.currentText() == "jarvis"
+    assert combo.count() == 2  # 1230 / 2804b8ef: includes the disabled future-model row.
+    assert combo.currentData() == "jarvis"

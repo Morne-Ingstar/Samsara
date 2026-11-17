@@ -27,7 +27,7 @@ REMOVED = (
 # removed paths above are checked separately, including ignored directories.
 LOCAL_DIRS = {
     ".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules",
-    "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+    "__pycache__", ".pytest_cache", ".pytest-tmp", ".mypy_cache", ".ruff_cache",
     "build", "dist", "release_staging", "_internal", "ui_proof",
     ".idea", ".vscode", ".claude", ".release_tmp",
 }

@@ -162,7 +162,7 @@ class HistoryManager:
         with self._lock:
             return self._conn.execute("""
                 SELECT * FROM history
-                ORDER BY timestamp DESC
+                ORDER BY timestamp DESC, id DESC
                 LIMIT ? OFFSET ?
             """, (limit, offset)).fetchall()
 

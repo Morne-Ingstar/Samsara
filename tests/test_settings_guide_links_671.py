@@ -27,7 +27,7 @@ def test_audio_microphone_guide_button_calls_app_method(settings_window):
     settings_window._ensure_destination(audio_index)
     button = settings_window._widgets["audio_mic_setup_guide_button"]
 
-    assert button.text() == "Set up microphone..."
+    assert button.text() == "Microphone setup"  # 1230: live microphone-check guide (f8b27dde).
     settings_window.app.mic_guide_opened = False
     button.click()
     assert settings_window.app.mic_guide_opened is True

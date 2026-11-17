@@ -34,6 +34,8 @@ def _foreground_integrity_is_ordinary(monkeypatch):
 def _paste_app():
     app = dictation.DictationApp.__new__(dictation.DictationApp)
     app.config = {"clipboard_delay": 0.23}
+    # 1230 / clipboard recovery: __new__ doubles need the UI scheduling seam.
+    app._schedule_ui = lambda fn, *args, **kwargs: None
     app.adaptive_learner = Mock()
     app._record_undoable_paste = Mock()
     app.play_sound = Mock()          # 474: the delivery seam owns the success feedback

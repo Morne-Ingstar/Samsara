@@ -482,6 +482,7 @@ class TestFallbackNotice:
             'enabled': True, 'min_words': 1, 'backend': 'auto', 'allow_cloud_fallback': False,
         })
         app.notification_manager = nm
+        app.tray_icon = types.SimpleNamespace(notify_info=nm.show_notification)  # 1230 / c55de286.
         monkeypatch.setattr(sc, '_ollama_reachable', lambda app: False)
 
         sc.smart_correct("first call that should skip and notify", app)
@@ -503,6 +504,7 @@ class TestFallbackNotice:
             cloud_llm={'enabled': True},
         )
         app.notification_manager = nm
+        app.tray_icon = types.SimpleNamespace(notify_info=nm.show_notification)  # 1230 / c55de286.
         monkeypatch.setattr(sc, '_ollama_reachable', lambda app: False)
         cloud_calls = []
         monkeypatch.setattr(sc, '_call_cloud', lambda *args: cloud_calls.append(args))
@@ -1117,6 +1119,7 @@ class TestPerOutageNotice:
             'enabled': True, 'min_words': 1, 'backend': 'auto', 'allow_cloud_fallback': False,
         })
         app.notification_manager = nm
+        app.tray_icon = types.SimpleNamespace(notify_info=nm.show_notification)  # 1230 / c55de286.
         host = sc._ollama_host(app)
 
         # Phase 1: Ollama down -- smart_correct notifies once.

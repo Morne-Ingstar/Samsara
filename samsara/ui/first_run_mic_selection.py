@@ -90,7 +90,10 @@ def populate(owner, preserve_selection=False):
     if hasattr(owner, '_mic_notice'):
         if removed:
             owner._offered_mic = None
-            owner._show_mic_notice(f'{previous} was disconnected. Using the system default microphone.')
+            message = f'{previous} was disconnected.'
+            if current_device(owner) is not None:
+                message += ' Using the system default microphone.'
+            owner._show_mic_notice(message)
         elif old_names is not None and names - old_names:
             owner._offered_mic = next(m['name'] for m in owner._mics if m['name'] not in old_names)
             owner._show_mic_notice(f'{owner._offered_mic} was plugged in.')

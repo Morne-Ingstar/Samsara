@@ -89,7 +89,7 @@ class GameMode:
         self.resident = None
         self.resident_name = None
         self._original = None
-        self._primary_name = app.config.get('model_size', 'unknown model')
+        self._primary_name = cfg_get(app.config, 'model_size')
         self._active_name = None
         self._announced = False
         self._load_failed = None
@@ -306,7 +306,7 @@ def install(app, factory):
         # A deliberate primary-model reload supersedes the old restore point.
         with existing._lock:
             existing.active, existing._original = False, None
-            existing._primary_name = app.config.get('model_size', 'unknown model')
+            existing._primary_name = cfg_get(app.config, 'model_size')
             existing.factory = factory
         existing.notify(app, False)
         return

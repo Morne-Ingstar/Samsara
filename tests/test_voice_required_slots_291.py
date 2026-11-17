@@ -50,6 +50,9 @@ REQUIRED_VOICE_PHRASES = {
     'set cockpit deadline', 'complete cockpit item', 'set cockpit priority',
     'favorites font size', 'favorites window size', 'remove favorite', 'rename favorite',
     'trust slack conversation', 'slack message', 'clear layout tabs', 'save this tab to layout',
+    # 1230 / 4091efa4, 66819398: explicit Cockpit clarification and local searches.
+    'clarify cockpit item', 'search samsara history for',
+    'search samsara commands for', 'search saved snippets for',
 }
 
 # 345b's controller identities have required tokens, but are never voice slots.
@@ -75,7 +78,9 @@ def voice_executor():
         for entry in executor._matcher._sorted
         if any(spec.get("required") for spec in entry.param_schema.values())
     }
-    assert set(required) == REQUIRED_VOICE_PHRASES | REQUIRED_TYPED_PHRASES
+    expected = REQUIRED_VOICE_PHRASES | REQUIRED_TYPED_PHRASES
+    assert set(required) == expected, {
+        'added': sorted(set(required) - expected), 'removed': sorted(expected - set(required))}
     entries = {phrase: entry for phrase, entry in required.items()
                if entry.param_schema.get('remainder', {}).get('required')}
     assert set(entries) == REQUIRED_VOICE_PHRASES

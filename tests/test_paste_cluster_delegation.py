@@ -30,10 +30,14 @@ def test_paste_cluster_methods_are_thin_delegates(monkeypatch):
     assert dictation.DictationApp._paste_preserving_clipboard(
         app, "text", before_paste=guard, return_delivery_confirmation=True,
     ) == (True, False)
+    # 1230 / 1bf8481f: compare forwarding after exercising the cancellation wrapper.
+    forwarded_guard = central.call_args.kwargs['before_paste']
+    assert forwarded_guard() is guard.return_value
+    guard.assert_called_once_with()
     central.assert_called_once_with(
         app,
         "text",
-        before_paste=guard,
+        before_paste=forwarded_guard,
         return_delivery_confirmation=True,
         feedback=True,  # 474: the wrapper forwards the feedback policy explicitly
         paste_with_preservation_fn=dictation.paste_with_preservation,

@@ -223,7 +223,8 @@ def test_hands_free_chunk(caplog):
     manager.dispatch_utterance(text, UtteranceSignals(
         has_contiguous_speech=False, compression_ratios=(3.0,), transcript_confident=False))
     assert MARKER in manager.dictate_pending_buffer
-    log_seam("samsara/session_modes.py", "[SESSION] paced fragment kept as dictation:",
+    # 1230 / 1174b: the exact logging seam moved into the draft-command helper.
+    log_seam("samsara/draft_commands.py", "[SESSION] paced fragment kept as dictation:",
              {"text": text})
     assert "[SESSION] paced fragment kept as dictation:" in caplog.text
     assert describe_text({"text": PRIVATE, "chars": len(PRIVATE),

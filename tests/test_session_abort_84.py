@@ -364,7 +364,9 @@ def test_the_dictation_lane_commit_vocabulary_is_the_configured_default():
         assert sm.DICTATE_COMMIT_PHRASE == DEFAULT_DICTATE_COMMIT_PHRASE
         manager = make_manager()
         stage(manager)
-        for word in ("over", "done", "send", "and", "stop dictating"):
+        # 1230: send is now an explicit whole-utterance commit alias.
+        assert sm.is_dictate_commit('send')
+        for word in ("over", "done", "and", "stop dictating"):
             outcome = manager.dispatch_utterance(word, GOOD_SIGNALS)
             assert outcome.kind != "dictate_committed", word
         assert manager.dispatch_utterance(
@@ -384,6 +386,7 @@ def test_the_wake_lane_keeps_its_own_end_words_and_this_lane_does_not_borrow_the
     assert "end_words = ww_config.get('end_words', ['over', 'done'])" in source
     # ... and none of those words is a control phrase in the dictation lane.
     manager = make_manager()
-    for word in ("over", "done", "send"):
+    assert sm.is_dictate_commit('send')  # 1230: the Settings send promise is explicit.
+    for word in ("over", "done"):
         assert not manager._matches_abort_phrase(word), word
         assert not sm.is_dictate_commit(word), word

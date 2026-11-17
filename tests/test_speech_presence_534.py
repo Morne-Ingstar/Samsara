@@ -106,9 +106,10 @@ def test_empty_result_uses_existing_display_and_history(make_worker, detector, d
         text, None, kw.get('duration_s', 0), 0)
     worker._final_pass()
     if display == 'Full':
-        assert overlay._partials.controller.post.call_args.args[0].message == 'No speech'
+        # 1230 / 899, 1125: a known quiet capture clears the display quietly.
+        assert overlay._partials.controller.post.call_args.args[0].message == ''
     else:
-        assert 'no speech' in overlay.update_text.call_args.args[0].lower()
+        assert overlay.update_text.call_args.args[0] == ''
     assert session.app._log_history.call_args.kwargs['status'] == 'empty'
     assert session.app._log_history.call_args.kwargs['raw_text'] == ''
     streaming.pyautogui.hotkey.assert_not_called()
@@ -139,7 +140,8 @@ def test_speech_uncertainty_failure_and_escape_hatch_decode_as_before(make_worke
         assert worker._transcribe_partial() == _segment().text
     session.app.model.transcribe.assert_called_once()
     if case == 'off':
-        detector._model.assert_not_called()
+        # 1230 / 1052d: final segment-evidence checks are independent of this opt-out.
+        assert detector._model.call_count == (2 if path == 'final' else 0)
 
 
 def test_first_partial_waits_then_full_pcm_is_preserved(make_worker, detector):
@@ -150,7 +152,10 @@ def test_first_partial_waits_then_full_pcm_is_preserved(make_worker, detector):
     session.app.model.transcribe.assert_not_called()
     detector._model.side_effect = lambda audio: np.full(audio.size // 512, .11)
     assert worker._transcribe_partial() == _segment().text
-    assert session.app.model.transcribe.call_args.args[0] is audio
+    # 1230 / 1052d: bounded decoding may pad the final Silero frame, preserving PCM.
+    decoded = session.app.model.transcribe.call_args.args[0]
+    np.testing.assert_array_equal(decoded[:audio.size], audio)
+    assert 0 <= decoded.size - audio.size < 512
 
 
 def test_commit_redecode_never_calls_decoder(detector):
@@ -178,6 +183,9 @@ def test_other_final_call_sites_gate_before_decode(name):
     gates = [n for n in calls if isinstance(n.func, ast.Name) and n.func.id=='skip_decode']
     decodes = [n for n in calls if isinstance(n.func, ast.Attribute)
                and n.func.attr in {'transcribe', '_decode_hotkey_audio', '_decode_session_audio'}]
+    # 1230 / 006cd684: host decodes now pass through the shared vocabulary boundary.
+    decodes += [n for n in calls if isinstance(n.func, ast.Name)
+                and n.func.id == 'transcribe_with_vocabulary']
     assert gates and decodes and min(n.lineno for n in gates)<min(n.lineno for n in decodes)
 
 
@@ -265,9 +273,11 @@ def test_speech_cached_for_later_partials_and_final_only_in_same_hold(make_worke
     assert worker._transcribe_partial() == _segment().text
     with caplog.at_level(logging.INFO, logger='Samsara'):
         worker._final_pass()
-    detector._model.assert_called_once()  # final always measures the full capture (544)
-    lines = [r.getMessage() for r in caplog.records if 'speech_presence path=' in r.getMessage()]
-    assert len(lines) == 1 and 'peak=0.950000' in lines[0] and 'cached=1' in lines[0]
+    assert detector._model.call_count == 2  # 1230 / 1052d: final admission plus segment evidence.
+    # 1230 / 1174b: bounded finals publish numeric tail evidence, rather than
+    # reuse the partial-admission log; the two measurements above stay distinct.
+    lines = [r.getMessage() for r in caplog.records if '[TAIL_EVIDENCE]' in r.getMessage()]
+    assert len(lines) == 1 and 'last_speech_source=vad_p01' in lines[0]
     other, other_session = make_worker([_segment()])
     enable(other_session, pcm('silence'))
     detector._model.side_effect = lambda audio: np.zeros(audio.size // 512)

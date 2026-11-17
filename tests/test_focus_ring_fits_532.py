@@ -372,6 +372,18 @@ def test_every_real_window_button_keeps_focus_pixels(qapp, quiet_windows, kind):
     buttons = real_buttons(window)
     assert buttons
     for button in buttons:
+        if kind == 'first':
+            # 1230 / 1006: setup swaps pages in a plain layout. Visit the
+            # button's actual page, so hidden sibling pages cannot steal focus.
+            from samsara.ui import first_run_wizard_qt as setup
+            page_name = next((name for name, page in window._page_by_name.items()
+                              if page.isAncestorOf(button)), None)
+            if page_name is not None:
+                window._optional_step = page_name if page_name in dict(setup._OPTIONAL_STEPS) else None
+                window._step = next((i for i, (name, _) in enumerate(setup._STEPS)
+                                     if name == page_name), 0)
+                window._show_step()
+            window._decisions.readiness_timer.stop()
         # Visit the real stacked page/disclosure. Disabled controls are enabled
         # only in this synthetic fixture to prove their eventual enabled style.
         ancestor = button

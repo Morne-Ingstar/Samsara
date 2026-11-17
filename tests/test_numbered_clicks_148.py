@@ -45,6 +45,10 @@ def test_label_click_verbs_share_label_seven_resolution(monkeypatch, handler, mo
     with sn._state_lock:
         sn._elements[:] = [_Element() for _ in range(6)] + [element]
     calls = []
+    # 1230 / 871a1034: route tests supply an inert admitted effect; bound
+    # target/consent behavior is covered by test_click_effect_policy_1031b.
+    monkeypatch.setattr('samsara.numbered_click_action.element_action',
+                        lambda app, target, action, keys, activate: activate())
     monkeypatch.setattr(sn, "_click_with_validation", lambda target, action, keys: calls.append((target, action)) or True)
     monkeypatch.setattr(sn, "_destroy_overlay", lambda app: None)
 
@@ -59,7 +63,7 @@ def test_label_click_verbs_share_label_seven_resolution(monkeypatch, handler, mo
 ])
 def test_bare_click_verbs_stay_at_cursor(monkeypatch, handler, modifier):
     calls = []
-    monkeypatch.setattr(sn, "_click_at_cursor", lambda action: calls.append(action) or True)
+    monkeypatch.setattr(sn, "_click_at_cursor", lambda action, app: calls.append(action) or True)
     assert handler(_app([]), "") is True
     assert calls == [modifier]
 

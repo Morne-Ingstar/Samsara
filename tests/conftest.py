@@ -4,6 +4,7 @@ Shared fixtures and mocks for Samsara tests.
 import pytest
 import atexit
 import json
+import logging
 import os
 import shutil
 import sys
@@ -12,6 +13,30 @@ from pathlib import Path
 from time import monotonic as _watchdog_monotonic_701
 from time import sleep as _watchdog_retry_sleep_944
 from unittest.mock import Mock, MagicMock, patch
+
+
+@pytest.fixture(autouse=True)
+def _restore_logging_disable():
+    """1230: corpus CLI silence must not suppress later tests' diagnostics."""
+    threshold = logging.root.manager.disable
+    try:
+        yield
+    finally:
+        logging.disable(threshold)
+
+
+@pytest.fixture(autouse=True)
+def _restore_pending_confirmation():
+    """1230: a staged command in one test must not block the next Ava edit."""
+    name = 'plugins.commands.ask_ollama'
+    previous = getattr(sys.modules.get(name), '_pending_action', None)
+    try:
+        yield
+    finally:
+        host = sys.modules.get(name)
+        if host is not None:
+            with host._pending_action_lock:
+                host._pending_action = previous
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -739,6 +764,8 @@ def _install_silent_audio_446():
         elif module.__name__ == 'PySide6.QtWidgets':
             replace(module.QApplication, 'beep', 'QApplication.beep')
 
+    state.patch_module = patch_module
+
     targets = {'winsound', 'sounddevice', 'PySide6.QtWidgets'}
 
     class Loader:
@@ -870,6 +897,15 @@ def pytest_collection_modifyitems(config, items):
 def pytest_runtest_setup(item):
     _silent_audio_446.calls.clear()
     _silent_audio_446.nodeid = item.nodeid
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_call(item):
+    # 1230: native-module reloads and fixture adapters can replace a guarded
+    # entry point. Reapply after fixture setup, before any test body runs.
+    module = sys.modules.get('PySide6.QtWidgets')
+    if module is not None:
+        _silent_audio_446.patch_module(module)
 
 
 @pytest.fixture(autouse=True)
