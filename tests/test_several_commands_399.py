@@ -11,6 +11,7 @@ import pytest
 
 from samsara import commands, execution_policy as policy, grammar
 from samsara.command_catalog import build_catalog
+from samsara.command_packs import PACKS
 from samsara.command_registry import DispatchResult, DispatchState as State
 from samsara.command_scope import MatchContext
 from tools.dump_command_metadata import build_executor
@@ -21,6 +22,8 @@ LIVE_LOAD_PLUGINS = commands._plugin_commands.load_plugins
 
 @pytest.fixture
 def rig(monkeypatch):
+    # 1235: offline routing needs the VLC pack, independent of a local install.
+    monkeypatch.setitem(PACKS['vlc'], 'default_enabled', True)
     monkeypatch.setattr(commands._plugin_commands, 'load_plugins', LIVE_LOAD_PLUGINS)
     monkeypatch.setattr(commands._command_scope, 'capture_context',
                         lambda: MatchContext.for_app('chrome.exe'))
