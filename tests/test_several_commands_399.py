@@ -357,6 +357,9 @@ def test_volume_grammar_inclusive_upper_bound():
     assert grammar.parse('volume one hundred', [record])[0][1] == {'level': 100}
 
 
+# 1236: wall-clock benchmark, like the idle-CPU check; shared-runner load
+# cannot certify this budget. The native lane still executes both cases.
+@pytest.mark.requires_desktop
 @pytest.mark.parametrize('realistic', [False, True])
 def test_miss_latency_with_stub_and_forty_windows(rig, monkeypatch, realistic):
     executor, app, calls = rig

@@ -97,6 +97,8 @@ def test_every_glyph_renders_in_the_windows_icon_font(qapp):
         assert supported, (name, f'U+{ord(glyph):04X}')
 
 
+# 1236: CI offscreen loses detail visibility; keep this in the native lane.
+@pytest.mark.requires_desktop
 def test_settings_then_commands_opens_inside_same_hub_and_home_card_reuses_it(hub, qapp):
     window, app = hub
     window._nav_btns['Settings'].click()

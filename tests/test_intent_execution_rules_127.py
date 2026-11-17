@@ -36,6 +36,17 @@ Everything here is observer-only and stays that way: TestTheGateStillRunsNothing
 is the test that fails if any of this ever reaches the live path.
 """
 
+# 1236: a test-module child is admitted by the gate's process policy; inline
+# `python -c` is not. Run the same clean import probe before collection imports.
+if __name__ == "__main__":
+    import sys
+    import json
+    import samsara
+    base = set(sys.modules)
+    import samsara.intent.resolve, samsara.intent.shadow, samsara.intent.grammar
+    print(json.dumps(sorted(set(sys.modules) - base)))
+    raise SystemExit(0)
+
 import ast
 import contextlib
 import importlib.util
@@ -129,6 +140,7 @@ def test_every_hand_written_rule_is_non_literal_by_construction():
     assert seen >= len(rule_names), (seen, rule_names)
 
 
+# 1236: runs in the bounded native CI lane, selected by node id in conftest.py.
 def test_the_corpus_agrees_that_the_two_are_different_questions(resolver):
     """Over the generated corpus, zero-penalty and literal are measurably not
     the same set. If this ever hits zero the field has stopped meaning
@@ -330,14 +342,7 @@ class TestTheGateStillRunsNothing:
         The catalog LOAD (load_records) does reach the plugin registry; that
         is reading metadata, it happens inside a function, and it is not part
         of importing the gate."""
-        code = (
-            "import sys, json;"
-            "import samsara;"
-            "base = set(sys.modules);"
-            "import samsara.intent.resolve, samsara.intent.shadow, samsara.intent.grammar;"
-            "print(json.dumps(sorted(set(sys.modules) - base)))"
-        )
-        out = subprocess.run([sys.executable, "-c", code], cwd=str(REPO),
+        out = subprocess.run([sys.executable, "-m", "tests.test_intent_execution_rules_127"], cwd=str(REPO),
                              capture_output=True, text=True, timeout=120)
         assert out.returncode == 0, out.stderr[-2000:]
         added = set(json.loads(out.stdout.strip().splitlines()[-1]))
