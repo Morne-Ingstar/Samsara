@@ -87,6 +87,9 @@ def test_empty_result_uses_existing_display_and_history(make_worker, detector, d
     worker, fake = make_worker([_segment()])
     enable(fake, pcm('silence'))
     session = streaming.StreamingSession.__new__(streaming.StreamingSession)
+    # 1232: final admission and delivery must share the capture classification.
+    session.__dict__.update(vars(fake))
+    worker._session = session
     session.app = fake.app
     session.cancel_event = threading.Event()
     session._state_lock = threading.Lock()
@@ -112,6 +115,10 @@ def test_empty_result_uses_existing_display_and_history(make_worker, detector, d
         assert overlay.update_text.call_args.args[0] == ''
     assert session.app._log_history.call_args.kwargs['status'] == 'empty'
     assert session.app._log_history.call_args.kwargs['raw_text'] == ''
+    session.app._log_history.assert_called_once()
+    session.app.model.transcribe.assert_not_called()
+    assert session._quiet_empty_capture_899 is True
+    assert not getattr(session, '_decode_failure', None)
     streaming.pyautogui.hotkey.assert_not_called()
 
 

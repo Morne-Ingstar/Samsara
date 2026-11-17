@@ -209,7 +209,8 @@ def test_empty_final_delivery_cannot_resurrect_rejected_preview(monkeypatch):
     monkeypatch.setattr(hold_recording_recovery, 'prepare_final', prepare)
     session._deliver_final(None, None, 2, 0)
     prepare.assert_not_called()
-    session._overlay.show_empty_result.assert_called_once_with(LOOP_WARNING)
+    # 1232 / 1125: rejected audio uses the retry note, not an overlay warning.
+    session._overlay.show_empty_result.assert_called_once_with('')
 
 
 def test_lazy_deadline_and_lock_ownership_remain_bounded(make_worker, monkeypatch):

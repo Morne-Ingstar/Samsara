@@ -2097,11 +2097,11 @@ class StreamingSession:
             return
         from samsara.kept_dictations import handle_held_control
         if handle_held_control(self, text): return
+        from samsara.decode_recovery import deliver_failure
+        if deliver_failure(self, duration_s): return
         from samsara.hold_recording_recovery import prepare_final
         text, raw_text, duration_s = prepare_final(self, text, raw_text, duration_s)
-        from samsara.decode_recovery import deliver_failure
-        if deliver_failure(self, duration_s):
-            return
+        if deliver_failure(self, duration_s): return
         if not text or not text.strip():
             logger.info("[STREAM] No speech detected")
             if duration_s > MIN_PARTIAL_AUDIO_S:
