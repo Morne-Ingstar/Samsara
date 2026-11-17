@@ -140,7 +140,7 @@ def match_help(text, *, command_mode):
         return PHRASES[phrase]
     if phrase in CONFUSION:
         return HelpIntent("confusion")
-    if re.match(r"^(?:how (?:do|can) i|where (?:do i|is|are)|where's|what(?:'s| is) the command to|what(?:'s| is| are)|"
+    if re.match(r"^(?:how (?:do|can) i|where (?:(?:do|can) i|is|are)|where's|what(?:'s| is) the command to|what(?:'s| is| are| does)|"
                 r"is there a way to|i can't find|show me|i want to|help(?: me| with)?)\s+", phrase):
         return HelpIntent("unknown", phrase)
     return None
@@ -227,6 +227,9 @@ def handle_request(app, remainder="", *, allowed_packs=(), live_text="", **kwarg
             return False
         intent = match_help("help " + request, command_mode=True)
     from plugins.commands.core_utils import what_can_i_say, speak_if_available
+    from samsara.help_search import answer_request
+    if answer_request(app, request, intent):
+        return True
     if intent.target in {"reference", "confusion", "unknown"}:
         what_can_i_say(app, _help_intents_skip=True)
         if intent.target != "reference":

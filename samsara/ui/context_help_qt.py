@@ -362,6 +362,18 @@ def open_help(app):
     return True
 
 
+def open_help_entry(app, entry):
+    """Open an offline search answer through the existing host/controller.
+
+    Speech and microphone state are irrelevant; callers may use this directly.
+    All window creation, selection and focus changes run on the Qt thread.
+    """
+    from samsara.help_search import show_entry
+    from samsara.ui import qt_runtime
+    qt_runtime.post(lambda: show_entry(app, entry))
+    return True
+
+
 def settings_help(owner, page):
     """Extend Choose guide without changing the Help page's existing layout."""
     controller = HelpController(owner, lambda: owner.app.config)
