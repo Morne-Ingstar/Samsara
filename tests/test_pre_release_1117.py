@@ -208,7 +208,8 @@ def test_ci_pytest_temp_paths_avoid_appdata_and_soundfile_is_pinned():
     commands = [line for line in workflow.splitlines() if ' -- pytest ' in line or ' -m pytest ' in line]
     assert len(commands) == 2
     for command in commands:
-        assert '--basetemp="${{ github.workspace }}/.pytest-tmp/' in command
+        # 1233 / 2d8df684: private corpus fixtures belong outside the checkout.
+        assert '--basetemp="${{ runner.temp }}/samsara-pytest/' in command
         assert 'appdata' not in command.lower()
     requirements = (root / 'requirements-test.txt').read_text(encoding='utf-8').splitlines()
     assert any(line.startswith('soundfile==') for line in requirements)

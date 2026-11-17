@@ -16,20 +16,14 @@ commands are brought into the registry the way that fixture's docstring
 prescribes: import/reload the real plugin module so its @command decorators
 fire against the freshly-cleared registry.
 """
+import ast
 import importlib
 import sys
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-
-_DICTATION_PATCHES = [
-    patch('dictation.pynput_keyboard.Listener'),
-    patch('dictation.sd.query_devices', return_value=[]),
-    patch('dictation._create_whisper_model'),
-    patch('dictation.winsound'),
-]
-
 
 class _FakeApp:
     """Minimal stand-in exposing only what _route_to_ava touches.
@@ -77,19 +71,25 @@ def _build_real_command_executor():
     return CommandExecutor(), show_numbers
 
 
-def _import_dictation():
-    for p in _DICTATION_PATCHES:
-        p.start()
-    try:
-        import dictation
-        return dictation
-    finally:
-        for p in _DICTATION_PATCHES:
-            p.stop()
+def _routing_source():
+    # 1233: execute the exact routing definition, without desktop bootstrap.
+    from samsara.runtime import thread_registry
+    tree = ast.parse((Path(__file__).resolve().parents[1] / 'dictation.py').read_text(encoding='utf-8-sig'))
+    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'DictationApp')
+    route = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == '_route_to_ava')
+    blacklist = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == '_is_repeat_blacklisted')
+    constants = [n for n in tree.body if isinstance(n, ast.Assign) and any(
+        isinstance(t, ast.Name) and t.id in {'_REPEAT_BLACKLIST_NAMES', '_REPEAT_BLACKLIST_TYPES'}
+        for t in n.targets)]
+    namespace = dict(thread_registry=thread_registry, increment_command_count=Mock())
+    exec(compile(ast.Module(body=[*constants, blacklist, route], type_ignores=[]),
+                 '<ava-routing-1233>', 'exec'), namespace)
+    return SimpleNamespace(DictationApp=SimpleNamespace(_route_to_ava=namespace['_route_to_ava']),
+                           thread_registry=thread_registry)
 
 
 def test_ava_mode_dispatches_show_numbers_command_not_llm():
-    dictation = _import_dictation()
+    dictation = _routing_source()
     ce, show_numbers = _build_real_command_executor()
     fake_app = _FakeApp(ce)
 
@@ -101,21 +101,18 @@ def test_ava_mode_dispatches_show_numbers_command_not_llm():
     assert entry.phrase == "show numbers"
     assert entry.handler is show_numbers.handle_show_numbers
 
-    # handle_show_numbers is the REAL production handler (asserted above),
-    # so calling it for real would enumerate the actual foreground window
-    # and reach qt_runtime.ensure_started() -- which fatally conflicts with
-    # the separate bare QApplication tests/conftest.py's session-scoped
-    # `qapp` fixture creates directly for Qt widget tests elsewhere in this
-    # suite (PySide6 allows exactly one QApplication per process; whichever
-    # of the two comes second raises "Please destroy the QApplication
-    # singleton"). This test's own scope is dispatch ROUTING -- does "show
-    # numbers" reach the real handler instead of Ava/Ollama -- not the Qt
-    # overlay actually rendering, so only the Qt entry points are stubbed;
-    # the real handler still runs everything before them.
+    # 1233: keep the real handler, with an inert DOM/foreground boundary.
+    # Stubbing Qt alone still enumerates the owner's desktop and can launch
+    # services. Assert the real handler reaches the fake DOM exactly once.
+    from samsara.command_scope import MatchContext
     with patch.object(dictation.thread_registry, 'spawn') as mock_spawn, \
-         patch('plugins.commands.show_numbers.qt_runtime.ensure_started'), \
-         patch('plugins.commands.show_numbers.qt_runtime.post'):
+         patch('samsara.command_scope.capture_context', return_value=MatchContext.for_app('synthetic.exe')), \
+         patch('plugins.commands.click_by_name.cancel'), \
+         patch('win32gui.GetForegroundWindow', return_value=0), \
+         patch.object(show_numbers, '_foreground_info', return_value={}), \
+         patch.object(show_numbers, '_try_show_dom_numbers', return_value=(True, None)) as dom:
         dictation.DictationApp._route_to_ava(fake_app, "show numbers")
+    dom.assert_called_once_with(fake_app)
 
     # The Ava/Ollama worker must NOT have been spawned -- the command
     # matched and dispatched directly instead of falling through to the LLM.
@@ -129,11 +126,13 @@ def test_ava_mode_dispatches_show_numbers_command_not_llm():
 
 
 def test_ava_mode_falls_through_to_llm_for_unmatched_text():
-    dictation = _import_dictation()
+    dictation = _routing_source()
     ce, _show_numbers = _build_real_command_executor()
     fake_app = _FakeApp(ce)
 
-    with patch.object(dictation.thread_registry, 'spawn') as mock_spawn:
+    from samsara.command_scope import MatchContext
+    with patch.object(dictation.thread_registry, 'spawn') as mock_spawn, \
+         patch('samsara.command_scope.capture_context', return_value=MatchContext.for_app('synthetic.exe')):
         dictation.DictationApp._route_to_ava(
             fake_app, "what is the capital of france")
 

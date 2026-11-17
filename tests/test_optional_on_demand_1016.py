@@ -103,8 +103,13 @@ def test_bundled_wake_models_never_have_a_components_row(qapp, world, include_in
 
 def test_jarvis_initializes_locally_without_download(monkeypatch):
     from samsara.wake_detector import WakeWordDetector
+    # 1233 / c66720d1: the loader discards children of an absent parent package.
+    package = ModuleType('openwakeword')
+    package.__path__ = []
     model = ModuleType('openwakeword.model')
     model.Model = Mock(return_value=object())
+    package.model = model
+    monkeypatch.setitem(sys.modules, 'openwakeword', package)
     monkeypatch.setitem(sys.modules, 'openwakeword.model', model)
     detector = WakeWordDetector('jarvis')
     assert detector.is_available

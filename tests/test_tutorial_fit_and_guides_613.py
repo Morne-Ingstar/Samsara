@@ -15,6 +15,9 @@ from tests._theme_stub_app import StubApp
 def tutorial(qapp, monkeypatch):
     # Read-only catalogue data, with no plugin discovery or app bootstrap.
     monkeypatch.setattr(tutorial_qt, '_command_count', lambda app: 562)
+    # 1233: timer assertions exercise animation, independent of the runner's
+    # Windows reduced-motion preference (manual steps have separate coverage).
+    monkeypatch.setattr('samsara.ui.widgets.indicator_demo.system_reduced_motion', lambda: False)
     window = TutorialWindow(StubApp({'ui': {'live_surface': {'enabled': True}}}))
     window.show()
     QTest.qWait(20)

@@ -29,14 +29,22 @@ def _restore_logging_disable():
 def _restore_pending_confirmation():
     """1230: a staged command in one test must not block the next Ava edit."""
     name = 'plugins.commands.ask_ollama'
-    previous = getattr(sys.modules.get(name), '_pending_action', None)
+    host = sys.modules.get(name)
+    previous = getattr(host, '_pending_action', None)
     try:
         yield
     finally:
-        host = sys.modules.get(name)
-        if host is not None:
-            with host._pending_action_lock:
-                host._pending_action = previous
+        # 1233: restore the captured module even while a test's provider fake
+        # occupies sys.modules. A newly imported real provider starts clean.
+        current = sys.modules.get(name)
+        targets = [(host, previous)]
+        if current is not host:
+            targets.append((current, None))
+        for target, value in targets:
+            lock = getattr(target, '_pending_action_lock', None)
+            if lock is not None:
+                with lock:
+                    target._pending_action = value
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))

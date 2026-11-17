@@ -284,7 +284,8 @@ def test_every_text_slot_keeps_head_behavior(rig, canonical_id):
     # 890: newly generated rows freeze the full outcome, including legitimate
     # literal text tails. Historical rows keep all their 399/806 checks below.
     if expected.get('generated_by') == '890':
-        assert result.state.value == expected['state']
+        # 1233: retain the expectation and expose CI-only policy refusals.
+        assert result.state.value == expected['state'], (canonical_id, result.detail)
         assert result.detail == expected['detail']
         assert [list(call) for call in calls] == expected['calls']
         return

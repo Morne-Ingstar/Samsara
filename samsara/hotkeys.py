@@ -910,7 +910,7 @@ class HotkeyCluster:
             self._mouse_hook = MouseHook(
                 on_button_event=self._on_mouse_button,
                 suppress_buttons=suppress,
-                poll_buttons=({str(self.config.get('hotkey', '')).strip().lower()} & buttons
+                poll_buttons=({str(self.config.get('hotkey', config_defaults.DEFAULTS['hotkey'])).strip().lower()} & buttons
                               if self.config.get('mode', 'hold') == 'hold' else ()),
                 # getattr: partial app stand-ins (tests) may not carry it.
                 on_hook_failed=getattr(self, '_on_mouse_hook_failed', None),
@@ -978,7 +978,7 @@ class HotkeyCluster:
                 and getattr(hook, 'requested_suppress_buttons', hook.suppress_buttons) == suppress
                 and ((getattr(hook, 'installed', True) and not getattr(hook, 'recovering', False))
                      or (not rearm and getattr(hook, 'retries_automatically', False)))):
-            hook.poll_buttons = ({str(self.config.get('hotkey', '')).strip().lower()} & buttons
+            hook.poll_buttons = ({str(self.config.get('hotkey', config_defaults.DEFAULTS['hotkey'])).strip().lower()} & buttons
                                  if self.config.get('mode', 'hold') == 'hold' else frozenset())
             return
         if hook is not None:
