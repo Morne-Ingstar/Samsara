@@ -390,6 +390,10 @@ def outcome_chip(kind: str, detail: Optional[dict] = None) -> "tuple[str, str] |
 
     if kind in ("dictate_committed", "dictate_injected"):
         if detail.get('clipboard_restore_failed'):
+            if detail.get('delivery_unverified'):
+                # PLACEHOLDER COPY (1244); matches the standalone receipt.
+                return ("Sent, but not confirmed, and the old clipboard couldn't be "
+                        "fully restored. Your words are in History.", 'warning')
             # PLACEHOLDER COPY (986); receipt/display equality is tested.
             return ("Your words were sent, but the old clipboard couldn't be fully restored.", 'warning')
         if detail.get('clipboard_image_removed'):

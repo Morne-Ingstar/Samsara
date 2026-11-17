@@ -319,6 +319,13 @@ def test_confirmed_unconfirmed_and_not_sent_messages_are_distinct():
                                  (False, recovery.IMAGE_REMOVED_CONFIRMED)):
         detail = {'clipboard_image_removed': True, 'delivery_unverified': unverified}
         assert sm.outcome_chip('dictate_committed', detail) == (expected, 'warning')
+    # 1244: restoration failure must retain uncertainty in both delivery routes.
+    for unverified in (False, True):
+        outcome = cb.DeliveryOutcome.UNVERIFIED if unverified else cb.DeliveryOutcome.CONFIRMED
+        detail = {'clipboard_restore_failed': True, 'delivery_unverified': unverified}
+        expected = recovery.loss_message(recovery.Attempt(restore_failed=True), True, outcome)
+        assert sm.outcome_chip('dictate_committed', detail) == expected
+        assert sm.outcome_chip('dictate_injected', detail) == expected
 
 
 def test_readback_confirmed_delivery_with_image_loss(dictation, monkeypatch):
@@ -524,6 +531,12 @@ def test_warning_reaches_both_displays_without_a_green_chip(qapp, monkeypatch, d
     try:
         paste.show_delivery_result(app, True, cb.DeliveryOutcome.UNVERIFIED)
         assert shown == [(expected, 'warning')]
+        # 1244: the session receipt reaches the same Compact/Full warning path.
+        app._show_outcome_chip(*sm.outcome_chip('dictate_committed', {
+            'clipboard_image_removed': kind == 'image',
+            'clipboard_restore_failed': kind == 'restore',
+            'delivery_unverified': True}))
+        assert shown == [(expected, 'warning')] * 2
         app.play_sound.assert_not_called()
         if controller:
             while pending:
