@@ -155,11 +155,10 @@ SAFE_FORMATS = {
 # Windows Information Protection (formerly Enterprise Data Protection) adds
 # this registered marker to Office selections.  It has no clipboard payload:
 # it tells Windows which protection policy owns the selection, not something a
-# user can paste.  Registered-format numbers vary between systems, so the
-# name is the durable policy; the observed Word/Office id is kept as a fast
-# path for the reported machine.
-KNOWN_PRIVATE_FORMAT_IDS = frozenset({49372})  # EnterpriseDataProtectionId
-_KNOWN_PRIVATE_FORMAT_NAMES = frozenset({"EnterpriseDataProtectionId"})
+# user can paste. Registered IDs vary; only the raw name identifies a policy.
+_KNOWN_PRIVATE_FORMAT_NAMES = frozenset(
+    name.casefold() for name in ("EnterpriseDataProtectionId", *PRIVATE_CLIPBOARD_FORMATS)
+)
 
 # A failed read is a delivery blocker only for user content.  Registered
 # formats normally remain snapshot-eligible (HTML, RTF and image formats are
@@ -169,7 +168,7 @@ _USER_CONTENT_FORMATS = frozenset({
     CF_TEXT, CF_OEMTEXT, CF_UNICODETEXT, CF_BITMAP, CF_DIB, CF_HDROP,
     CF_DIBV5, CF_ENHMETAFILE,
 })
-_USER_CONTENT_FORMAT_NAMES = frozenset({
+_USER_CONTENT_FORMAT_NAMES = frozenset(name.casefold() for name in {
     "HTML Format", "Rich Text Format", "PNG", "JFIF", "GIF", "WebP",
     "image/svg+xml",
 })
@@ -365,28 +364,35 @@ def get_clipboard_sequence_number() -> "Optional[int]":
         return None
 
 
+def registered_format_name(fmt: int) -> "Optional[str]":
+    """Raw registered name, or None on lookup failure. Never renders owner data."""
+    if 0xC000 <= fmt <= 0xFFFF and _user32 is not None:
+        try:
+            buf = ctypes.create_unicode_buffer(128)
+            if _user32.GetClipboardFormatNameW(fmt, buf, 128):
+                return buf.value or None
+        except Exception:
+            pass
+    return None
+
+
 def format_label(fmt: int) -> str:
     """Human-readable clipboard format name for log lines. Never raises."""
     if fmt in _FORMAT_NAMES:
         return _FORMAT_NAMES[fmt]
-    if fmt >= 0xC000 and _user32 is not None:
-        try:
-            buf = ctypes.create_unicode_buffer(128)
-            if _user32.GetClipboardFormatNameW(fmt, buf, 128):
-                return f"{buf.value!r} ({fmt})"
-        except Exception:
-            pass
-    return f"format {fmt}"
+    name = registered_format_name(fmt)
+    return f"{name!r} ({fmt})" if name else f"format {fmt}"
 
 
 def is_known_private_format(fmt: int) -> bool:
     """True for an owner-policy marker that is not user clipboard content."""
-    return fmt in KNOWN_PRIVATE_FORMAT_IDS or format_label(fmt) in _KNOWN_PRIVATE_FORMAT_NAMES
+    return (registered_format_name(fmt) or '').casefold() in _KNOWN_PRIVATE_FORMAT_NAMES
 
 
 def is_user_content_format(fmt: int) -> bool:
     """True when an unreadable format would lose content the user can paste."""
-    return fmt in _USER_CONTENT_FORMATS or format_label(fmt) in _USER_CONTENT_FORMAT_NAMES
+    return (fmt in _USER_CONTENT_FORMATS
+            or (registered_format_name(fmt) or '').casefold() in _USER_CONTENT_FORMAT_NAMES)
 
 
 class ClipboardSnapshot(dict):

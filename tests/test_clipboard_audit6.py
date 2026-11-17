@@ -165,7 +165,11 @@ def test_edp_marker_is_private_and_does_not_warn_or_block_paste(fake, target, ca
 
     assert target.pasted == ["dictated retry"]
     assert fake.formats == {CF_UNICODETEXT: original[CF_UNICODETEXT]}
-    assert not [r for r in caplog.records if "snapshot omitted formats" in r.getMessage()]
+    # 1245: an ID with no registered name is unknown, even the old observed EDP ID.
+    assert [r.getMessage() for r in caplog.records if "snapshot omitted formats" in r.getMessage()] == [
+        "[CLIP] clipboard snapshot omitted formats that could not be restored: "
+        "format 49372 (owner provided no data)"
+    ]
 
 
 def test_no_data_text_format_still_refuses_delivery(fake, target):
