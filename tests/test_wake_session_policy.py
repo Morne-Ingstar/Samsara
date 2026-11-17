@@ -381,26 +381,89 @@ def test_queued_capture_cannot_dispatch_after_session_cap(rig):
 
 
 def test_decode_finishing_after_session_cap_cannot_deliver(rig, monkeypatch):
-    r = rig()
+    from samsara.session_modes import (
+        CommandDispatchResult, SessionModeManager, UtteranceSignals,
+    )
+
+    # 1092: expire the session while lazy decoding is held in the real FIFO.
+    r = rig({'wake_word': {'session': {'inactivity_timeout_s': 60}}})
+    r.app.listening_indicator = Mock()
+    r.app._schedule_ui = Mock(side_effect=lambda callback, *args: callback(*args))
+    r.app._show_outcome_chip = Mock()
     r.app._start_wake_session()
+    manager = SessionModeManager(
+        abort_phrases=['cancel'],
+        foreground_exe_resolver=lambda: 'editor.exe',
+        foreground_hwnd_resolver=lambda: 123,
+        inject_fn=Mock(), remove_chars_fn=Mock(),
+        command_dispatch_fn=Mock(return_value=CommandDispatchResult(False)),
+        agent_dispatch_fn=Mock(), buffer_dictate_until_commit=True,
+        hands_free_command_probe_fn=Mock(return_value=None), clock=lambda: r.clock.now,
+    )
+    manager.reset(SessionMode.DICTATE)
+    manager.dispatch_utterance('A synthetic unfinished thought',
+                               UtteranceSignals(True, (1.2,)))
+    r.app._session_mode_manager = manager
+    draft = (manager.dictate_pending_buffer, manager._draft.revision,
+             list(manager._dictate_pending_audio), manager._dictate_target_hwnd)
     r.app.model_rate = SAMPLE_RATE
     r.app.model_lock = threading.Lock()
     r.app._wake_audio_is_below_gate = Mock(return_value=False)
     r.app.get_transcription_params = Mock(return_value={})
     r.app._log_history = Mock()
 
+    decoding, release, completed = (threading.Event() for _ in range(3))
+
+    def segments():
+        decoding.set()
+        assert release.wait(timeout=5), 'test did not release the held decoder'
+        yield SimpleNamespace(text='old television dialogue')
+        completed.set()
+
     def transcribe(*args, **kwargs):
-        r.clock.now = 121.0
-        return [SimpleNamespace(text='old television dialogue')], SimpleNamespace()
+        return segments(), SimpleNamespace()
 
     r.app.model = SimpleNamespace(transcribe=transcribe)
     monkeypatch.setattr(dictation, 'resample_audio', lambda audio, *args: audio)
-    dictation.DictationApp.process_wake_word_buffer(
-        r.app, [np.full(FRAME_SIZE, .2, dtype=np.float32)], src_rate=SAMPLE_RATE)
-    r.drain()
+    try:
+        dictation.DictationApp.process_wake_word_buffer(
+            r.app, [np.full(FRAME_SIZE, .2, dtype=np.float32)], src_rate=SAMPLE_RATE)
+        assert decoding.wait(timeout=5), 'queued decoder never reached segment iteration'
+        assert r.app.app_state == 'wake_session'
+        assert not completed.is_set()
+        assert r.app._transcription_owners.current('wake') is not None
+        r.clock.now = r.app._wake_session_deadline + 1
+        r.timers[-1].callback()
+        assert r.app.app_state == 'asleep'
+        assert any(name == 'wake.session_close' and fields['reason'] == 'max_session_s'
+                   for name, fields in r.events)
+        r.app._indicator_reset.assert_called_once_with()
+        # Expiry may reset status; completion must not publish anything after it.
+        status = (list(r.app._schedule_ui.mock_calls),
+                  list(r.app.listening_indicator.mock_calls),
+                  list(r.app._indicator_reset.mock_calls),
+                  list(r.app.set_app_state.mock_calls))
+    finally:
+        release.set()
+        r.drain()  # Release/join before fixture patches can unwind, even on failure.
+
+    assert completed.is_set()
     assert r.app.app_state == 'asleep'
     r.app._output_dictation.assert_not_called()
     r.app._log_history.assert_not_called()  # No swallowed pipeline exception.
+    assert r.app.wake_dictation_buffer == []
+    assert (manager.dictate_pending_buffer, manager._draft.revision,
+            manager._dictate_pending_audio, manager._dictate_target_hwnd) == draft
+    manager._inject_fn.assert_not_called()
+    manager._command_dispatch_fn.assert_not_called()
+    assert (r.app._schedule_ui.mock_calls, r.app.listening_indicator.mock_calls,
+            r.app._indicator_reset.mock_calls, r.app.set_app_state.mock_calls) == status
+    r.app._show_outcome_chip.assert_not_called()
+    assert r.app._transcription_owners.current('wake') is None
+    assert not r.app._wake_dispatch_queue._active
+    assert not r.app._wake_dispatch_queue._pending
+    assert any(name == 'session.dispatch' and fields.get('op') == 'dropped'
+               and fields.get('reason') == 'session_ended' for name, fields in r.events)
 
 
 def test_flush_drops_capture_when_timer_closed_session_mid_frame(rig, monkeypatch):

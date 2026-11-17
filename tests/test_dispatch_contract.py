@@ -175,7 +175,10 @@ class TestProcessTextStates:
         yield
         _plugin_commands._REGISTRY.clear()
         _plugin_commands._REGISTRY.update(registry)
-        _plugin_commands._MODULE_ENTRIES.clear()
+        # 1092: imports stay cached, so retain newly discovered shipped commands.
+        for name in list(_plugin_commands._MODULE_ENTRIES):
+            if name not in module_entries and not name.startswith('plugins.commands.'):
+                del _plugin_commands._MODULE_ENTRIES[name]
         _plugin_commands._MODULE_ENTRIES.update(module_entries)
 
     def _executor(self, commands_file, tmp_path):
