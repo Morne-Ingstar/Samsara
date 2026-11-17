@@ -38,6 +38,23 @@ def retain_stopped(session, reason):
         return False
 
 
+def deliver_retained_failure(session, duration_s):
+    """Keep failed final PCM without admitting any provisional preview (1234)."""
+    message = getattr(session, '_decode_failure', None)
+    if isinstance(message, str) and message:
+        audio = _audio(session)
+        if audio is not None and getattr(audio, 'size', 0):
+            duration_s = len(audio) / session.app.model_rate
+        # Audited/chunked decoding already owns its retained ranges and identity.
+        # Match prepare_final's retention scope without its preview restoration.
+        if not (getattr(session, '_tutorial_owner', None) is not None
+                or getattr(session, '_quiet_empty_capture_899', False)
+                or getattr(session, '_hold_final_audit', None)
+                or getattr(session, '_hold_failed_ranges', ())):
+            retain_stopped(session, 'streaming_empty')
+    return decode_recovery.deliver_failure(session, duration_s)
+
+
 def capture_stopped(session, audio):
     session._stopped_audio_1042 = audio
     if session.cancel_event.is_set():

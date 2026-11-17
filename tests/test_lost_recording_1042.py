@@ -108,14 +108,49 @@ def test_retry_command_decodes_the_retained_capture(capture, monkeypatch):
 
 
 def test_failed_retry_retains_original_take_instead_of_retry_command_audio(capture):
+    _assert_failed_retry_keeps_original(capture)
+
+
+def test_failed_retry_cannot_restore_rejected_preview(capture):
+    capture[0]._last_partial = 'Rejected synthetic preview.'
+    _assert_failed_retry_keeps_original(capture)
+
+
+def _assert_failed_retry_keeps_original(capture):
     session, app, _ = capture
     original = np.full(48000, .03, dtype=np.float32)
     session._stop_capture()  # New, shorter "try again" command capture.
     session._decode_audio = original
     session._decode_params = {'language': 'en'}
     session._decode_failure = decode_recovery.UNCLEAR
-    session.on_final(None)
+    session.on_final(None, duration_s=1.2)
     np.testing.assert_array_equal(app._hold_retry_audio.audio, original)
+    assert app._hold_retry_audio.params == {'language': 'en'}
+    row, = rows(app)
+    assert row['duration_ms'] == 3000 and row['status'] == 'failed'
+    assert row['raw_text'] == ''
+    session._overlay.update_text.assert_not_called()
+    session._overlay.show_empty_result.assert_called_once_with('')
+
+
+def test_failed_retry_preserves_decoder_retained_ranges_and_identity(capture):
+    from samsara.dictation_retry import MissedRange
+    from samsara.hold_final_policy import FinalAudit
+    session, app, _ = capture
+    original = np.full(48000, .03, dtype=np.float32)
+    session._stop_capture()
+    session._decode_audio = original
+    session._decode_params = {'language': 'en'}
+    session._hold_final_audit = FinalAudit()
+    session._hold_failed_ranges = ((1., 3., 'decode_rejected'),)
+    session._decode_failure = decode_recovery.UNCLEAR
+    session._last_partial = 'Rejected synthetic preview.'
+    missed = [MissedRange(1., 3.)]
+    decode_recovery.retain(app, original, session._decode_params, 'decode_rejected', missed)
+    retained = app._hold_retry_audio
+    session.on_final(None, duration_s=1.2)
+    assert app._hold_retry_audio is retained
+    assert retained.ranges == tuple(missed)
     assert rows(app)[0]['duration_ms'] == 3000
 
 

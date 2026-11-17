@@ -2097,9 +2097,9 @@ class StreamingSession:
             return
         from samsara.kept_dictations import handle_held_control
         if handle_held_control(self, text): return
+        from samsara.hold_recording_recovery import prepare_final, deliver_retained_failure
+        if deliver_retained_failure(self, duration_s): return
         from samsara.decode_recovery import deliver_failure
-        if deliver_failure(self, duration_s): return
-        from samsara.hold_recording_recovery import prepare_final
         text, raw_text, duration_s = prepare_final(self, text, raw_text, duration_s)
         if deliver_failure(self, duration_s): return
         if not text or not text.strip():
