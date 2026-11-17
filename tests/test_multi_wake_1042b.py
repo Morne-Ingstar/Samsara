@@ -379,6 +379,7 @@ def test_legacy_edit_during_load_replaces_the_old_listener(fake_model):
 def role_app(monkeypatch):
     from samsara import wake_roles
     import sys
+    from threading import RLock
     rows = entries('jarvis', 'hey ava', 'alexa')
     rows[1]['role'] = 'ava'
     app = SimpleNamespace(config={'wake_word_config': {'phrases': rows}},
@@ -387,7 +388,9 @@ def role_app(monkeypatch):
     # Run dispatch inline only in these unit tests; no provider code is loaded.
     monkeypatch.setattr(wake_roles.thread_registry, 'spawn', lambda name, fn, **kw: fn())
     handler = Mock()
-    monkeypatch.setitem(sys.modules, 'plugins.commands.ask_ollama', SimpleNamespace(handle_ask_ava=handler))
+    # 1231: match the confirmation state restored by the shared fixture.
+    monkeypatch.setitem(sys.modules, 'plugins.commands.ask_ollama', SimpleNamespace(
+        handle_ask_ava=handler, _pending_action=None, _pending_action_lock=RLock()))
     return app, handler
 
 
@@ -527,6 +530,9 @@ def test_other_profile_hit_cannot_authorize_fast_ava(role_app):
     handler.assert_not_called()
 
 
+# 1231: native integration needs downloaded openWakeWord feature models;
+# pip-only coverage runners have ONNX Runtime but not those model assets.
+@pytest.mark.requires_desktop
 def test_bundled_custom_heads_load_together_and_ava_stays_opt_in():
     """Actual ONNX inference and shipped bytes, without voice/owner readiness claims."""
     import hashlib

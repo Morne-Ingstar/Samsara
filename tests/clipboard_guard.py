@@ -314,6 +314,11 @@ class ClipboardGuard:
             def exec_module(self, module):
                 self.original.exec_module(module)
                 guard.patch_module(module)
+                # 1231: this finder also handles QtWidgets in Python children;
+                # PathFinder bypasses the audio finder's loader there.
+                audio = sys.modules.get('_samsara_test_audio_446')
+                if audio is not None:
+                    audio.patch_module(module)
 
             def __getattr__(self, name):
                 return getattr(self.original, name)

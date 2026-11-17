@@ -451,6 +451,12 @@ def _stub_tray(monkeypatch, app, *, raising=False):
                         lambda host: host.open_passive_review())
     monkeypatch.setattr('samsara.ui.context_help_qt.open_help',
                         Mock(side_effect=boom if raising else None))
+    # 1231: Check my mic uses this public helper, like the other tool actions.
+    monkeypatch.setattr('samsara.ui.mic_check_qt.open_mic_check',
+                        Mock(side_effect=boom if raising else None))
+    # 1231: the public Game mode action boundary must raise in this rig too.
+    monkeypatch.setattr('samsara.game_mode.set_manual',
+                        Mock(side_effect=boom if raising else None))
     monkeypatch.setattr(tray_qt, "open_support_tab", Mock(side_effect=boom if raising else None))
     monkeypatch.setattr(SamsaraTrayQt, "_open_update_dialog",
                         Mock(side_effect=boom if raising else None))

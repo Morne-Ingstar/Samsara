@@ -54,6 +54,8 @@ def test_child_uses_guard_when_it_replaces_pythonpath(tmp_path, silent_audio):
 import json, sys, winsound, sounddevice as sd
 from PySide6.QtWidgets import QApplication
 guard = sys.modules['_samsara_test_audio_446']
+# 1231: fail before entering native Qt if another import hook lost the guard.
+assert getattr(QApplication.beep, '_silent_audio_446', None) is guard
 winsound.Beep(440, 1)
 QApplication.beep()
 stream = sd.OutputStream(samplerate=44100, channels=1)

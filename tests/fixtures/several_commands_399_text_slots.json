@@ -150,6 +150,20 @@
     "state": "rejected",
     "text": "choose cockpit target alpha and volume down"
   },
+  "cockpit.clarify_cockpit_item": {
+    "calls": [],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [],
+      "chain_feedback_sent": true,
+      "chain_stopped": "clarify cockpit item",
+      "reason": "pack_disabled",
+      "state": "rejected"
+    },
+    "generated_by": "890",
+    "state": "rejected",
+    "text": "clarify cockpit item alpha and volume down"
+  },
   "cockpit.cockpit_today": {
     "calls": [],
     "detail": {
@@ -971,6 +985,84 @@
     "state": "miss",
     "text": "remind me to alpha and volume down"
   },
+  "samsara_features.search_samsara_commands_for": {
+    "calls": [
+      [
+        "search samsara commands for",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "search samsara commands for",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "search samsara commands for alpha and volume down"
+  },
+  "samsara_features.search_samsara_history_for": {
+    "calls": [
+      [
+        "search samsara history for",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "search samsara history for",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "search samsara history for alpha and volume down"
+  },
+  "samsara_features.search_saved_snippets_for": {
+    "calls": [
+      [
+        "search saved snippets for",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "search saved snippets for",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "search saved snippets for alpha and volume down"
+  },
   "screen_gif.record_my_screen": {
     "calls": [],
     "detail": {},
@@ -1586,6 +1678,58 @@
     "detail": {},
     "state": "miss",
     "text": "set a timer alpha and volume down"
+  },
+  "vlc.vlc_skip_back": {
+    "calls": [
+      [
+        "vlc skip back",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "vlc skip back",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "vlc skip back alpha and volume down"
+  },
+  "vlc.vlc_skip_forward": {
+    "calls": [
+      [
+        "vlc skip forward",
+        "alpha"
+      ],
+      [
+        "volume down",
+        ""
+      ]
+    ],
+    "detail": {
+      "chain_count": 2,
+      "chain_done": [
+        "vlc skip forward",
+        "volume down"
+      ],
+      "chain_feedback_sent": true,
+      "chain_stopped": "",
+      "reason": "",
+      "state": "completed"
+    },
+    "generated_by": "890",
+    "state": "completed",
+    "text": "vlc skip forward alpha and volume down"
   },
   "web_shortcuts.go_to": {
     "calls": [],
