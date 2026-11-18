@@ -55,9 +55,10 @@ def _staged(*fragments):
 # -- the six evidence pairs ---------------------------------------------------
 
 EVIDENCE = [
+    # 1250: decoder-initial capitals no longer preserve a pause boundary.
     pytest.param(
         ["I'm looking at the...", "Dictation pause length."],
-        "I'm looking at the Dictation pause length.", "ellipsis_determiner", id="P1-the"),
+        "I'm looking at the dictation pause length.", "ellipsis_determiner", id="P1-the"),
     pytest.param(
         ["And it says, lowering it makes...", "hands-free, break sentences into more and more pieces."],
         "And it says, lowering it makes hands-free, break sentences into more and more pieces.",
@@ -123,6 +124,7 @@ def test_lowercase_filler_after_a_full_stop_still_continues():
 
 
 def test_the_whole_owner_message_stages_cohesively():
+    # 1250: initial capitals after a decoder pause are lowercased on joining.
     fragments = [
         "And yet, all of a sudden, just that one message...", "was really bad, in that regard.",
         "I'm looking at the...", "Dictation pause length.", "It's at .65 seconds.",
@@ -132,25 +134,26 @@ def test_the_whole_owner_message_stages_cohesively():
     ]
     assert _staged(*fragments) == (
         "And yet, all of a sudden, just that one message was really bad, in that regard. "
-        "I'm looking at the Dictation pause length. It's at .65 seconds. "
+        "I'm looking at the dictation pause length. It's at .65 seconds. "
         "And it says, lowering it makes hands-free, break sentences into more and more pieces. "
-        "Which is also not good. Um So how do we deal with that?"
+        "Which is also not good. Um so how do we deal with that?"
     )
 
 
 # -- boundaries that must NOT join -------------------------------------------
 
 @pytest.mark.parametrize("fragments, expected", [
+    # 1250: remove decoder ellipses; closed clauses keep a single period.
     pytest.param(["It's at .65 seconds.", "And it says, lowering it makes..."],
                  "It's at .65 seconds. And it says, lowering it makes...", id="stop-then-capital"),
     pytest.param(["Speaking of which...", "We need to put..."],
-                 "Speaking of which... We need to put...", id="ellipsis-then-capital"),
+                 "Speaking of which we need to put...", id="ellipsis-then-capital"),
     pytest.param(["the...", "There's the six little squares showing apps."],
-                 "the... There's the six little squares showing apps.", id="determiner-then-restart"),
+                 "the there's the six little squares showing apps.", id="determiner-then-restart"),
     pytest.param(["the...", "I think that is fine."],
-                 "the... I think that is fine.", id="determiner-then-pronoun"),
+                 "the I think that is fine.", id="determiner-then-pronoun"),
     pytest.param(["It was great...", "I loved it."],
-                 "It was great... I loved it.", id="I-after-non-conjunction"),
+                 "It was great. I loved it.", id="I-after-non-conjunction"),
     pytest.param(["That is all?", "deal with it later"],
                  "That is all? deal with it later", id="question-mark-kept"),
 ])
@@ -212,7 +215,8 @@ def test_scratch_that_restores_the_exact_ellipsis():
                  id="quote-pair-across-ellipsis"),
     pytest.param(["That is the whole...", "title in quotes"], '"That is the whole title"',
                  id="trailing-in-quotes-across-ellipsis"),
-    pytest.param(["Ends like this...", "In quotes"], '"Ends like this..."', id="capital-trigger-kept-separate"),
+    # 1250: capitalization cannot turn decoder dots into literal punctuation.
+    pytest.param(["Ends like this...", "In quotes"], '"Ends like this"', id="capital-trigger-kept-separate"),
 ])
 def test_formatting_tokens_over_the_staged_thought(fragments, expected):
     assert apply_formatting_tokens(_staged(*fragments)) == expected

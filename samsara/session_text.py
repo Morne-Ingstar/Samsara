@@ -175,7 +175,7 @@ _SENTENCE_CANNOT_END_WORDS = frozenset({"a", "an", "the", "my", "your", "our", "
 # information -- is treated as the continuation.
 _OPEN_CLAUSE_CONJUNCTIONS = frozenset({"and", "but", "or", "because", "cause"})
 
-_PRONOUN_I = re.compile(r"\AI(?:'(?:m|ll|ve|d))?\Z")
+_PRONOUN_I = re.compile(r"\AI(?:['’](?:m|ll|ve|d))?\Z")
 
 # Words that cannot follow an article or possessive, so a fragment starting
 # with one after "the..." is the speaker restarting, not finishing the phrase
@@ -198,6 +198,71 @@ class EllipsisSeam:
     stripped: str = ""  # exact trailing text removed from the pending buffer
     lead_stripped: str = ""  # leading ellipsis removed from the NEW chunk
 
+    def stage_chunk(self, prepared: str, app=None) -> str:
+        """Apply only boundary punctuation/case; retain the prepared interior.
+
+        Vocabulary is an in-memory snapshot of the composing application's
+        dictionary, never a profile read. Edited punctuation has no stripped
+        suffix and therefore never receives a replacement period here.
+        """
+        if self.clause == "empty":
+            return ""
+        chunk = _LEADING_ELLIPSIS.sub("", prepared).strip() if self.lead_stripped else prepared.strip()
+        if not chunk:
+            return ""
+        if self.join and self.clause != "ellipsis_only":
+            word = re.search(r"[^\W\d_]+(?:['’][^\W\d_]+)*", chunk)
+            if word:
+                core = word.group()
+                store = getattr(app, 'dictionary_store', None)
+                if store is None:
+                    store = getattr(app, 'voice_training_window', None)
+                vocabulary = list(getattr(store, 'custom_vocab', ()))
+                vocabulary.extend(getattr(store, 'corrections_dict', {}).values())
+                known_capital = any(
+                    token.casefold() == core.casefold() and token[:1].isupper()
+                    for entry in vocabulary for token in re.findall(r"[^\W\d_]+(?:['’][^\W\d_]+)*", entry)
+                )
+                if (not any(c.isalnum() for c in chunk[:word.start()])
+                        and core[:1].isupper() and not _PRONOUN_I.fullmatch(core)
+                        and not core.isupper() and not any(c.isupper() for c in core[1:])
+                        and not known_capital):
+                    chunk = chunk[:word.start()] + core[0].lower() + chunk[word.start() + 1:]
+        return (". " if self.stripped and not self.join else " ") + chunk
+
+    @staticmethod
+    def sentence_complete(fragment: str) -> bool:
+        """Recognize clear closed clauses, not arbitrary capitalization.
+
+        This deliberately small grammar leaves uncertain tails joined. It is
+        not a general English parser: an open function word, auxiliary or
+        participle cannot establish a complete clause on its own.
+        """
+        clause = re.split(r"[.!?…]+", fragment)[-1].strip()
+        words = re.findall(r"[A-Za-z]+(?:['’][A-Za-z]+)?", clause.lower())
+        if len(words) < 2:
+            return False
+        open_tail = _SENTENCE_CANNOT_END_WORDS | _OPEN_CLAUSE_CONJUNCTIONS | {
+            'to', 'of', 'for', 'with', 'from', 'at', 'in', 'on', 'by', 'about',
+            'into', 'as', 'if', 'when', 'while', 'than', 'that', 'which', 'who',
+            'is', 'are', 'was', 'were', 'be', 'been', 'being', 'am', 'will',
+            'would', 'can', 'could', 'should', 'must', 'may', 'might', 'have',
+            'has', 'had', 'not', 'very', 'so', 'too',
+            'whole', 'other', 'same', 'next', 'last', 'first', 'another',
+        }
+        if words[-1] in open_tail or words[-1].endswith(('ing', 'ly')):
+            return False
+        # Copula + complement ("the lamp is blue", "that was the plan").
+        if (any(word in {'is', 'are', 'was', 'were', 'am', "it's", "that's"}
+                for word in words[:-1])
+                and not any(word.endswith('ing') for word in words)):
+            return True
+        # Unambiguous closed predicates and past-tense clauses with an object.
+        if words[-1] in {'worked', 'stopped', 'finished', 'arrived', 'left', 'ended', 'failed'}:
+            return True
+        return (len(words) >= 3 and words[0] in {'i', 'you', 'he', 'she', 'it', 'we', 'they'}
+                and words[1].endswith('ed'))
+
 
 #: Whisper marks a continuation by ENDING the previous fragment with an ellipsis
 #: and STARTING the next one with another ("when you send a window..." then
@@ -216,46 +281,44 @@ _HESITATION_SOUNDS = frozenset({"um", "umm", "uh", "uhh", "er", "erm", "hmm", "a
 
 
 def decide_ellipsis_seam(previous_text: str, new_chunk_raw: str,
-                         previous_fragment: Optional[str] = None) -> Optional[EllipsisSeam]:
-    """Decide join-or-separate for a seam whose previous fragment ends in an
-    ellipsis ("..", "..." or the ellipsis character). Returns None for any
-    other seam, which the caller handles as before.
+                         previous_fragment: Optional[str] = None, *,
+                         decoder_trailing: bool = True) -> Optional[EllipsisSeam]:
+    """1250: decoder boundary dots mark a pause, never spoken punctuation.
 
-    JOIN (strip the ellipsis, one space, the new fragment's text unchanged):
-      ellipsis_lowercase    the new fragment's first word starts lower case
-      ellipsis_determiner   the word before the ellipsis is an article or
-                            possessive ("the...", "your...") and the new
-                            fragment does not start with a contraction or a
-                            word that cannot follow one (pronoun, verb "is",
-                            conjunction, ...); its case is kept, so a name
-                            stays capitalised ("the.." + "GitHub")
-      ellipsis_conjunction_i  the word before the ellipsis is and/but/or/
-                            because/cause and the new fragment starts with
-                            the pronoun I (I, I'm, I'll, I've, I'd)
-      ellipsis_hesitation_only  previous_fragment (the last staged fragment
-                            on its own) is only hesitation sounds ("Um...");
-                            the new fragment's case is kept
-    Otherwise SEPARATE and the ellipsis stays: an upper-case start after
-    anything else is a new sentence or a name, and a wrong join is harder to
-    notice and fix by voice than an extra stop.
+    Remove both sides of a seam, including a leading-only marker. Keep a
+    single period for a clearly completed clause; join uncertain tails.
+    The caller disables trailing removal after a deliberate draft edit.
+    No seam is decided until a subsequent nonempty chunk arrives, so the
+    final trailing ellipsis and ellipses inside either chunk are untouched.
     """
     previous = (previous_text or "").rstrip()
-    match = _TRAILING_ELLIPSIS.search(previous)
-    if match is None:
-        return None
+    match = _TRAILING_ELLIPSIS.search(previous) if decoder_trailing else None
     raw = new_chunk_raw or ""
     lead = _LEADING_ELLIPSIS.match(raw)
+    if match is None and lead is None:
+        return None
     lead_stripped = lead.group(0) if lead else ""
     if lead_stripped:
         raw = raw[lead.end():]
     new_tokens = raw.strip().split()
     if not new_tokens:
         return EllipsisSeam(join=False, clause="empty", lead_stripped=lead_stripped)
-    body = previous[:match.start()].rstrip()
+    body = previous[:match.start()].rstrip() if match else previous
+    stripped = previous_text[len(body):] if match else ""
     prior_words = body.split()
     if not prior_words:
-        return EllipsisSeam(join=False, clause="ellipsis_only", lead_stripped=lead_stripped)
-    stripped = previous_text[len(body):]
+        return EllipsisSeam(join=True, clause="ellipsis_only", stripped=stripped,
+                            lead_stripped=lead_stripped)
+
+    if match is None:
+        return EllipsisSeam(join=not chunk_ends_terminal(body), clause="ellipsis_leading",
+                            lead_stripped=lead_stripped)
+
+    fragment = previous_fragment if previous_fragment is not None else previous
+    fragment = _TRAILING_ELLIPSIS.sub("", fragment).rstrip()
+    if EllipsisSeam.sentence_complete(fragment):
+        return EllipsisSeam(join=False, clause="ellipsis_new_sentence", stripped=stripped,
+                            lead_stripped=lead_stripped)
 
     first = new_tokens[0]
     first_alpha = next((ch for ch in first if ch.isalpha()), "")
@@ -264,24 +327,21 @@ def decide_ellipsis_seam(previous_text: str, new_chunk_raw: str,
                             lead_stripped=lead_stripped)
 
     fragment_words = [w.strip(string.punctuation + "…").lower()
-                      for w in (previous_fragment or "").split()]
+                      for w in fragment.split()]
     if fragment_words and all(w in _HESITATION_SOUNDS for w in fragment_words):
         return EllipsisSeam(join=True, clause="ellipsis_hesitation_only", stripped=stripped,
                             lead_stripped=lead_stripped)
 
     last_word = prior_words[-1].strip(string.punctuation).lower()
-    first_word = first.strip(string.punctuation)
-    if (last_word in _SENTENCE_CANNOT_END_WORDS
-            and first[0].isalnum()
-            and "'" not in first_word and "’" not in first_word
-            and first_word.lower() not in _CANNOT_FOLLOW_DETERMINER):
+    if last_word in _SENTENCE_CANNOT_END_WORDS:
         return EllipsisSeam(join=True, clause="ellipsis_determiner", stripped=stripped,
                             lead_stripped=lead_stripped)
     if (last_word in _OPEN_CLAUSE_CONJUNCTIONS
             and _PRONOUN_I.match(first.rstrip(string.punctuation))):
         return EllipsisSeam(join=True, clause="ellipsis_conjunction_i", stripped=stripped,
                             lead_stripped=lead_stripped)
-    return EllipsisSeam(join=False, clause="ellipsis_new_sentence", lead_stripped=lead_stripped)
+    return EllipsisSeam(join=True, clause="ellipsis_capitalized", stripped=stripped,
+                        lead_stripped=lead_stripped)
 
 
 def chunk_ends_terminal(text: str) -> bool:

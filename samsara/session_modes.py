@@ -2812,23 +2812,23 @@ class SessionModeManager(UtteranceUndoMixin):
                 top.payload if top is not None and top.kind == "dictation_staged_chunk" else None
             )
             ellipsis_seam = decide_ellipsis_seam(
-                self._dictate_pending_buffer, chunk_raw, previous_fragment)
+                self._dictate_pending_buffer, chunk_raw, previous_fragment,
+                decoder_trailing=previous_fragment is not None)
         if self._last_dictate_ended_terminal is None:
             to_stage = prepared.strip()
             stripped_terminal_period = False
         elif ellipsis_seam is not None:
-            # Queue 81: the previous fragment trailed off. Join only on the
-            # clauses decide_ellipsis_seam lists; otherwise it is a new
-            # sentence and the ellipsis is the speaker's, kept as spoken.
+            # 1250: decoder boundary dots are pauses; draft edits stay literal.
+            # The helper preserves known capitals and completed sentences.
             stripped_terminal_period = False
-            if ellipsis_seam.join:
+            if ellipsis_seam.stripped:
                 stripped_suffix = ellipsis_seam.stripped
                 self._dictate_pending_buffer = self._dictate_pending_buffer[:-len(stripped_suffix)]
-            # Remove decoder-leading dots; preserve a spoken trailing ellipsis.
+            # Prepare case without reformatting the chunk's interior.
             chunk_body = prepared
-            if ellipsis_seam.lead_stripped:
-                chunk_body = prepared[len(ellipsis_seam.lead_stripped):]
-            to_stage = " " + chunk_body.strip()
+            app = getattr(self._agent_dispatch_fn, '__self__', None)
+            to_stage = ellipsis_seam.stage_chunk(chunk_body, app)
+            # Replacement periods belong to this chunk for exact scratch undo.
             log.debug("[SESSION] DICTATE seam after ellipsis: %s join=%s lead_stripped=%r",
                       ellipsis_seam.clause, ellipsis_seam.join, ellipsis_seam.lead_stripped)
         else:

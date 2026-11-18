@@ -120,10 +120,23 @@ def test_synthetic_results_match_pre_move_bytes_and_fields(section):
         if section == "ellipsis" and actual is not None:
             assert isinstance(actual, facade.EllipsisSeam)
             actual = asdict(actual)
+        expected = case["expected"]
+        # 1250 intentionally replaces the old capital-means-literal-ellipsis policy.
+        if section == "ellipsis" and expected is not None:
+            expected = dict(expected)
+            if case["id"] == "only-trailing":
+                expected.update(join=True, stripped="... ")
+            elif expected["clause"] == "ellipsis_new_sentence":
+                prefix = case["id"].split("-", 1)[0]
+                clause = ("ellipsis_determiner" if prefix in {'a', 'an', 'the', 'my', 'your', 'our', 'their'}
+                          else "ellipsis_conjunction_i" if case["id"].endswith("I’m")
+                          else "ellipsis_capitalized")
+                expected.update(join=True, clause=clause,
+                                stripped="…" if prefix in {'and', 'but', 'or', 'because', 'cause'} else "...")
         # UTF-8 preserves punctuation/whitespace and distinguishes None from
         # a join=False result; expected bytes were captured before the move.
         assert json.dumps(actual, ensure_ascii=False).encode("utf-8") == json.dumps(
-            case["expected"], ensure_ascii=False).encode("utf-8"), case["id"]
+            expected, ensure_ascii=False).encode("utf-8"), case["id"]
 
 
 def test_matrix_pins_negative_cases_and_inclusive_thresholds():
@@ -145,7 +158,25 @@ def test_matrix_pins_negative_cases_and_inclusive_thresholds():
 
 def test_real_manager_matches_pre_move_state_scratch_and_injection():
     for case in _golden()["manager"]:
-        assert _manager_trace(case["recipe"]) == case["expected"], case["id"]
+        expected = case["expected"]
+        # 1250: retain every trace check, changing only the two affected seam outputs.
+        if case["id"] in {'hesitation', 'separate'}:
+            encoded = json.dumps(expected)
+            encoded = encoded.replace('Synthetic thought... Another sentence.', 'Synthetic thought another sentence.')
+            encoded = encoded.replace(' Another sentence.', ' another sentence.')
+            expected = json.loads(encoded)
+            for snapshot in expected['snapshots']:
+                result = snapshot['result']
+                if isinstance(result, dict) and 'detail' in result and 'pending_chars' in result['detail']:
+                    result['detail']['pending_chars'] = len(snapshot['pending'])
+                if case['id'] == 'separate' and isinstance(result, dict) and result['kind'] == 'dictate_committed':
+                    # 1250: removing the three decoder dots reduces the committed count from 38 to 35.
+                    result['detail']['chars'] = 35
+                if case['id'] == 'separate':
+                    for item in snapshot['stack']:
+                        if item['kind'] == 'dictation_staged_chunk' and item['payload'] == ' another sentence.':
+                            item['extra']['stripped_suffix'] = '...'
+        assert _manager_trace(case["recipe"]) == expected, case["id"]
 
 
 def test_manager_keeps_dynamic_facade_seam_override(monkeypatch):
