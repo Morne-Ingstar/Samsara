@@ -394,6 +394,7 @@ class LiveSurfaceWidget(QWidget):
     report_problem_requested = Signal(object)
     dismiss_question_requested = Signal()
     clean_up_requested = Signal()
+    reread_requested = Signal()
     pause_requested = Signal()
     correct_word_requested = Signal(object)
     correction_apply_requested = Signal(object, str)
@@ -489,13 +490,16 @@ class LiveSurfaceWidget(QWidget):
         self._latest.setAccessibleDescription("Resume following newly settled draft text")
         self._clear = self._button("Clear draft", "Clear draft", self.clear_requested.emit)
         self._clean_up = self._button("Clean up draft", "Clean up", self.clean_up_requested.emit)
+        # PLACEHOLDER COPY (1251)
+        self._reread = self._button("Re-read draft audio", "Re-read", self.reread_requested.emit)
         style_cleanup_buttons(self._clean_up, self._clear)
+        self._reread.setFixedHeight(self._clear.height())
         self._insert = self._button("Insert waiting text", "Insert text", self.commit_requested.emit)
         self._pause = self._button("Pause capture", "Pause", self.pause_requested.emit)
         self._correct = self._button("Correct a word", "Correct", self._request_correct)
         self._edit_receipt = self._button("Edit sent receipt as a new draft", "Edit as new draft", self._request_edit_receipt)
         self._collapse = self._button("Collapse surface", "Collapse", self.collapse_requested.emit)
-        self._controls = (self._clear, self._clean_up, self._pause, self._correct, self._edit_receipt, self._collapse)
+        self._controls = (self._clear, self._clean_up, self._reread, self._pause, self._correct, self._edit_receipt, self._collapse)
         self._picker_buttons = [self._button("Draft word", "", lambda n=n: self._choose_picker(n))
                                 for n in range(4)]
         from samsara.ui.correction_picker_qt import WordCorrectionMenu
@@ -1007,8 +1011,13 @@ class LiveSurfaceWidget(QWidget):
                 self._clear.show(); actions = []
                 self._clean_up.setGeometry(self._clear.x()-REGION_GAP-width, content.y()+HEADER_HEIGHT+REGION_GAP, width, 26)
                 self._clean_up.show()
+                width = self._button_width(self._reread)
+                self._reread.setGeometry(self._clean_up.x()-REGION_GAP-width, self._clean_up.y(), width, 26)
+                self._reread.setEnabled(self._clean_up.isEnabled())
+                self._reread.show()
             else:
                 actions.insert(0, (self._clean_up, 0))
+                actions.insert(0, (self._reread, 0))
         if self._view.document is DocumentState.PARKED_DRAFT and self._view.text:
             actions.insert(0, (self._insert, 132))
         if not self._follow_latest or self._unread_segments:
@@ -1020,7 +1029,7 @@ class LiveSurfaceWidget(QWidget):
         for button, width in reversed(actions):
             width = self._button_width(button, width)
             right -= width
-            button.setGeometry(right, content.y()+(9 if button in (self._clean_up, self._clear) else 0), width, 26 if button in (self._clean_up, self._clear) else MARK_SIZE); button.show()
+            button.setGeometry(right, content.y()+(9 if button in (self._clean_up, self._clear, self._reread) else 0), width, 26 if button in (self._clean_up, self._clear, self._reread) else MARK_SIZE); button.show()
             right -= REGION_GAP
         state_x = content.x()+MARK_SIZE+12
         self._lane.setGeometry(state_x, content.y(), max(1, right-state_x), HEADER_HEIGHT//2)

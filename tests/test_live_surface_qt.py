@@ -147,9 +147,10 @@ def test_compact_header_reserves_text_and_only_quiet_clear_chrome(qapp, form):
     widget.show()
     for capture, pending, labels in (
         (CaptureState.RECORDING, False, {"Clear draft"}),
-        (CaptureState.HANDS_FREE_LISTENING, False, {"Clean up", "Clear draft"}),
-        (CaptureState.HANDS_FREE_LISTENING, True, {"Accept?", "Cancel"}),
-        (CaptureState.HANDS_FREE_LISTENING, False, {"Clean up", "Clear draft"}),
+        # 1251 adds the guarded Re-read action to the hands-free draft row.
+        (CaptureState.HANDS_FREE_LISTENING, False, {"Clean up", "Clear draft", "Re-read"}),
+        (CaptureState.HANDS_FREE_LISTENING, True, {"Accept?", "Cancel", "Re-read"}),
+        (CaptureState.HANDS_FREE_LISTENING, False, {"Clean up", "Clear draft", "Re-read"}),
     ):
         widget.refresh(_view(form, text="Settled", partial="moving words",
                              capture=capture, document=DocumentState.EDITABLE_DRAFT),
@@ -265,6 +266,8 @@ def test_no_persistent_commit_or_extra_state_control(qapp):
             qapp.processEvents()
             buttons = [b for b in w.findChildren(QPushButton) if b.isVisible()]
             labels = {"Accept?", "Cancel"} if pending else {"Clear draft"}
+            if hands_free:
+                labels.add("Re-read")  # 1251 adds the guarded draft audio action.
             if hands_free and not pending:
                 labels.add("Clean up")
             assert {b.text() for b in buttons} == labels and len(buttons) == len(labels)

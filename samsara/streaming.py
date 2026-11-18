@@ -1406,7 +1406,8 @@ class StreamingOverlayQt:
                                   on_placement_committed=self._on_placement_committed)
         if self._on_word_clicked is not None or self._on_clear is not None:
             widget.enable_interaction(self._on_word_clicked, self._on_clear)
-        widget.enable_cleanup(getattr(self, "_on_clean_up", None))
+        from samsara.draft_reread import configure_compact
+        configure_compact(widget, getattr(self, "_on_clean_up", None))
         if self._on_choice is not None or self._on_choice_dismiss is not None:
             widget.set_correction_choice_callbacks(self._on_choice, self._on_choice_dismiss)
         return widget
@@ -2535,7 +2536,6 @@ class DictatePreviewSession:
             set_choices(self._on_candidate_chosen, self._on_candidates_dismissed)
 
     # ---- Public lifecycle (call from the session/mode-change thread) ----
-
     def start(self):
         self._finalized = []
         self._generation = 0

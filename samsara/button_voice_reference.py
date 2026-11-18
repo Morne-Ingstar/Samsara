@@ -4,6 +4,7 @@ CONTROL_LABELS = (
     'Paste again',
     'Clear draft',
     'Clean up',
+    'Re-read',  # PLACEHOLDER COPY (1251): draft audio action.
     'Accept?',
     'Cancel',
     'Collapse',

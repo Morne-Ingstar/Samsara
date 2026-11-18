@@ -2851,16 +2851,11 @@ class SessionModeManager(UtteranceUndoMixin):
             return DispatchOutcome(kind="empty")
 
         self._clear_draft_undo.drop()
-        self._dictate_pending_audio.append(audio_ref)
-        models = {key: value for key, value in getattr(self, '_dictate_audio_models', {}).items()
-                  if value[0]() is not None}
-        owner = getattr(self._commit_redecode_fn, '__self__', None)
-        try:
-            models[id(audio_ref)] = (weakref.ref(audio_ref), weakref.ref(owner.model))
-        except (AttributeError, TypeError):
-            pass  # Missing provenance keeps the optional re-decode path.
-        self._dictate_audio_models = models
+        from samsara.draft_reread import retain
+        retain(self, audio_ref)
         self._draft.append(to_stage)
+        from samsara.draft_reread import checkpoint
+        checkpoint(self)
         self._draft.delivery_prepared = self._prepare_dictate_fn is not None
         self._last_dictate_ended_terminal = chunk_ends_terminal(to_stage)
         self._stack.push(StackItem(

@@ -203,6 +203,7 @@ class LiveSurfaceController:
     def _connect_intents(self) -> None:
         for name, callback in (("commit_requested", self._commit),
                                ("clean_up_requested", self._clean_up),
+                               ("reread_requested", self._reread),
                                ("clear_requested", self._clear),
                                ("dismiss_feedback_requested", self.dismiss_error),
                                ("report_problem_requested", self._report_problem),
@@ -458,6 +459,10 @@ class LiveSurfaceController:
         if callable(commit):
             commit()
             self.sync_draft(manager)
+
+    def _reread(self) -> None:
+        from samsara.draft_reread import request
+        request(self.app)
 
     def _clean_up(self) -> None:
         from samsara.ava_edit import session

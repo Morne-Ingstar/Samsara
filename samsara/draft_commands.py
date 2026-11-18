@@ -138,6 +138,12 @@ def dispatch_local_control(manager, text):
     if spelling is not None and spelling.active:
         return None
     phrase = text.strip().lower().rstrip('.!?,;:')
+    if phrase in {'re-read', 're-read it', 'reread', 'reread it', 're read', 're read it'} and _active(manager):
+        from samsara.draft_reread import request
+        from samsara.session_modes import DispatchOutcome
+        ok = request(_app(manager))
+        # The proposal/decline owns its chip; a generic command chip hides the reason.
+        return DispatchOutcome('ava_edit_handled', {'phrase': 're-read', 'requested': ok})
     if phrase in CASE_COMMANDS and _active(manager):
         return dispatch_draft_command(manager, phrase, text)
     return None
