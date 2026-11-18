@@ -28,7 +28,6 @@ def recovery(monkeypatch):
     clock = Clock()
     monkeypatch.setattr(mh, '_perf', clock.perf)
     monkeypatch.setattr(mh, '_sleep', clock.sleep)
-    monkeypatch.setattr(mh, '_cursor_pos', lambda: (0, 0))
     notices, recovered, installs = [], [], []
     hook = MouseHook(lambda *_: None, suppress_buttons={'mouse4', 'mouse5'},
                      on_hook_failed=notices.append, on_hook_recovered=lambda: recovered.append(True))
@@ -44,6 +43,13 @@ def recovery(monkeypatch):
 
     monkeypatch.setattr(hook, '_start_hook_thread', install)
     monkeypatch.setattr(hook, '_stop_hook_thread', uninstall)
+    def post(_thread, message, *_):
+        # 1254: installed-thread retries swap without tearing down the pump.
+        if message == mh.WM_HOOK_REFRESH:
+            install()
+            hook._refresh_pending = False
+        return 1
+    monkeypatch.setattr(mh._user32, 'PostThreadMessageW', post)
     return SimpleNamespace(hook=hook, clock=clock, notices=notices, recovered=recovered,
                            installs=installs)
 
@@ -60,14 +66,14 @@ def test_four_losses_back_off_then_reinstall_without_permanent_disable(recovery)
     assert len(s.installs) == 3 and len(s.notices) == 1
     assert s.hook._retry_due == s.clock.now + 30
     assert not s.hook.gave_up and not s.hook._stopping.is_set()
-    assert not s.hook.suppress_buttons
+    assert s.hook.suppress_buttons == s.hook.requested_suppress_buttons  # 1254
     s.clock.sleep(29.9)
     s.hook.watchdog_tick()
     assert len(s.installs) == 3
     s.clock.sleep(0.1)
     s.hook.watchdog_tick()
     assert len(s.installs) == 4 and s.hook.installed
-    assert not s.hook.suppress_buttons  # a new handle alone is not proof of health
+    assert s.hook.suppress_buttons == s.hook.requested_suppress_buttons  # 1254: no suppression gap
     s.hook.callback_count += 1
     s.hook.watchdog_tick()
     assert s.hook.suppress_buttons == frozenset({'mouse4', 'mouse5'})
@@ -107,7 +113,7 @@ def test_install_failure_retries_slowly_and_notifies_once(recovery, monkeypatch)
         s.clock.sleep(1)
         s.hook.watchdog_tick()
         assert len(s.installs) == before + 1
-    assert len(s.notices) == 1 and not s.hook.suppress_buttons
+    assert len(s.notices) == 1 and s.hook.suppress_buttons == s.hook.requested_suppress_buttons
 
 
 def test_initial_install_failure_keeps_dispatcher_retry_and_notice(recovery, monkeypatch):
@@ -155,7 +161,7 @@ def test_inconclusive_probe_keeps_suppression_off_without_another_install(recove
     monkeypatch.setattr(s.hook, '_self_test', lambda: 'inconclusive')
     s.clock.sleep(3)
     s.hook.watchdog_tick()
-    assert s.hook.recovering and not s.hook.suppress_buttons
+    assert s.hook.recovering and s.hook.suppress_buttons == s.hook.requested_suppress_buttons
     assert len(s.installs) == 1 and len(s.notices) == 1
 
 
@@ -203,16 +209,15 @@ def test_explicit_restart_resets_backoff_and_restores_requested_buttons(recovery
 
 @pytest.mark.parametrize('pump_responsive, verdict', [(True, 'dead'), (False, 'inconclusive')])
 def test_missed_injection_needs_responsive_pump(recovery, monkeypatch, pump_responsive, verdict):
-    monkeypatch.setattr(mh, '_send_zero_move', lambda: True)
+    # 1254: passive Raw Input supersedes injected self-tests.
     pump = MagicMock(return_value=pump_responsive)
     monkeypatch.setattr(recovery.hook, '_pump_responsive', pump)
-    assert recovery.hook._self_test() == verdict
-    pump.assert_called_once()
+    assert recovery.hook._self_test() == 'inconclusive'
+    pump.assert_not_called()
 
 
 def test_dispatcher_starvation_makes_missed_probe_inconclusive(recovery, monkeypatch):
     s = recovery
-    monkeypatch.setattr(mh, '_send_zero_move', lambda: True)
     monkeypatch.setattr(mh, '_sleep', lambda _seconds: s.clock.sleep(5))
     pump = MagicMock(return_value=True)
     monkeypatch.setattr(s.hook, '_pump_responsive', pump)
@@ -221,14 +226,13 @@ def test_dispatcher_starvation_makes_missed_probe_inconclusive(recovery, monkeyp
 
 
 def test_callback_during_pump_check_prevents_false_loss(recovery, monkeypatch):
-    monkeypatch.setattr(mh, '_send_zero_move', lambda: True)
 
-    def ping():
-        recovery.hook.callback_count += 1
-        return True
-
-    monkeypatch.setattr(recovery.hook, '_pump_responsive', ping)
+    # 1254: passive Raw Input supersedes injected self-tests.
+    recovery.hook.callback_count += 1
+    pump = MagicMock(side_effect=AssertionError('active probe'))
+    monkeypatch.setattr(recovery.hook, '_pump_responsive', pump)
     assert recovery.hook._self_test() == 'alive'
+    pump.assert_not_called()
 
 
 @pytest.mark.parametrize('acknowledge', [True, False])
@@ -336,3 +340,5 @@ def test_recovering_tray_has_release_without_reenable(qapp):
     assert 'Re-enable mouse hotkey' not in texts
     assert 'Release mouse buttons' in texts
     assert not any(t.startswith('Mouse hotkey disabled') for t in texts)
+
+from tests.test_mouse_hook import fake_raw_window  # noqa: F401 - 1254 native isolation

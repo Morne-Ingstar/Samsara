@@ -40,7 +40,7 @@ def test_failed_replacement_keeps_listening_through_five_minute_backoff(recovery
     monkeypatch.setattr(s.hook, '_stop_hook_thread', stop)
     monkeypatch.setattr(s.hook, '_self_test', lambda: 'dead')
     s.hook.watchdog_tick()
-    assert s.hook.installed and not s.hook.suppress_buttons
+    assert s.hook.installed and s.hook.suppress_buttons == s.hook.requested_suppress_buttons
     # 1142: a missed replacement probe alone must not start a retry timer.
     assert s.hook._retry_due is None
     stop.assert_not_called()
@@ -100,7 +100,7 @@ def test_unrequested_button_passes_through_on_first_returning_event(recovery, mo
 def test_injected_returning_event_is_also_liveness_without_inline_app_work(recovery, monkeypatch):
     s = recovery
     waiting(s)
-    assert fire(s.hook, monkeypatch, mh.WM_XBUTTONDOWN, flags=mh.LLMHF_INJECTED) == 0
+    assert fire(s.hook, monkeypatch, mh.WM_XBUTTONDOWN, flags=mh.LLMHF_INJECTED) == 1  # 1254: suppression retained
     assert s.recovered == []
     s.hook.dispatch_pending()
     assert s.recovered == [True]
@@ -125,7 +125,7 @@ def test_waiting_listener_is_replaced_at_deadline_if_no_events_arrive(recovery):
     s.clock.sleep(300)
     s.hook.watchdog_tick()
     assert len(s.installs) == 1 and s.hook.installed
-    assert s.hook.recovering and not s.hook.suppress_buttons
+    assert s.hook.recovering and s.hook.suppress_buttons == s.hook.requested_suppress_buttons
 
 
 @pytest.mark.parametrize('available,idle', [(False, 0), (True, mh.INPUT_IDLE_S)])
@@ -134,7 +134,6 @@ def test_idle_or_other_desktop_pauses_loss_and_due_retries(recovery, monkeypatch
     activity(s, monkeypatch, available=available, idle=idle)
     probe = MagicMock(return_value='dead')
     monkeypatch.setattr(s.hook, '_self_test', probe)
-    monkeypatch.setattr(mh, '_cursor_pos', lambda: (999, 999))
     for _ in range(10):
         s.hook.watchdog_tick()
         s.clock.sleep(1)
@@ -193,17 +192,11 @@ def test_first_input_after_outage_bypasses_backoff_even_without_idle(recovery, m
 
 
 def test_own_probe_does_not_consume_first_real_input_retry(recovery, monkeypatch):
+    # 1254: passive Raw Input supersedes injected self-tests.
     s = recovery
     activity(s, monkeypatch, tick=100)
     s.hook.watchdog_tick()
-
-    def inject():
-        activity(s, monkeypatch, tick=101)  # SendInput updates the session tick
-        return True
-
-    monkeypatch.setattr(mh, '_send_zero_move', inject)
-    monkeypatch.setattr(s.hook, '_pump_responsive', lambda: True)
-    assert s.hook._self_test() == 'dead'
+    assert s.hook._self_test() == 'inconclusive'
     waiting(s)
     s.hook.watchdog_tick()
     assert not s.installs and not s.hook._input_retry_used
@@ -277,66 +270,52 @@ def test_no_cursor_movement_is_not_a_loss(recovery, monkeypatch):
 
 
 def test_uipi_refused_probe_is_inconclusive(recovery, monkeypatch, caplog):
-    monkeypatch.setattr(mh, '_send_zero_move', lambda: False)
+    # 1254: passive Raw Input supersedes injected self-tests.
     with caplog.at_level(logging.INFO, logger=mh.logger.name):
         assert recovery.hook._self_test() == 'inconclusive'
-    assert 'accepted=False' in caplog.text and 'callbacks=0' in caplog.text
+    assert 'passive check=inconclusive' in caplog.text
 
 
 def test_tagged_probe_records_flags_injection_timing_and_pump_state(recovery, monkeypatch, caplog):
+    # 1254: passive Raw Input supersedes injected self-tests.
     s = recovery
     s.hook._loop_state = 'GetMessageW'
-
-    def send():
-        s.clock.sleep(.01)
-        fire(s.hook, monkeypatch, flags=mh.LLMHF_INJECTED, tag=mh.PROBE_TAG)
-        return True
-
-    monkeypatch.setattr(mh, '_send_zero_move', send)
+    fire(s.hook, monkeypatch, flags=mh.LLMHF_INJECTED, tag=0x1032)
     with caplog.at_level(logging.INFO, logger=mh.logger.name):
         assert s.hook._self_test() == 'alive'
-    for text in ('tag_seen=True', 'probe_flags=1', 'probe_injected=True',
-                 'probe_after_ms=10.0', 'loop=GetMessageW', 'callbacks=1'):
-        assert text in caplog.text
+    assert 'loop=GetMessageW' in caplog.text and 'callbacks=1' in caplog.text
 
 
 def test_real_event_can_answer_probe_without_matching_tag(recovery, monkeypatch, caplog):
+    # 1254: passive Raw Input supersedes injected self-tests.
     s = recovery
-    monkeypatch.setattr(mh, '_send_zero_move', lambda: fire(s.hook, monkeypatch) == 0)
+    fire(s.hook, monkeypatch)
     with caplog.at_level(logging.INFO, logger=mh.logger.name):
         assert s.hook._self_test() == 'alive'
-    assert 'tag_seen=False' in caplog.text and 'last_flags=0' in caplog.text
+    assert 'passive check=alive' in caplog.text and 'callbacks=1' in caplog.text
 
 
 @pytest.mark.parametrize('pump,verdict', [(True, 'dead'), (False, 'inconclusive')])
 def test_missed_probe_logs_pump_result_and_no_received_events(recovery, monkeypatch, caplog, pump, verdict):
+    # 1254: passive Raw Input supersedes injected self-tests.
     s = recovery
     s.hook._thread_id = 123
     s.hook._loop_state = 'GetMessageW'
-    monkeypatch.setattr(mh, '_send_zero_move', lambda: True)
-
-    def post(_thread, _message, sequence, _param):
-        if pump:
-            s.hook._pump_ack = sequence
-        return 1
-
+    post = MagicMock(side_effect=AssertionError('no active probe'))
     monkeypatch.setattr(mh._user32, 'PostThreadMessageW', post)
     with caplog.at_level(logging.INFO, logger=mh.logger.name):
-        assert s.hook._self_test() == verdict
-    assert f'pump_ok={pump}' in caplog.text and 'callbacks=0' in caplog.text
-    assert 'tag_seen=False' in caplog.text
+        assert s.hook._self_test() == 'inconclusive'
+    assert 'passive check=inconclusive' in caplog.text and 'callbacks=0' in caplog.text
+    post.assert_not_called()
 
 
 def test_send_input_has_diagnostic_tag_without_moving_cursor(monkeypatch):
-    def send(count, pointer, size):
-        event = ctypes.cast(pointer, ctypes.POINTER(mh._INPUT)).contents
-        assert count == 1 and size == ctypes.sizeof(mh._INPUT)
-        assert (event.mi.dx, event.mi.dy, event.mi.dwFlags) == (0, 0, mh.MOUSEEVENTF_MOVE)
-        assert event.mi.dwExtraInfo == mh.PROBE_TAG
-        return 1
-
+    # 1254: passive Raw Input supersedes injected self-tests.
+    send = MagicMock(side_effect=AssertionError('no injection'))
     monkeypatch.setattr(mh._user32, 'SendInput', send)
-    assert mh._send_zero_move()
+    import inspect
+    assert 'SendInput' not in inspect.getsource(mh)
+    send.assert_not_called()
 
 
 def test_manual_reenable_forces_retry_without_waiting_for_deadline(

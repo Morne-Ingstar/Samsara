@@ -22,6 +22,14 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import samsara.mouse_hook as mh  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def fake_raw_window(monkeypatch):
+    # 1254: lifecycle tests must never register a real input sink.
+    monkeypatch.setattr(mh.MouseHook, '_start_raw_input', lambda self: None)
+    monkeypatch.setattr(mh.MouseHook, '_stop_raw_input', lambda self: None)
+
 from samsara.mouse_hook import (  # noqa: E402
     MouseHook,
     MSLLHOOKSTRUCT,
@@ -413,7 +421,7 @@ class TestWatchdog:
                 hook.watchdog_tick()
         assert restarts == ['start'] * 3
         # 867: budget exhaustion backs off; it never ends the dispatcher.
-        assert not hook.gave_up and hook.suppress_buttons == frozenset()
+        assert not hook.gave_up and hook.suppress_buttons == hook.requested_suppress_buttons
         assert len(failed) == 1 and "hook handle cleared" in failed[0]
         assert not hook._stopping.is_set() and hook._retry_due is not None
         hook.watchdog_tick()                           # still waiting for the retry
@@ -496,18 +504,8 @@ class TestLivenessDetector:
         clock = _Clock()
         monkeypatch.setattr(mh, '_perf', clock.perf)
         monkeypatch.setattr(mh, '_sleep', clock.sleep)
-        monkeypatch.setattr(mh, '_cursor_pos', cursor or _moving_cursor())
         probes = []
 
-        def _send():
-            probes.append(clock.now)
-            if probe == 'refused':
-                return False
-            if probe == 'alive':
-                hook.callback_count += 1          # our own injected move reached the hook
-            return True
-
-        monkeypatch.setattr(mh, '_send_zero_move', _send)
         restarts = []
 
         def _fake_start():
@@ -545,38 +543,38 @@ class TestLivenessDetector:
         assert probes == [] and restarts == []
 
     def test_silent_movement_needs_three_checks_over_three_seconds_before_the_self_test(self, monkeypatch):
-        hook, clock, probes, restarts = self._hook(monkeypatch, probe='alive')
-        start = clock.now
-        self._run(hook, clock, 3.4)
-        assert probes == []
-        self._run(hook, clock, 1.0)
-        assert len(probes) == 1 and probes[0] - start >= 3.0
-        assert mh.SILENT_CHECKS == 3 and mh.LIVENESS_CHECK_S == 1.0
+        # 1254: passive Raw Input supersedes injected self-tests.
+        hook, clock, probes, restarts = self._hook(monkeypatch)
+        self._run(hook, clock, 60.0)
+        assert probes == [] and restarts == [] and not hook.recovering
+        assert hook.suppress_buttons == {'mouse4'}
 
     def test_self_test_answered_is_a_false_alarm_not_a_loss(self, monkeypatch, caplog):
-        hook, clock, probes, restarts = self._hook(monkeypatch, probe='alive')
-        with caplog.at_level(logging.INFO, logger=mh.logger.name):
-            self._run(hook, clock, 60.0)          # SetCursorPos-style movement for a minute
-        assert restarts == [] and not hook.gave_up
-        assert len(probes) >= 10 and hook.false_alarms == len(probes)
-        assert sum("answered its self-test" in r.getMessage() for r in caplog.records) == 1   # once per episode
+        # 1254: passive Raw Input supersedes injected self-tests.
+        hook, clock, probes, restarts = self._hook(monkeypatch)
+        self._run(hook, clock, 60.0)
+        assert probes == [] and restarts == [] and not hook.recovering
+        assert hook.suppress_buttons == {'mouse4'}
 
     def test_self_test_refused_is_inconclusive_not_a_loss(self, monkeypatch):
-        hook, clock, probes, restarts = self._hook(monkeypatch, probe='refused')
-        self._run(hook, clock, 30.0)
-        assert probes and restarts == [] and not hook.gave_up
+        # 1254: passive Raw Input supersedes injected self-tests.
+        hook, clock, probes, restarts = self._hook(monkeypatch)
+        self._run(hook, clock, 60.0)
+        assert probes == [] and restarts == [] and not hook.recovering
+        assert hook.suppress_buttons == {'mouse4'}
 
     def test_genuinely_dead_hook_is_lost_reinstalled_and_gives_up_on_the_fourth_loss(self, monkeypatch, caplog):
+        # 1254: passive Raw Input supersedes injected self-tests.
         hook, clock, probes, restarts = self._hook(monkeypatch, probe='dead')
-        with caplog.at_level(logging.WARNING, logger='samsara.mouse_hook'):
-            self._run(hook, clock, 30.0)
-        assert len(restarts) == 3
-        assert all(b - a >= 3.0 for a, b in zip(restarts, restarts[1:]))   # the sustained window each time
-        # 867: a dead hook backs off with suppression off, without giving up.
-        assert not hook.gave_up and hook.suppress_buttons == frozenset()
+        monkeypatch.setattr(mh, '_foreground_not_elevated', lambda: True)
+        for _ in range(4):
+            clock.now += 1
+            hook._raw_activity.extend([clock.now] * 50)
+            hook.watchdog_tick()
+        assert len(restarts) == 3 and hook._retry_due == clock.now + 30
+        assert not hook.gave_up and hook.suppress_buttons == {'mouse4'}
         hook.on_hook_failed.assert_called_once()
-        assert "missed its own injected self-test" in hook.on_hook_failed.call_args.args[0]
-        assert "reinstalling (1/3" in caplog.text and "retry in 30s" in caplog.text
+        assert 'physical raw' in hook.on_hook_failed.call_args.args[0]
 
     def test_stationary_cursor_is_never_evidence(self, monkeypatch):
         hook, clock, probes, restarts = self._hook(monkeypatch, probe='dead', cursor=lambda: (10, 10))
@@ -584,16 +582,12 @@ class TestLivenessDetector:
         assert probes == [] and restarts == []
 
     def test_real_self_test_injection_is_a_zero_motion_relative_move(self, monkeypatch):
-        sent = []
-
-        def _fake_send(count, inputs, size):
-            inp = ctypes.cast(inputs, ctypes.POINTER(mh._INPUT)).contents
-            sent.append((count, inp.type, inp.mi.dx, inp.mi.dy, inp.mi.dwFlags, size))
-            return 1
-
-        monkeypatch.setattr(ctypes.windll.user32, 'SendInput', _fake_send)
-        assert mh._send_zero_move() is True
-        assert sent == [(1, mh.INPUT_MOUSE, 0, 0, mh.MOUSEEVENTF_MOVE, ctypes.sizeof(mh._INPUT))]
+        # 1254: passive Raw Input supersedes injected self-tests.
+        hook, _ = _make_hook()
+        send = MagicMock(side_effect=AssertionError('input injection'))
+        monkeypatch.setattr(ctypes.windll.user32, 'SendInput', send)
+        assert hook._self_test() == 'inconclusive'
+        send.assert_not_called()
 
 
 class TestCallNextHookExContract:

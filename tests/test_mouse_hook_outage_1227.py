@@ -18,8 +18,6 @@ def rig(monkeypatch):
     monkeypatch.setattr(mh, '_sleep', lambda seconds: setattr(s, 'now', s.now + seconds))
     monkeypatch.setattr(mh, '_input_status', lambda: (s.available, s.idle, s.tick))
     monkeypatch.setattr(mh, '_button_pressed', lambda _: s.down)
-    monkeypatch.setattr(mh, '_cursor_pos', lambda: s.pos)
-    monkeypatch.setattr(mh, '_send_zero_move', lambda: True)
     monkeypatch.setattr(mh, '_call_next_hook_ex', lambda *_: 0)
     monkeypatch.setattr(mh, '_user32', SimpleNamespace(
         PostThreadMessageW=lambda *args: s.refreshes.append(args) or 1))
@@ -73,7 +71,7 @@ def test_removed_while_idle_detects_stationary_press_without_cursor_probe(rig):
     s.down = True
     step(s)
     s.hook.watchdog_tick()
-    assert len(s.installs) == 1
+    assert not s.installs and s.refreshes == [(123, mh.WM_HOOK_REFRESH, 0, 0)]  # 1254: gapless pump swap
     assert s.notices == ['physical mouse5 press missed hook callback']
     assert s.events == [('mouse5', True)]
 
@@ -98,12 +96,11 @@ def test_game_cursor_recentering_and_blocked_probe_do_not_condemn_working_hook(r
         s.hook.watchdog_tick()
     assert not s.notices and not s.installs and not s.hook.recovering
     assert s.hook.suppress_buttons == {'mouse5'}
-    assert s.refreshes == [(123, mh.WM_HOOK_REFRESH, 0, 0)]
+    assert s.refreshes == []  # 1254: cursor-only movement is never evidence
 
 
 def test_delayed_probe_under_cpu_load_is_inconclusive(rig, monkeypatch):
     s = rig
-    monkeypatch.setattr(mh, '_send_zero_move', lambda: setattr(s, 'now', s.now + 2) or True)
     assert s.hook._self_test() == 'inconclusive'
     assert not s.notices and not s.installs
 
@@ -133,15 +130,13 @@ def test_press_spanning_reinstall_is_delivered_once_then_release_is_retained(rig
 
 
 def test_pump_probe_wait_keeps_sampling_missing_press_and_release(rig, monkeypatch):
+    # 1254: passive Raw Input supersedes injected self-tests.
     s = rig
-    begin = s.now
-
-    def sleep(seconds):
-        s.now += seconds
-        s.down = .06 <= s.now - begin < .16
-
-    monkeypatch.setattr(mh, '_sleep', sleep)
-    s.hook._self_test()
+    s.down = True
+    step(s)
+    assert s.hook._self_test() == 'inconclusive'
+    s.down = False
+    step(s)
     assert s.events == [('mouse5', True), ('mouse5', False)]
 
 
@@ -376,5 +371,10 @@ def test_failed_old_hook_cleanup_retains_both_handles_until_dispatcher_restarts(
     monkeypatch.setattr(mh._user32, 'UnhookWindowsHookEx', lambda handle: released.append(handle) or 1)
     monkeypatch.setattr(s.hook, '_stop_hook_thread', lambda: s.hook._unhook('test'))
     s.hook.dispatch_pending()
+    # 1254: cleanup is retried on the pump under backoff, without a gap.
+    assert released == [] and s.hook._retired_hooks == [42]
+    assert s.hook._retry_due == s.now + 30 and not s.notices
+    s.hook._refresh_on_hook_thread()
     assert released == [42, 43] and not s.hook._retired_hooks
-    assert s.notices == ['old hook cleanup failed (error=5)']
+
+from tests.test_mouse_hook import fake_raw_window  # noqa: F401 - 1254 native isolation

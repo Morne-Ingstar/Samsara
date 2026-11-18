@@ -22,13 +22,12 @@ def mouse(monkeypatch):
 
     monkeypatch.setattr(mh, '_perf', lambda: state.now)
     monkeypatch.setattr(mh, '_sleep', sleep)
-    monkeypatch.setattr(mh, '_cursor_pos', lambda: state.pos)
     monkeypatch.setattr(mh, '_input_status',
                         lambda: (state.available, state.idle, state.tick))
-    monkeypatch.setattr(mh, '_send_zero_move', lambda: True)
     monkeypatch.setattr(mh, '_call_next_hook_ex', lambda *_: 0)
     # No real user32 call or thread creation can escape these fake boundaries.
     monkeypatch.setattr(mh, '_user32', SimpleNamespace())
+    monkeypatch.setattr(mh, '_foreground_not_elevated', lambda: True)  # 1254 physical evidence guard
     monkeypatch.setattr(mh.thread_registry, 'spawn', Mock(side_effect=AssertionError('native thread')))
     state.hook = mh.MouseHook(
         lambda *event: state.events.append(event), suppress_buttons={'mouse5'},
@@ -50,6 +49,13 @@ def mouse(monkeypatch):
 
     monkeypatch.setattr(state.hook, '_start_hook_thread', install)
     monkeypatch.setattr(state.hook, '_stop_hook_thread', stop)
+    def post(_thread, message, *_):
+        # 1254: emulate the installing pump's swap, preserving the old pump.
+        assert message == mh.WM_HOOK_REFRESH
+        install()
+        state.hook._refresh_pending = False
+        return 1
+    mh._user32.PostThreadMessageW = post
     state.advance = sleep
     return state
 
@@ -64,6 +70,7 @@ def move_without_callbacks(state):
     state.advance(mh.LIVENESS_CHECK_S)
     state.tick += 1
     state.pos = (state.pos[0] + 1, 0)
+    state.hook._raw_activity.extend([state.now] * 50)  # 1254: actual physical input, not cursor position
     state.hook.watchdog_tick()
 
 
@@ -129,11 +136,10 @@ def test_actual_silent_movement_still_replaces_lost_hook(mouse):
     s = mouse
     s.hook.watchdog_tick()
     started = s.now
-    for _ in range(mh.SILENT_CHECKS):
-        move_without_callbacks(s)
-    assert len(s.installs) == 1 and len(s.stops) == 1
+    move_without_callbacks(s)  # 1254: 50 physical raw events establish loss within one second
+    assert len(s.installs) == 1 and not s.stops  # 1254: swap keeps the old pump alive
     assert s.now - started <= 3.5  # three samples plus the failed probe
-    assert s.hook.recovering and not s.hook.suppress_buttons
+    assert s.hook.recovering and s.hook.suppress_buttons == s.hook.requested_suppress_buttons
     assert fire(s, mh.WM_XBUTTONDOWN) == 1
     s.hook.dispatch_pending()
     assert s.events == ['recovered', ('mouse5', True)]
@@ -145,8 +151,7 @@ def test_active_confirmed_loss_bypasses_old_thirty_second_backoff(mouse, loss):
     s.hook.watchdog_tick()
     s.hook._backoff_step = 99
     if loss == 'silent_motion':
-        for _ in range(mh.SILENT_CHECKS):
-            move_without_callbacks(s)
+        move_without_callbacks(s)  # 1254 passive threshold
     else:
         if loss == 'thread_ended':
             s.hook._thread = SimpleNamespace(is_alive=lambda: False)
@@ -154,13 +159,14 @@ def test_active_confirmed_loss_bypasses_old_thirty_second_backoff(mouse, loss):
             s.hook._hook_id = None
         s.hook.watchdog_tick()
     detected = s.now
-    assert s.hook._retry_due == detected + mh.ACTIVE_LOSS_RETRY_S
-    s.advance(.5)
+    delay = mh.ACTIVE_RETRY_S if loss == 'silent_motion' else mh.ACTIVE_LOSS_RETRY_S
+    assert s.hook._retry_due == detected + delay  # 1254: refresh obeys ordinary backoff
+    s.advance(delay - .5)
     s.hook.watchdog_tick()
     assert not s.installs
     s.advance(.5)
     s.hook.watchdog_tick()
-    assert s.installs == [detected + 1]
+    assert s.installs == [detected + delay]
     assert fire(s, mh.WM_XBUTTONDOWN) == 1
     s.hook.dispatch_pending()
     assert s.events == ['recovered', ('mouse5', True)]
@@ -194,7 +200,7 @@ def test_native_install_failure_keeps_separate_slow_retry(mouse, monkeypatch):
     s.hook._hook_id = None
     s.hook.watchdog_tick()
     assert s.hook._retry_due == s.now + mh.ACTIVE_RETRY_S
-    assert not s.hook.suppress_buttons
+    assert s.hook.suppress_buttons == s.hook.requested_suppress_buttons  # 1254
 
 
 def test_callback_at_failed_probe_boundary_prevents_loss(mouse, monkeypatch):
@@ -202,9 +208,9 @@ def test_callback_at_failed_probe_boundary_prevents_loss(mouse, monkeypatch):
 
     def late():
         fire(s)
-        return 'dead'
+        return True
 
-    monkeypatch.setattr(s.hook, '_self_test', late)
+    monkeypatch.setattr(mh, '_foreground_not_elevated', late)  # 1254 passive verdict boundary
     s.hook.watchdog_tick()
     for _ in range(mh.SILENT_CHECKS):
         move_without_callbacks(s)
