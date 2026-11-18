@@ -94,7 +94,8 @@ def test_every_original_definition_is_the_same_export():
                    if isinstance(node, (ast.FunctionDef, ast.ClassDef))}
     definitions.update(target.id for node in tree.body if isinstance(node, ast.Assign)
                        for target in node.targets if isinstance(target, ast.Name))
-    assert definitions == set(names)
+    # 1258 adds pure bounded-span policy/audio helpers without facade exports.
+    assert definitions == set(names) | {'span_needs_redecode', 'stitch_span_audio'}
     assert text.EllipsisSeam.__module__ == "samsara.session_text"
     # Keep the helper's dependency direction pure and import-time inert.
     imports = {node.module for node in tree.body if isinstance(node, ast.ImportFrom)}
@@ -182,6 +183,8 @@ def test_real_manager_matches_pre_move_state_scratch_and_injection():
             for item in snapshot['stack']:
                 if item['kind'] == 'dictation_staged_chunk':
                     assert isinstance(item['extra'].pop('uncertain_seam'), bool)
+                    # 1258 stores the exact pre-chunk display for re-decode undo.
+                    assert isinstance(item['extra'].pop('prior_buffer'), str)
         assert actual == expected, case["id"]
 
 

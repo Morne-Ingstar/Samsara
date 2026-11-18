@@ -7,6 +7,42 @@ from dataclasses import dataclass
 from typing import Optional
 
 
+def span_needs_redecode(durations, uncertain_seam=False) -> bool:
+    """1258: only multi-fragment spans with boundary evidence need a pass."""
+    return len(durations) >= 2 and (uncertain_seam or any(s < 1.5 for s in durations))
+
+
+def stitch_span_audio(fragments, rate=16000):
+    """1258: speech-only clips, 160 ms seams and 10 ms fades through silence.
+
+    Inputs come from the retained VAD store, so capture-tail silence is already
+    removed. Fade each side into the quiet seam rather than overlap phonemes.
+    Refuse incomplete/oversized evidence instead of decoding a partial span.
+    """
+    import numpy as np
+    if rate != 16000 or not fragments:
+        return None
+    clips = [np.asarray(pcm, dtype=np.float32) for pcm in fragments]
+    pause, fade = round(.160 * rate), round(.010 * rate)
+    if any(pcm.ndim != 1 or not len(pcm) or not np.isfinite(pcm).all() for pcm in clips):
+        return None
+    total = sum(len(pcm) for pcm in clips) + pause * (len(clips) - 1)
+    if total > 20 * rate:
+        return None
+    result = np.zeros(total, dtype=np.float32)
+    offset = 0
+    for index, pcm in enumerate(clips):
+        target = result[offset:offset + len(pcm)]
+        target[:] = pcm
+        width = min(fade, len(pcm) // 2)
+        if width and index:
+            target[:width] *= np.linspace(0, 1, width, dtype=np.float32)
+        if width and index < len(clips) - 1:
+            target[-width:] *= np.linspace(1, 0, width, dtype=np.float32)
+        offset += len(pcm) + pause
+    return result
+
+
 TERMINAL_PUNCTUATION = ".!?:;"
 
 _LEADING_FILLERS = ("um", "uh", "uhh", "umm", "like", "so", "well", "okay", "ok")

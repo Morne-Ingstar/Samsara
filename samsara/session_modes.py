@@ -42,6 +42,7 @@ through to step 4 instead (fail CLOSED for switches, not fail-open).
 from __future__ import annotations
 from samsara.log import describe_text
 from samsara.kept_dictations import dispatch_session, observe_commit
+from samsara import open_span
 import logging
 import re
 import string
@@ -1794,10 +1795,9 @@ class SessionModeManager(UtteranceUndoMixin):
         timing = _current_stage_timing()
         return dispatch_session(self, raw_text, signals, onset_context, timing)
 
+    @open_span.dispatch
     def _dispatch_utterance_locked(self, raw_text: str, signals: UtteranceSignals,
                                    onset_context=None) -> DispatchOutcome:
-        # Queue 50: suppressed dictation past its retype TTL leaves memory at
-        # the next utterance, whatever that utterance is.
         self._purge_expired_suppressed()
         text = (raw_text or "").strip()
         if not text:
@@ -2787,6 +2787,7 @@ class SessionModeManager(UtteranceUndoMixin):
         ))
         return DispatchOutcome(kind="dictate_injected", detail={"text": to_inject})
 
+    @open_span.stage
     def _stage_dictate_chunk(
         self, chunk_raw: str, audio_ref: Any = None,
     ) -> DispatchOutcome:
@@ -2806,7 +2807,7 @@ class SessionModeManager(UtteranceUndoMixin):
             return local
         stripped_suffix = ""
         ellipsis_seam = None
-        if self._last_dictate_ended_terminal is not None:
+        if self._last_dictate_ended_terminal is not None and open_span.can_join(self):
             top = self._stack.peek()
             previous_fragment = (
                 top.payload if top is not None and top.kind == "dictation_staged_chunk" else None
@@ -2828,11 +2829,10 @@ class SessionModeManager(UtteranceUndoMixin):
             chunk_body = prepared
             app = getattr(self._agent_dispatch_fn, '__self__', None)
             to_stage = ellipsis_seam.stage_chunk(chunk_body, app)
-            # Replacement periods belong to this chunk for exact scratch undo.
             log.debug("[SESSION] DICTATE seam after ellipsis: %s join=%s lead_stripped=%r",
                       ellipsis_seam.clause, ellipsis_seam.join, ellipsis_seam.lead_stripped)
         else:
-            if _is_continuation_chunk(chunk_raw):
+            if _is_continuation_chunk(chunk_raw) and open_span.can_join(self):
                 # Continuations strip one prior full stop, preserving !/?.
                 stripped_terminal_period = False
                 if self._dictate_pending_buffer.rstrip().endswith("."):
@@ -2870,6 +2870,7 @@ class SessionModeManager(UtteranceUndoMixin):
         })
 
     @observe_commit
+    @open_span.commit
     def _commit_dictate_buffer(
         self, *, target_mode: Optional[SessionMode],
         consumed_trailing_commit_word: bool = False,
@@ -2950,7 +2951,7 @@ class SessionModeManager(UtteranceUndoMixin):
             stable_chunks = False
         if stable_chunks:
             log.info('[SESSION] Skipping commit re-decode: same_model_no_short_fragments')
-        if (not stable_chunks and self._commit_redecode_fn is not None and not self._draft.edited
+        if (not open_span.managed(self) and not stable_chunks and self._commit_redecode_fn is not None and not self._draft.edited
                 and not self._parked_hold):
             try:
                 redecode_text = self._commit_redecode_fn(final_text, list(self._dictate_pending_audio))
@@ -3049,8 +3050,7 @@ class SessionModeManager(UtteranceUndoMixin):
             detail={"text": text, "has_context": context is not None},
         )
 
-    # -- scratch that / retype that ------------------------------------------
-
+    @open_span.scratch
     def _do_scratch_that(self) -> bool:
         """Undo staged edits locally or remove a verified external insertion.
 
