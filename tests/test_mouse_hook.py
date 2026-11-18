@@ -887,7 +887,8 @@ def fallback_app(monkeypatch):
     import dictation
     from tests.test_mouse_hotkey import _App
 
-    monkeypatch.setattr(mh, 'MouseHook', _InstallableHook)
+    # 1255: intercept the default process constructor; never launch a helper.
+    monkeypatch.setattr(mh, 'ProcessMouseHook', _InstallableHook)
     monkeypatch.setattr(dictation.thread_registry, 'spawn', lambda name, target, daemon=True, **kw: None)
     _InstallableHook.created = []
     _InstallableHook.install_ok = True

@@ -631,14 +631,31 @@ relay_exe = EXE(
     debug=False, strip=False, upx=False,
 )
 
+# 1255: a separate console bootloader preserves binary stdio and never runs
+# dictation's runtime hooks/imports. It shares this onedir's _internal runtime.
+mouse_analysis = Analysis(
+    [str(app_dir / 'samsara' / 'mouse_hook_worker.py')],
+    pathex=[str(app_dir)], binaries=[], datas=[], hiddenimports=[],
+    hookspath=[], runtime_hooks=[], excludes=[], noarchive=False,
+)
+mouse_pyz = PYZ(mouse_analysis.pure)
+mouse_exe = EXE(
+    mouse_pyz, mouse_analysis.scripts, [], exclude_binaries=True,
+    name='samsara-mouse-hook', console=True, contents_directory='_internal',
+    debug=False, strip=False, upx=False,
+)
+
 coll = COLLECT(
     exe,
     relay_exe,
+    mouse_exe,
     a.binaries,
     a.zipfiles,
     a.datas,
     relay_analysis.binaries,
     relay_analysis.datas,
+    mouse_analysis.binaries,
+    mouse_analysis.datas,
     strip=False,
     upx=False,
     upx_exclude=[],

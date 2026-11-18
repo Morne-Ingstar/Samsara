@@ -291,7 +291,8 @@ def test_app_retains_retrying_hook_and_silently_clears_fallback(fallback_app, re
         s.hook.suppress_buttons = s.hook.requested_suppress_buttons
         return s.hook
 
-    monkeypatch.setattr(mh, 'MouseHook', factory)
+    # 1255: app installation uses the process constructor by default.
+    monkeypatch.setattr(mh, 'ProcessMouseHook', factory)
     app._install_mouse_listener()
     try:
         lose(s)
@@ -320,7 +321,8 @@ def test_app_keeps_initial_install_failure_for_slow_retry(fallback_app, recovery
     s.hook.install_error = 'SetWindowsHookExW returned 0'
     s.hook.on_hook_failed = app._on_mouse_hook_failed
     monkeypatch.setattr(s.hook, '_start_hook_thread', lambda: None)
-    monkeypatch.setattr(mh, 'MouseHook', lambda **_kw: s.hook)
+    # 1255: retain this fake at the new default constructor boundary.
+    monkeypatch.setattr(mh, 'ProcessMouseHook', lambda **_kw: s.hook)
     app._install_mouse_listener()
     try:
         s.hook.watchdog_tick()

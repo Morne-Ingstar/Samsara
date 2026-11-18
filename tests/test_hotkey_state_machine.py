@@ -474,7 +474,8 @@ class TestHookInstallsBesidePynput:
             def start(self):
                 pass
 
-        monkeypatch.setattr(mouse_hook, 'MouseHook', _NeverInstalls)
+        # 1255: installation errors now come from the default process hook.
+        monkeypatch.setattr(mouse_hook, 'ProcessMouseHook', _NeverInstalls)
         app = _App('hold', 'mouse')
         with caplog.at_level(logging.ERROR):
             app._install_mouse_listener()

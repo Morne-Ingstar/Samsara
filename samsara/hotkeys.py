@@ -895,7 +895,11 @@ class HotkeyCluster:
             return
 
         try:
-            from samsara.mouse_hook import MouseHook
+            from samsara.mouse_hook import MouseHook, ProcessMouseHook
+            # 1255: one-release escape hatch; helper isolation is the default.
+            mouse_hook_config = self.config.get('mouse_hook', {})
+            hook_type = (MouseHook if isinstance(mouse_hook_config, dict)
+                         and mouse_hook_config.get('in_process', False) else ProcessMouseHook)
             def recovered():
                 # Recovery is silent; retain the same hook and saved bindings.
                 if getattr(self, '_mouse_hook', None) is hook:
@@ -907,7 +911,7 @@ class HotkeyCluster:
                     self._mouse_hook_released_bindings = None
                     _clear_mouse_hotkey_warning(self)
 
-            self._mouse_hook = MouseHook(
+            self._mouse_hook = hook_type(
                 on_button_event=self._on_mouse_button,
                 suppress_buttons=suppress,
                 poll_buttons=({str(self.config.get('hotkey', config_defaults.DEFAULTS['hotkey'])).strip().lower()} & buttons

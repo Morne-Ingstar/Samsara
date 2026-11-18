@@ -30,10 +30,10 @@ Panic release: stop()/release() unhook on the thread that installed the hook
 The OS also removes a hook when its process exits, so a crashed process
 cannot keep the mouse.
 
-Python note: the callback still needs the GIL to run at all. Keeping it to a
-queue put keeps its own cost in microseconds; a thread that holds the GIL for
-a long time without releasing it can still delay it, which is what the
-slow-callback warning and the dead-hook reinstall are there to surface.
+1255: ProcessMouseHook is the application default. The native pump runs in a
+stdlib-only helper with its own GIL, with buffered asynchronous pipe output.
+MouseHook remains the one-release in-process fallback; its ctypes callback
+can still be delayed by application GIL contention.
 """
 
 import atexit
@@ -745,7 +745,7 @@ class MouseHook:
                            self.callback_errors - self._reported['errors'])
             self._reported['errors'] = self.callback_errors
 
-    def _hook_lost(self) -> str:
+    def _hook_lost(self, now=None) -> str:
         """Why the hook is gone, or '' while it is alive (or merely unproven)."""
         if not self._hook_id:
             return 'hook handle cleared'
@@ -754,7 +754,7 @@ class MouseHook:
         if self._button_loss_reason:
             reason, self._button_loss_reason = self._button_loss_reason, ''
             return reason
-        now = _perf()
+        now = _perf() if now is None else now
         reason = ''
         while self._raw_edges and now - self._raw_edges[0][2] >= RAW_EDGE_WAIT_S:
             name, pressed, stamp = self._raw_edges.popleft()
@@ -1284,3 +1284,11 @@ class MouseHook:
         self.suppress_buttons = frozenset()
         logger.warning(f"[MOUSE HOOK] {why}: suppression off, unhooking")
         self.stop()
+
+
+# Keep the public backend import without a circular dependency on its base.
+def __getattr__(name):
+    if name == 'ProcessMouseHook':
+        from samsara.mouse_hook_process import ProcessMouseHook
+        return ProcessMouseHook
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')

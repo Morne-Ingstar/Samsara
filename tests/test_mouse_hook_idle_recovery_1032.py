@@ -75,7 +75,8 @@ def test_first_mouse5_press_recovers_app_before_recording_and_cancels_notice(
         s.hook.on_button_event = route
         return s.hook
 
-    monkeypatch.setattr(mh, 'MouseHook', factory)
+    # 1255: retain this fake at the new default constructor boundary.
+    monkeypatch.setattr(mh, 'ProcessMouseHook', factory)
     monkeypatch.setattr(s.hook, 'start', lambda: None)
     app._install_mouse_listener()
     waiting(s)

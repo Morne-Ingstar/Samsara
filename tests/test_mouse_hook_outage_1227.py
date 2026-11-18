@@ -241,6 +241,8 @@ def test_polling_failure_does_not_kill_dispatcher(rig, monkeypatch, caplog):
 def test_app_enables_polling_only_for_main_hold_and_updates_on_mode_change(monkeypatch, mode, expected):
     from tests.test_mouse_hold_backstop_1052e import App
     app = App(mode=mode)
+    # 1255: this test intentionally exercises the retained in-process fallback.
+    app.config['mouse_hook'] = {'in_process': True}
     monkeypatch.setattr(mh.MouseHook, 'start', lambda self: setattr(self, '_hook_id', 42))
     app._install_mouse_listener()
     assert app._mouse_hook.poll_buttons == expected

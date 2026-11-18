@@ -102,7 +102,8 @@ def setup(monkeypatch, notice_clock):
 
     clock = notice_clock
     real_hook_class = mouse_hook.MouseHook
-    monkeypatch.setattr(mouse_hook, 'MouseHook', Hook)
+    # 1255: retain real fallback class above, fake the app's process default.
+    monkeypatch.setattr(mouse_hook, 'ProcessMouseHook', Hook)
     spawned = []
     monkeypatch.setattr(hotkeys.thread_registry, 'spawn',
                         lambda name, callback, **kw: spawned.append((name, callback)))
@@ -334,7 +335,8 @@ def real_hook(setup, monkeypatch):
         hook.on_hook_recovered = kwargs['on_hook_recovered']
         hook.on_hook_interrupted = kwargs['on_hook_interrupted']
         return hook
-    monkeypatch.setattr(mouse_hook, 'MouseHook', factory)
+    # 1255: intercept the app's default constructor without a child process.
+    monkeypatch.setattr(mouse_hook, 'ProcessMouseHook', factory)
     app._install_mouse_listener()
     return hook
 

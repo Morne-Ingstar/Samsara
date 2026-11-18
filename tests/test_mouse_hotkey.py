@@ -200,7 +200,8 @@ class TestSharedHookRouting:
             def stop(self):
                 self.stopped = True
 
-        monkeypatch.setattr(mouse_hook, 'MouseHook', _FakeHook)
+        # 1255: keep the new process default behind this fake boundary.
+        monkeypatch.setattr(mouse_hook, 'ProcessMouseHook', _FakeHook)
         app = _App(hotkey='mouse4', command_mode={'enabled': True, 'button': 'rctrl'})
         app._install_mouse_listener()
         assert len(created) == 1 and created[0].started
@@ -216,7 +217,8 @@ class TestSharedHookRouting:
     def test_no_hook_when_nothing_is_mouse_bound(self, monkeypatch):
         import samsara.mouse_hook as mouse_hook
 
-        monkeypatch.setattr(mouse_hook, 'MouseHook', MagicMock(side_effect=AssertionError("no hook")))
+        # 1255: neither implementation should start with no mouse binding.
+        monkeypatch.setattr(mouse_hook, 'ProcessMouseHook', MagicMock(side_effect=AssertionError("no hook")))
         app = _App(hotkey='ctrl+shift')
         app._install_mouse_listener()
         assert app._mouse_hook is None
@@ -238,7 +240,8 @@ class TestSharedHookRouting:
             def stop(self):
                 self.stopped = True
 
-        monkeypatch.setattr(mouse_hook, 'MouseHook', _FakeHook)
+        # 1255: keep the new process default behind this fake boundary.
+        monkeypatch.setattr(mouse_hook, 'ProcessMouseHook', _FakeHook)
         app = _App(hotkey='ctrl+shift')
         app.refresh_mouse_hook()
         assert created == []
@@ -307,7 +310,8 @@ def releasable(monkeypatch):
     import samsara.mouse_hook as mouse_hook
 
     _ReleasableHook.created = []
-    monkeypatch.setattr(mouse_hook, 'MouseHook', _ReleasableHook)
+    # 1255: panic release targets the default process implementation.
+    monkeypatch.setattr(mouse_hook, 'ProcessMouseHook', _ReleasableHook)
     return _ReleasableHook
 
 
