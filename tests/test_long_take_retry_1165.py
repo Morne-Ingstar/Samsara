@@ -48,7 +48,8 @@ def test_long_rejected_interval_is_subdivided_and_neighbors_survive(make_worker,
     assert ('Piece 1.' in result) is (failed_piece is None)
     assert all(width <= 5 for _, width, _ in calls[1:])
     assert all(p['condition_on_previous_text'] is False for _, _, p in calls)
-    assert all(p['temperature'] == .4 for _, _, p in calls[1:])
+    # 1256: recovery keeps the normal device ladder.
+    assert all(p['temperature'] == (.0, .2) for _, _, p in calls[1:])
     if failed_piece is None:
         assert retry.live(session.app) is None
     else:
@@ -107,8 +108,10 @@ def test_clicked_retry_uses_original_audit_and_smaller_different_decode(make_wor
     app.model.transcribe.side_effect = transcribe
     with caplog.at_level(logging.WARNING):
         assert retry.request(app)
-    assert len(seen) >= 4 and max(n for n, _, _ in seen) <= 5 * 16000
-    assert all(p['temperature'] == .4 and key == audit.hold_seq_id for _, p, key in seen)
+    # 1256: contextual normal decode precedes bounded recovery.
+    assert seen[0][0] == len(audio)
+    assert len(seen) >= 5 and max(n for n, _, _ in seen[1:]) <= 5 * 16000
+    assert all(p['temperature'] == (.0, .2) and key == audit.hold_seq_id for _, p, key in seen)
     assert app._hold_retry_audio.hold_seq_id == audit.hold_seq_id
     assert 'hold_seq_id=unknown' not in caplog.text
     assert current_audit.get() is None

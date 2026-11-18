@@ -117,15 +117,83 @@ def show_note(app, *, empty=False, label=None):
 
 
 def remaining_text(text, delivered):
-    """A stripped run has no sub-segment timing: exclude its delivered words."""
+    """Exclude one delivered span, including changed words between its anchors."""
     if not delivered:
         return text
     tokens = list(re.finditer(r"\w+(?:['’]\w+)*", text))
     known = re.findall(r"\w+(?:['’]\w+)*", delivered.casefold())
     matches = SequenceMatcher(None, known, [m.group().casefold() for m in tokens], autojunk=False)
-    excluded = {i for block in matches.get_matching_blocks() for i in range(block.b, block.b + block.size)}
+    stopwords = {'a', 'an', 'and', 'as', 'at', 'be', 'by', 'for', 'from', 'in', 'is',
+                 'it', 'of', 'on', 'or', 'that', 'the', 'this', 'to', 'was', 'with'}
+    anchors = [block for block in matches.get_matching_blocks() if block.size and
+               (block.size > 1 or known[block.a] not in stopwords or len(known) == 1 and block.b == 0)]
+    if not anchors:
+        return text
+    first, last = anchors[0], anchors[-1]
+    # The equal/replace/insert opcodes BETWEEN the anchors all describe the
+    # same delivered span. Extend only by the unmatched delivered edge length;
+    # a trailing replace opcode may also contain genuinely undelivered words.
+    leading, trailing = known[:first.a], known[last.a + last.size:]
+    start = max(0, first.b - (len(leading) if any(w not in stopwords for w in leading) else 0))
+    end = min(len(tokens), last.b + last.size +
+              (len(trailing) if any(w not in stopwords for w in trailing) else 0))
+    excluded = set(range(start, end))
     return ' '.join(text[m.start():tokens[i + 1].start() if i + 1 < len(tokens) else len(text)].strip()
                     for i, m in enumerate(tokens) if i not in excluded).strip()
+
+
+def _retry_window(audio, rate, evidence, start, end):
+    """Keep the normal long-take context, then expand to confirmed pauses."""
+    from samsara import decode_recovery as decoder
+    from samsara.audio_engine.capture_snapshot import spans
+    if len(audio) > 20 * rate:
+        # A short clause in a long take must retain the context its normal
+        # final had. Nearest pauses alone can isolate it and change its words.
+        chunks = [c for c in decoder.chunk_audio(audio, rate, evidence)
+                  if c.core_start < end and c.core_end > start]
+        if chunks:
+            start, end = min(start, chunks[0].core_start), max(end, chunks[-1].core_end)
+    left, right = max(0, start - round(.25 * rate)), min(len(audio), end + round(.25 * rate))
+    for a, b in spans(audio):
+        if a <= start < b:
+            local = decoder._slice_evidence(evidence, rate, len(audio), a, b)
+            pauses = decoder._pauses(local, rate, b - a)
+            left = max((a + (x + y) // 2 for x, y in pauses if a + (x + y) // 2 <= start),
+                       default=max(a, left))
+        if a < end <= b:
+            local = decoder._slice_evidence(evidence, rate, len(audio), a, b)
+            pauses = decoder._pauses(local, rate, b - a)
+            right = min((a + (x + y) // 2 for x, y in pauses if a + (x + y) // 2 >= end),
+                        default=min(b, right))
+    return left, right
+
+
+def _range_segments(segments, start, end, duration):
+    """Keep missed-range words only; context is recognition input, not output."""
+    from copy import copy
+    kept = []
+    for segment in segments:
+        a, b = getattr(segment, 'start', None), getattr(segment, 'end', None)
+        if a is None or b is None:
+            if start <= 0 and end >= duration:
+                kept.append(segment)
+            continue
+        if a >= end or b <= start:
+            continue
+        words = getattr(segment, 'words', None)
+        if words:
+            words = [w for w in words if w.start < end and w.end > start]
+            if not words:
+                continue
+            segment = copy(segment)
+            segment.words, segment.text = words, ''.join(w.word for w in words)
+            segment.start, segment.end = words[0].start, words[-1].end
+        elif a < start or b > end:
+            # Without word timing a boundary-crossing segment can include
+            # delivered context. Let the exact-range fallback recover it.
+            continue
+        kept.append(segment)
+    return kept
 
 
 def decode_slot(app, slot, guard=None):
@@ -133,23 +201,52 @@ def decode_slot(app, slot, guard=None):
     from samsara.hold_final_policy import current_audit
     result = decoder.DecodedHold()
     deadline, cancel = decoder._deadline(app, len(slot.audio) / app.model_rate), threading.Event()
-    params = dict(slot.params, no_speech_threshold=None)
     token = current_audit.set(slot.audit or current_audit.get())
     try:
+        from samsara.speech_presence import measure
+        evidence = measure(slot.audio, app.model_rate)
         for missed in slot.ranges:
             a, b = max(0, round(missed.start * app.model_rate)), min(len(slot.audio), round(missed.end * app.model_rate))
-            part = decoder._transcribe(app, slot.audio[a:b], params, deadline, cancel, guard, recovery=True)
-            if not part.segments and not part.missed:
-                part.missed.append(MissedRange(0., (b - a) / app.model_rate))
+            if b <= a:
+                result.missed.append(missed)
+                continue
+            if not missed.delivered and b - a <= 4.5 * app.model_rate and (a > 0 or b < len(slot.audio)):
+                # A short, wholly missing segment has precise bounds and no
+                # delivered anchors to remove neighboring words safely.
+                left, right = a, b
+            else:
+                left, right = _retry_window(slot.audio, app.model_rate, evidence, a, b)
+            params = dict(slot.params, word_timestamps=True)
+            if right - left <= 4.5 * app.model_rate:
+                params['no_speech_threshold'] = None
+            part = decoder._transcribe(app, slot.audio[left:right], params, deadline, cancel, guard)
+            part.segments = _range_segments(part.segments,
+                                           (a - left) / app.model_rate, (b - left) / app.model_rate,
+                                           (right - left) / app.model_rate)
             if missed.delivered:
                 text = remaining_text(''.join(s.text for s in part.segments).strip(), missed.delivered)
                 part.segments = decoder._replace_text(part.segments, text) if text else []
-            result.segments.extend(decoder._offset(s, missed.start) for s in part.segments)
+            if not part.segments:
+                # One bounded recovery stage, sharing the original deadline.
+                params = dict(slot.params, no_speech_threshold=None)
+                if missed.delivered:
+                    params['initial_prompt'] = ' '.join(missed.delivered.split()[-64:])
+                part = decoder._transcribe(app, slot.audio[a:b], params, deadline, cancel, guard, recovery=True)
+                left = a
+                if missed.delivered:
+                    text = remaining_text(''.join(s.text for s in part.segments).strip(), missed.delivered)
+                    part.segments = decoder._replace_text(part.segments, text) if text else []
+            if not part.segments and not part.missed:
+                part.missed.append(MissedRange((a - left) / app.model_rate, (b - left) / app.model_rate))
+            origin = left / app.model_rate
+            result.segments.extend(decoder._offset(s, origin) for s in part.segments)
             result.info = part.info
             result.warning |= part.warning
-            result.failures.extend((x + missed.start, y + missed.start, why) for x, y, why in part.failures)
-            result.missed.extend(MissedRange(x.start + missed.start, x.end + missed.start, x.delivered)
-                                 for x in part.missed)
+            result.failures.extend((max(x + origin, missed.start), min(y + origin, missed.end), why)
+                                   for x, y, why in part.failures if x + origin < missed.end and y + origin > missed.start)
+            result.missed.extend(MissedRange(max(x.start + origin, missed.start),
+                                            min(x.end + origin, missed.end), x.delivered)
+                                 for x in part.missed if x.start + origin < missed.end and x.end + origin > missed.start)
     finally:
         current_audit.reset(token)
     return result

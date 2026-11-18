@@ -231,7 +231,7 @@ def test_backstop_logprob_rejection_recovers_from_already_shown_partial(build_wo
         partial='The accepted partial sentence.')
     _, _, text = recovery.stream_final(worker, audio, {})
     assert not text and session._decode_failure
-    assert len(calls) == 2 and calls[1][1]['temperature'] == .4
+    assert len(calls) == 2 and calls[1][1]['temperature'] == (0., .2)  # 1256: normal CPU ladder.
 
 
 def test_long_recovery_is_chunked_once_without_temperature_ladders(build_worker):
