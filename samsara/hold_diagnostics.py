@@ -174,6 +174,11 @@ def captured(consumer, frames, audit):
                 last_speech_source='energy_tail_floor')
     if _active is not None and _active[1] is evidence:
         _active = None
+    try:
+        from samsara.mic_silence_watch import observe_hold
+        observe_hold(consumer, tuple(levels), evidence)
+    except Exception:
+        pass  # 1252: a diagnostic observer can never affect the hold.
     return evidence.snapshot()
 
 

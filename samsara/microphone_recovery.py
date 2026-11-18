@@ -950,6 +950,11 @@ def watch(app, get_render_id):
         except Exception:
             changes.warn_once('[MIC] Initial endpoint observation unavailable; will retry')
         while not stop.wait(0.5):
+            try:
+                from samsara.mic_silence_watch import poll
+                poll(app)
+            except Exception:
+                pass  # 1252: optional signal observation cannot affect recovery.
             if changes.notifications:
                 try:
                     # STA notification callbacks need COM dispatch on this thread.
@@ -968,6 +973,11 @@ def watch(app, get_render_id):
             except Exception:
                 changes.warn_once('[MIC] Device watcher pass failed; will retry')
     finally:
+        try:
+            from samsara.mic_silence_watch import close as close_silence_watch
+            close_silence_watch(app)
+        except Exception:
+            pass
         try:
             if close is not None:
                 close()
