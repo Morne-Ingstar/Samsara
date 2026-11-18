@@ -1,94 +1,102 @@
-# Installed Daily build receipts (1241)
+# Unattended installed Daily receipts (1262)
 
-Runner only. The worker writes and unit-tests this harness without launching,
-stopping or signalling an application. This is an **instrumented installed-build
-smoke**, not an unmodified-build end-to-end voice acceptance test.
-
-The runner copies `F:\Samsara-daily` to the previously nonexistent
-`D:\samsara_tmp1241\app`, with `D:\samsara_tmp1241\home` empty or absent, then runs:
+Runner command, from the repository after the build step has copied Daily to
+`D:\samsara_tmp1241\app` (including `BUILD_INFO.txt`):
 
 ```powershell
-& .\tools\build_receipts\run_all.ps1 -App D:\samsara_tmp1241\app -Home D:\samsara_tmp1241\home
+& .\tools\build_receipts\run_all.ps1
 ```
 
-Use an unlocked interactive Windows desktop and the existing Python environment
-with pywinauto, pywin32, comtypes and psutil. No dependencies are installed.
-The app needs its already-installed CPU speech model; downloads are disabled.
-Cockpit's existing loopback API is needed for T10. T80 needs a working microphone
-and a real spoken synthetic sentence during its eight-second capture; absent
-speech produces FAIL. No spoken text, audio, ticket contents or UI dumps enter
-the evidence files. The harness never starts/stops Cockpit or any owner app.
+The worker must never execute that command. Only the runner launches and exits
+its isolated child. No schedule is installed: RUNNER_RULES 37 invokes this once
+at the first build window after 06:00 PT. A completed same-day/build result is
+returned without another launch. `-Force` explicitly reruns while retaining all
+previous artifact directories. A changed same-day build refuses with exit 1
+until the runner explicitly chooses a rerun. A crashed run leaves RUNNING.lock
+for inspection; the harness never takes over another run's lock.
 
-The app/profile paths are restricted to the exact scratch tree. Existing
-nonempty profiles and path links/reparse points are refused. Preserve previous
-run directories before a rerun; the harness never recursively deletes them.
-It creates two disposable native Edit windows and a silent owned audio session.
+The command returns **0 or 1**, and writes
+`reports/receipts/<local-date>/RECEIPTS.md`, `receipts.json`, `completion.json`
+and unique `artifacts/claude/<run>/` evidence. The Markdown has one line per
+feature, build commit from the copied BUILD_INFO, timestamp and elapsed time.
+Exit 0 means every attempted scoped check passed and normal shutdown verified;
+NOT COVERED rows do not qualify for acceptance. Exit 1 includes preflight,
+feature, placement, budget and shutdown failures. No ticket is updated.
 
-## How it drives the build
+There is a shared **480-second observation budget**, followed by at most a
+10-second quit-request wait and 45-second normal-exit wait. This is a budget,
+not a measured installed-build duration. The worker verifies only fakes; the
+runner must measure the first real run. A failed child shutdown leaves the
+isolated child for the runner; there is no force kill. Model/device init and
+filesystem operations are not forcibly interrupted.
 
-The executable and installed product files are unchanged. A temporary personal
-plugin is placed **only in the fresh profile**, using the installed
-`load_extra_plugins`/`start_services` extension point. Its fixed-operation
-mailbox calls the installed `CommandExecutor.process_text`, Settings and
-mic-check UI, plus named installed readers/observers/ducking helpers. This is a
-new harness adapter, not an existing public HTTP command endpoint. No product
-functions are replaced, and no provider responses or desktop effects are mocked.
-The adapter requires both exact scratch paths and an explicit child environment
-flag; importing it in a normal app or worker does nothing. QSettings uses a
-disposable INI store instead of sharing Windows registry UI state.
+## Prerequisites and isolation
 
-Settings' actual visible slider and Apply button are driven through UIA. Other
-commands enter the installed executor after speech recognition; this proves no
-ASR behavior. T29 performs one normal Exit and relaunch, then reopens the control.
-The final shutdown uses the same `quit_app` lifecycle as tray Exit and verifies
-exit code zero plus removal of `logs/session.running`. There is no force kill,
-restart command or owner-process discovery. If normal shutdown cannot complete,
-the isolated copy is left for the runner and lifecycle evidence reports failure.
+- An unlocked interactive desktop containing exactly `\\.\DISPLAY3`; absence
+  refuses before launch. Owner work can continue; no keyboard/mouse injection,
+  UIA focus, clipboard, layouts or owner audio sessions are changed.
+- Existing Python at `F:\envs\sami\python.exe`, with numpy, psutil and pywin32.
+  No dependencies, model or virtual audio device are installed.
+- Owner corpus WAVs under `D:\SamsaraCorpus\takes`, and the recorder's offline
+  `recorder-settings.json` pointing to an existing supported faster-whisper HF
+  cache snapshot. Only WAVs and that model pointer are read, never corpus
+  transcript JSONs. `-Corpus` overrides the corpus root; Python daily.py also
+  accepts `--model` for the explicit existing cache snapshot.
+- The copied executable must support personal plugin services and the named
+  installed APIs. An older build fails visibly; no source product modules are
+  substituted. Build metadata identifies what actually ran; timestamp freshness
+  is checked, but commit ancestry is not claimed or automatically accepted.
+- Every run creates `D:\samsara_tmp1241\runs\<unique-run>\home` from scratch.
+  The exact copied executable and run-home paths gate the temporary plugin.
+  Links/reparse points and reused homes are refused. HOME, USERPROFILE,
+  SAMSARA_HOME_DIR, APPDATA, LOCALAPPDATA, XDG and temp paths point at that home;
+  QSettings uses an isolated INI store. The installed single-instance identity
+  follows SAMSARA_HOME_DIR, independently of the owner's profile.
 
-## Proof boundaries
+The executable launches initially hidden with monitor-3 startup coordinates.
+This protects the splash, which is created before plugin services and otherwise
+chooses the primary monitor. The plugin sets show-without-activation and
+WindowDoesNotAcceptFocus before showing/moving windows on monitor 3, and rejects
+in-child raise/activate/focus requests. It repositions windows that move outside
+that screen. Desktop evidence verifies the copied process's visible geometry
+and nonactivation flags; no owner window titles or text are read. This launch
+behaviour still requires the runner's real desktop verification.
 
-| Ticket | Scripted proof | Remaining acceptance |
+## Recorded input and proof boundaries
+
+The guarded plugin replaces **sounddevice.InputStream**, before the installed
+ACE engine starts, with real-time WAV frames; RawInputStream fallback refuses.
+All installed callbacks, native-rate conversion, ring writes, mic-check source,
+capture timing, VAD, decoding and heard-label delivery remain real. The input is
+one whole mono PCM16/16kHz corpus take between 0.6 and 7 seconds, after a quiet
+lead-in. Missing/empty/invalid corpus input fails; it never falls back to a mic.
+Only a WAV hash is saved in evidence. No PCM or recognised/dictated words are
+written to reports. The mic result is nonempty-recognition proof, not accuracy.
+
+Covered recorded stages: stream callback -> ACE resampling/ring -> mic-check
+capture -> installed admission/hold decoder -> actual UI heard label/metrics.
+OS text paste, ordinary hold delivery and hands-free ASR are **not** proved by
+that mic check. Physical microphone/acoustics/interface/driver/PortAudio device
+callbacks require live hardware. No owner test ask is filed by this harness.
+
+| Feature | Scoped unattended observation | Remaining boundary |
 | --- | --- | --- |
-| T10 | Installed ticket reader's ID/checkpoint fields; `hey ava resume ticket T10` reaches ticket reply/TTS queue | Spoken recognition and audible correctness; needs live Cockpit API |
-| T29 | Set 5 s via visible slider, Apply & Close, normal restart, verify saved config and reopened slider | Real speech pause/endpoint behavior |
-| T67 | Seed contrasting prior committed text; select different native-Edit text; offline cleanup, review slot and Apply affect the selection and preserve prior source | Natural Ava requests, model rewrites, ASR, other editor classes |
-| T68 | `game mode on/off`; actual runtime CPU state, model object/device restored; installed log markers | Real-game detection, GPU classification, exit grace and decode performance |
-| T70 | Ordinary command completes in <1 s without pending confirmation; read-only policy decision requires confirmation for restart | Real security/privacy question UI and all command families; restart never executes |
-| T73 | Save two scratch windows, move them, restore their rectangles | Refuses any unrelated movable windows; missing apps, tabs and monitor changes unproved |
-| T80 | Open real mic-check window; actual capture/decoder, recognised-speech presence and saved metrics | Needs real speech; does not grade transcript accuracy or every verdict |
-| T81 | Synthetic History observer seed; focus second editor; `paste that again` reaches it and leaves first editor intact | Initial voice dictation, focus races and clipboard format matrix |
-| T87 | Real installed WASAPI host/engine; only owned audio session: nested reduction/restoration and intentional change retained | Recording lifecycle, Brave, session disappearance and rapid-hold races |
+| T10 | Installed ticket lookup + command reply queue | Existing Cockpit API needed; ASR and audible correctness unproved |
+| T29 | Actual Qt pace slider/signals/Apply, normal restart, reopened 5 s | Speech endpoint timing unproved; no UIA/keyboard interaction |
+| T67 | NOT COVERED | Foreground selection/edit requires disposable desktop |
+| T68 | Manual game mode on/off, real CPU/model/runtime restoration | Real-game detection, GPU behaviour and auto-exit unproved |
+| T70 | Ordinary command timing + read-only restart authorization | Restart never executed; security/privacy question UI unproved |
+| T73 | NOT COVERED | Global layout save may enumerate owner windows |
+| T80 | Recorded input through installed capture/decoder/UI label | No physical mic/driver or transcript accuracy proof |
+| T81 | NOT COVERED | OS paste/clipboard/foreground targeting requires disposable desktop |
+| T87 | NOT COVERED | Recording duck lifecycle and owner audio sessions not exercised |
+| 1252 | Zero PCM during continuous listening -> actual visible notice | No unplug/mute diagnosis |
+| 1251 | Synthetic staged hands-free draft -> actual visible Re-read | Full display only; no Re-read decode or hands-free ASR proof |
+| 1135 | Help question -> exact answer forwarded to real speech coordinator | Text admission; no ASR or audible quality judgement |
+| 1254/1255 | Owned main-mouse callback down/up -> capture starts/stops | No physical/global hook/helper IPC test; no events sent to owner hooks |
 
-T73 refuses before saving when unrelated movable windows exist. Use a disposable
-interactive Windows session containing only the copied app and scratch editors
-for that check. The harness never minimizes, closes, moves or reads the contents
-of unrelated windows. It retains only scratch entries for restoration.
-T87 excludes all other enumerated audio session PIDs and restores the scratch
-session's initial volume in `finally`; master volume is never changed.
-
-## Evidence and interpretation
-
-`C:\Users\Morne\Documents\Claude\reports\1241\receipts.json` contains one
-row per ticket with `ticket`, `build_ts`, `trigger`, `result`, `evidence`,
-observations, limitations, landing identity and `acceptance_eligible`. Evidence
-is stored in a unique `artifacts\claude\<run>\` directory. Preflight failures
-also emit nine FAIL rows; no build timestamp is invented when unavailable.
-
-Build time comes from copied `BUILD_INFO.txt`, with metadata and executable
-SHA-256 hashes; copy mtime is never used. The current Daily format lacks an
-offset on `built`, so a same-day `date` offset can be retained as an explicit
-inference. It disables automatic acceptance until the runner confirms timezone.
-Build time must be newer than each named feature's landing. Timestamp order does
-not itself establish commit ancestry; the runner must reconcile that identity.
-
-PASS means **all observations in that scoped check passed**. Every partial
-check keeps `acceptance_eligible=false`. Do not map component PASS to `in_daily`
-automatically. Only T29 can qualify for its persistence scope, with explicit
-timestamp timezone and verified normal shutdown. The runner reads tickets fresh
-and records the exact exercised scope and remaining limits through `tickets.py`;
-this harness never edits tickets or declares features done.
-
-Exit 0 means all nine scoped checks passed and normal shutdown was verified;
-1 means a check/lifecycle failure; 2 means preflight refusal. Console lines print
-PASS/FAIL, exact trigger and evidence path. No installed-build result is claimed
-until the runner actually executes this command.
+These are instrumented build smoke receipts. Product audio stream input is
+replaced explicitly, and text fixtures enter existing command/draft routes.
+They must never be called full end-to-end voice acceptance or the 692-take
+corpus gate. The older interactive `runner.py` is retained for reference; the
+default PowerShell command no longer runs its focus-taking checks or live mic.

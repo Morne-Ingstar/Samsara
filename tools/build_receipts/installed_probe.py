@@ -13,6 +13,21 @@ import time
 
 
 def start_services(app):
+    if os.environ.get('SAMSARA_RECEIPTS_1262') == '1':
+        # This branch is allowed only in a fresh run below the fixed scratch
+        # root, using the copied executable. No arbitrary owner-profile opt-in.
+        expected = Path(os.environ.get('SAMSARA_HOME_DIR', '')).absolute()
+        root = Path('D:/samsara_tmp1241').resolve()
+        if (expected.name != 'home' or expected.parent.parent != root / 'runs'
+                or Path(sys.executable).resolve() != root / 'app' / 'Samsara.exe'):
+            return
+        if any(p.is_symlink() or (p.exists() and getattr(p.stat(), 'st_file_attributes', 0) & 0x400)
+               for p in (expected, *expected.parents)):
+            return
+        sys.path.insert(0, str(Path(__file__).parent))
+        import receipt_daily_probe
+        receipt_daily_probe.start(app, expected)
+        return
     expected = Path('D:/samsara_tmp1241/home').resolve()
     if (os.environ.get('SAMSARA_RECEIPTS_1241') != '1'
             or Path(os.environ.get('SAMSARA_HOME_DIR', '')).resolve() != expected

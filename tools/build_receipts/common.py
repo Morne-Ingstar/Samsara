@@ -10,6 +10,8 @@ import time
 
 TICKETS = ('T10', 'T29', 'T67', 'T68', 'T70', 'T73', 'T80', 'T81', 'T87')
 ROOT = Path('D:/samsara_tmp1241')
+# Set only by the unattended entry point; reserve shutdown time outside this.
+DEADLINE = None
 # Latest relevant landing named by the 1241 acceptance brief, not HEAD's date.
 LANDINGS = {
     'T10': ('3b8435e3bca95325bd952ec1aa0fff41b03de3a3', '2026-11-01T03:06:22-08:00'),
@@ -96,7 +98,11 @@ def write_json(path, value):
 
 def wait_for(probe, *, timeout=30, interval=.1):
     end = time.monotonic() + timeout
+    if DEADLINE is not None:
+        end = min(end, DEADLINE)
     while True:
+        if time.monotonic() >= end:
+            raise TimeoutError('Receipt observation budget exhausted')
         value = probe()
         if value:
             return value

@@ -78,7 +78,9 @@ class Harness:
             env[key] = str(self.home)
         env.update(SAMSARA_RECEIPTS_1241='1', HF_HUB_OFFLINE='1',
                    HF_HUB_DISABLE_TELEMETRY='1', TRANSFORMERS_OFFLINE='1')
-        self.process = subprocess.Popen([str(self.app / 'Samsara.exe')], cwd=str(self.app), env=env)
+        env = self.launch_environment(env)
+        self.process = subprocess.Popen([str(self.app / 'Samsara.exe')], cwd=str(self.app), env=env,
+                                        **self.launch_options())
         self.channel = Channel(self.home, self.process)
         ready = wait_for(lambda: self.channel.read('ready.json'), timeout=180)
         if ready['pid'] != self.process.pid:
@@ -88,6 +90,12 @@ class Harness:
             raise RuntimeError('Unexpected executable identity')
         wait_for(lambda: self.channel.call('state')['ready'], timeout=60)
         self.lifecycle.append(dict(event='started', pid=self.process.pid))
+
+    def launch_environment(self, env):
+        return env
+
+    def launch_options(self):
+        return {}
 
     def quit(self):
         if self.process is None or self.process.poll() is not None:

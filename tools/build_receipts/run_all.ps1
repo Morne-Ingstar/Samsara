@@ -1,10 +1,13 @@
 param(
-    [Parameter(Mandatory=$true)][string]$App,
-    [Parameter(Mandatory=$true)][Alias('Home')][string]$ProfilePath,
+    [string]$App = 'D:\samsara_tmp1241\app',
     [string]$Python = 'F:\envs\sami\python.exe',
-    [string]$Report = 'C:\Users\Morne\Documents\Claude\reports\1241'
+    [string]$Report = (Join-Path $PSScriptRoot '..\..\reports\receipts'),
+    [string]$Corpus = 'D:\SamsaraCorpus',
+    [switch]$Force
 )
 $ErrorActionPreference = 'Stop'
 # Runner-only entry point. The worker must never execute this script.
-& $Python (Join-Path $PSScriptRoot 'runner.py') --app $App --home $ProfilePath --report $Report
+$arguments = @((Join-Path $PSScriptRoot 'daily.py'), '--app', $App, '--corpus', $Corpus, '--report-root', $Report)
+if ($Force) { $arguments += '--force' }
+& $Python @arguments
 exit $LASTEXITCODE
