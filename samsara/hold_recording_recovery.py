@@ -57,9 +57,25 @@ def deliver_retained_failure(session, duration_s):
 
 def capture_stopped(session, audio):
     session._stopped_audio_1042 = audio
+    from samsara.audio_engine.capture_snapshot import CaptureSnapshot
+    snapshot = getattr(audio, 'capture_snapshot', None)
+    if isinstance(snapshot, CaptureSnapshot):
+        session._capture_snapshot_1249 = snapshot
+        if snapshot.drain_incomplete:
+            retain_stopped(session, 'drain_incomplete')
     if session.cancel_event.is_set():
         cancelled(session)
     return audio
+
+
+def retain_incomplete_capture(app, audio):
+    """Batch's stop seam runs before silence/debounce/decode early returns."""
+    try:
+        build = getattr(app, '_build_hotkey_transcribe_params', None)
+        params = build() if callable(build) else {}
+        decode_recovery.retain(app, audio, params, 'drain_incomplete')
+    except Exception:
+        logger.exception('[CAP] incomplete capture could not be retained')
 
 
 def _prepare_final(session, text, raw_text, duration_s):
@@ -529,7 +545,11 @@ def complete_incident(session, text):
                     'kept_take_id': getattr(session, '_kept_take_id', None),
                     'kept_generation': getattr(session, '_kept_generation', None),
                     'reasons': sorted(reasons), **joined, **saved,
-                    'wav_source': 'complete_decode_take',
+                    'wav_source': ('committed_incomplete_capture' if getattr(
+                        getattr(audio, 'capture_snapshot', None), 'drain_incomplete', False)
+                        else 'complete_decode_take'),
+                    'capture_receipt': (audio.capture_snapshot.receipt()
+                        if getattr(audio, 'capture_snapshot', None) is not None else None),
                     'gate_metrics': list(data['gate']), 'decode_attempts': attempts,
                     'hold_final': {'segments_decoded': getattr(audit, 'decoded', 0),
                                    'segments_dropped': sum(dropped.values()), 'reasons': dropped,

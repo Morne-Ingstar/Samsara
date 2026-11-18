@@ -17,6 +17,7 @@ from samsara.vocabulary_decode import transcribe_with_vocabulary
 from samsara.runtime import thread_registry
 from samsara.hold_final_policy import audited_batch
 from samsara.hold_tail_evidence import observed_decode, observe_raw, with_decode_context, timeline_offset
+from samsara.audio_engine.capture_snapshot import spans as capture_spans, copy_audio
 
 logger = get_logger(__name__)
 # PLACEHOLDER COPY (1125)
@@ -188,18 +189,21 @@ class Chunk:
 def chunk_audio(audio, rate, evidence, *, recovery=False):
     """Keep the original timeline; disjoint cores, 250 ms context on each side."""
     size, pad, width = len(audio), round(.25 * rate), round((4.5 if recovery else 24.5) * rate)
-    if size <= (4.5 if recovery else 20) * rate:
+    spans = capture_spans(audio)
+    if size <= (4.5 if recovery else 20) * rate and len(spans) == 1:
         return [Chunk(0, size, 0, size)] if size else []
     pauses = _pauses(evidence, rate, size)
-    chunks, start = [], 0
-    while start < size:
-        end = min(size, start + width)
-        if end < size:
-            seams = [min((a + b) // 2, end) for a, b in pauses
-                     if start + rate <= (a + b) // 2 and a <= end]
-            end = max(seams, default=end)
-        chunks.append(Chunk(max(0, start - pad), min(size, end + pad), start, end))
-        start = end
+    chunks = []
+    for first, last in spans:
+        start = first
+        while start < last:
+            end = min(last, start + width)
+            if end < last:
+                seams = [min((a + b) // 2, end) for a, b in pauses
+                         if start + rate <= (a + b) // 2 and a <= end]
+                end = max(seams, default=end)
+            chunks.append(Chunk(max(first, start - pad), min(last, end + pad), start, end))
+            start = end
     return chunks
 
 
@@ -584,6 +588,13 @@ def partial_decode(worker, audio, params):
     prior = getattr(worker, '_confirmed_partial_segments', [])
     origin = getattr(worker, '_partial_origin', 0)
     previous = getattr(worker, '_partial_segments', [])
+    spans = capture_spans(audio)
+    if len(spans) > 1 and origin < spans[-1][0]:
+        # A provisional decode cannot bridge device timelines. Earlier PCM
+        # remains in the final take; only already accepted words are frozen.
+        boundary = spans[-1][0]
+        prior = prior + [s for s in previous if getattr(s, 'end', float('inf')) * rate <= boundary]
+        origin, previous = boundary, []
     if len(audio) > 15 * rate and previous:
         evidence = measure(audio[origin:], rate)
         seams = [(a + b) // 2 + origin for a, b in _pauses(evidence, rate, len(audio) - origin)
@@ -635,7 +646,7 @@ def retain(app, audio, params, reason, ranges=None, *, source=None):
                              or getattr(joined, 'hold_seq_id', '') or uuid4().hex)
         if joined is not None:
             audit._hold_evidence_1121 = joined
-        app._hold_retry_audio = RetainedAudio(np.array(audio, copy=True), dict(params), reason,
+        app._hold_retry_audio = RetainedAudio(copy_audio(audio), dict(params), reason,
             tuple(ordered), time.monotonic() + NOTE_MS / 1000, audit.hold_seq_id, audit)
         app._hold_retry_audio.history_entry_id = getattr(source, 'history_entry_id', None)
 
@@ -648,8 +659,13 @@ def _retry_request(app, text):
 def capture_problem(app, audio, session=None):
     """Capture gaps are evidence, never a veto on the PCM that arrived."""
     consumer = getattr(app, '_dictation_consumer', None)
-    loss = getattr(consumer, 'capture_loss', False) is True
+    snapshot = getattr(audio, 'capture_snapshot', None)
+    loss = (bool(snapshot.losses or snapshot.drain_incomplete) if snapshot is not None
+            else getattr(consumer, 'capture_loss', False) is True)
     app._capture_loss_1125 = loss and audio is not None and bool(len(audio))
+    if snapshot is not None and snapshot.drain_incomplete and session is None:
+        from samsara.hold_recording_recovery import retain_incomplete_capture
+        retain_incomplete_capture(app, audio)
     if loss:
         from samsara.audio_engine.frame import FRAME_MS
         frames = int(getattr(consumer, 'dropped_frames', 0) or 0)

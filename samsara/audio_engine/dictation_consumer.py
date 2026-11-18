@@ -33,8 +33,8 @@ rather than "discard a copy" — both produce the same result.
 
 A device_epoch change mid-utterance means the audio device was interrupted
 (BT reconnect, device switch). Stitching audio across an epoch boundary
-produces garbage transcripts. drain() returns None on epoch mismatch;
-stop_recording treats None as "no audio captured" and plays an error earcon.
+must never silently stitch device timelines. Committed PCM is retained with
+an immutable receipt; the decoder partitions known discontinuities.
 """
 
 import threading
@@ -45,7 +45,7 @@ import numpy as np
 
 from .frame import PREBUFFER_FRAMES, FRAME_MS
 from .ring import EMPTY
-from . import hold_capture, preduck
+from . import hold_capture, preduck, capture_snapshot
 from samsara.constants import (
     ADAPTIVE_SPEECH_FLOOR_RATIO,
     HOLD_RELEASE_TAIL_SPEECH_THRESHOLD,
@@ -90,6 +90,7 @@ class DictationSessionConsumer:
         self._streaming_capturing = False
         self._streaming_tail_audit = None
         self._tail_ambient = None
+        self.capture_snapshot = None
 
     # ── Utterance lifecycle ───────────────────────────────────────────────────
 
@@ -253,7 +254,9 @@ class DictationSessionConsumer:
                 # seq (monotonic ring write-cursor snapshot) is carried
                 # through so drain() can verify the assembled buffer is
                 # actually contiguous -- see _log_seam_diagnostics.
-                self._frames.append((frame.seq, frame.device_epoch, frame.pcm.copy()))  # [MA-2]
+                pcm = frame.pcm.copy()  # [MA-2]
+                if capture_snapshot.commit(self, frame, pcm):
+                    self._frames.append((frame.seq, frame.device_epoch, pcm))
 
     def drain_after_release(
         self,
@@ -428,24 +431,16 @@ class DictationSessionConsumer:
             return True
 
     def drain(self) -> 'np.ndarray | None':
-        """Stop and assemble audio; return None if the drain thread times out."""
+        """Stop and assemble committed PCM, including an incomplete timeout take."""
         with self._lifecycle_lock:
             return self._drain_hold()
 
     def _drain_hold(self) -> 'np.ndarray | None':
         """Stop the drain thread and return assembled float32 audio.
 
-        The background _hold_drain_loop has been accumulating (epoch, pcm)
-        tuples for the whole hold. Here we stop it, then assemble: apply the
-        epoch-discontinuity check and per-frame echo cancellation, and
-        concatenate into a single float32 ndarray at 16 kHz (model rate).
-
-        Returns:
-            float32 ndarray at 16kHz, or None when:
-            - no frames were accumulated (silent tap), or
-            - an epoch change occurred mid-utterance (stream discontinuity).
-
-        Callers must treat None as "no audio" and skip transcription.
+        On timeout, seal the publication journal without waiting for the
+        accumulator lock. The old drain keeps exclusive reader ownership.
+        Complete takes preserve per-frame echo cancellation.
         """
         self._active = False
 
@@ -453,7 +448,10 @@ class DictationSessionConsumer:
         if not self._stop_hold_thread():
             # The old reader may still be inside read_next(). Never race it
             # with the final synchronous drain or expose a changing buffer.
-            return None
+            return capture_snapshot.finish(self, incomplete=True)
+
+        if self.capture_snapshot is not None:
+            return None  # Never republish a previously sealed generation.
 
         if self._reader is None:
             return None
@@ -468,9 +466,12 @@ class DictationSessionConsumer:
             if self._epoch_at_start is None:
                 self._epoch_at_start = frame.device_epoch
             with self._frames_lock:
-                self._frames.append((frame.seq, frame.device_epoch, frame.pcm.copy()))  # [MA-2]
+                pcm = frame.pcm.copy()  # [MA-2]
+                if capture_snapshot.commit(self, frame, pcm):
+                    self._frames.append((frame.seq, frame.device_epoch, pcm))
 
         hold_capture.finish(self)
+        committed = capture_snapshot.finish(self)
         with self._frames_lock:
             collected = list(self._frames)
             self._frames.clear()
@@ -481,14 +482,9 @@ class DictationSessionConsumer:
         self._log_seam_diagnostics(collected)
 
         echo_canceller = getattr(self._app, 'echo_canceller', None)
-        start_epoch = collected[0][1]
         out_frames = []
 
         for seq, epoch, pcm in collected:
-            if epoch != start_epoch:
-                logger.warning("[ACE] Epoch change mid-utterance — aborting dictation")
-                return None
-
             if echo_canceller and echo_canceller.is_active:
                 pcm_f32   = pcm.astype(np.float32) / 32767.0
                 processed = echo_canceller.process(
@@ -500,7 +496,12 @@ class DictationSessionConsumer:
 
         floats = [pcm.astype(np.float32) / 32767.0 for pcm in out_frames]
         self._log_streaming_tail_capture(floats)
-        return np.concatenate(floats)
+        audio = np.concatenate(floats)
+        if committed is not None:
+            audio = audio.view(capture_snapshot.CaptureAudio)
+            audio.capture_snapshot = self.capture_snapshot
+            audio.capture_start = 0
+        return audio
 
     def _log_seam_diagnostics(self, collected: list) -> None:
         """Debug-level, cheap, permanent seam diagnostics (hotkey word-loss
@@ -629,7 +630,8 @@ class DictationSessionConsumer:
             pcm = frame.pcm.copy()   # [MA-2]
             pcm_f32 = pcm.astype(np.float32) / 32767.0
             with self._streaming_lock:
-                self._streaming_frames.append(pcm_f32)
+                if capture_snapshot.commit(self, frame, pcm):
+                    self._streaming_frames.append(pcm_f32)
 
     def snapshot_streaming_audio(self) -> 'np.ndarray | None':
         """Return assembled float32 audio without clearing the accumulator.
@@ -637,6 +639,9 @@ class DictationSessionConsumer:
         Called by StreamingWorker for each partial transcription pass.
         Thread-safe non-destructive read.
         """
+        journal = getattr(self, '_capture_journal', None)
+        if journal is not None:
+            return journal.read().audio()
         with self._streaming_lock:
             frames = list(self._streaming_frames)
         if not frames:
@@ -661,8 +666,10 @@ class DictationSessionConsumer:
                 self.capture_loss = True
                 logger.error("[ACE] Streaming drain stop incomplete: thread %s is still alive",
                              self._streaming_thread.name)
-                return None
+                return capture_snapshot.finish(self, incomplete=True)
             self._streaming_thread = None
+        if self.capture_snapshot is not None:
+            return None  # The returned generation stays sealed after late exit.
         # Drain the bounded ring backlog before clearing the accumulator. The
         # consumer may have been starved when release set its stop event.
         if self._reader is not None and self._streaming_capturing:
@@ -672,17 +679,20 @@ class DictationSessionConsumer:
                     break
                 if self._frame_inside_capture_duck(frame):
                     with self._streaming_lock:
-                        self._streaming_frames.append(frame.pcm.astype(np.float32) / 32767.0)
+                        pcm = frame.pcm.copy()
+                        if capture_snapshot.commit(self, frame, pcm):
+                            self._streaming_frames.append(pcm.astype(np.float32) / 32767.0)
         if self._streaming_capturing:
             hold_capture.finish(self)
         self._streaming_capturing = False
+        committed = capture_snapshot.finish(self)
         with self._streaming_lock:
             frames = list(self._streaming_frames)
             self._streaming_frames = []
         self._log_streaming_tail_capture(frames)
         if not frames:
             return None
-        return np.concatenate(frames)
+        return committed if committed is not None else np.concatenate(frames)
 
     # ── App shutdown ──────────────────────────────────────────────────────────
 

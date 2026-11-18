@@ -3,10 +3,11 @@ import math
 import time
 
 from .frame import FRAME_MS
-from . import preduck
+from . import preduck, capture_snapshot
 
 
 def begin(consumer):
+    capture_snapshot.begin(consumer)
     consumer.capture_loss = False
     consumer.dropped_frames = 0
     consumer._last_capture_seq = consumer._reader._read_cursor - 1
@@ -17,18 +18,23 @@ def begin(consumer):
 def observe(consumer, frame):
     """Account before policy filtering, including an overrun on the first read."""
     lost = max(0, frame.seq - consumer._last_capture_seq - 1)
+    previous = consumer._last_capture_seq
     consumer._last_capture_seq = frame.seq
     overflows = getattr(consumer._engine, '_overflow_count', 0)
     if lost:
+        capture_snapshot.loss(consumer, 'sequence_gap', previous, frame.seq,
+                              lost * len(frame.pcm))
         consumer.dropped_frames += lost
         consumer.capture_loss = True
         consumer._capture_logger.warning('[CAP] dropped %d frames', lost)
     if overflows != consumer._capture_overflows:
+        capture_snapshot.loss(consumer, 'input_overflow', previous, frame.seq)
         consumer.capture_loss = True
         consumer._capture_overflows = overflows
         consumer._capture_logger.warning('[CAP] input overflow; missing frame count unknown')
     epoch = getattr(consumer, '_capture_epoch', None)
     if epoch is not None and epoch != frame.device_epoch:
+        capture_snapshot.loss(consumer, 'device_epoch', previous, frame.seq)
         consumer.capture_loss = True
         consumer._capture_logger.warning('[CAP] device changed during hold')
     consumer._capture_epoch = frame.device_epoch
@@ -69,7 +75,13 @@ def boundary(consumer, fallback):
 def finish(consumer):
     preduck.finish(consumer)
     consumer._previous_capture_end = consumer._capture_not_after or time.perf_counter()
+    observe_stop(consumer)
+
+
+def observe_stop(consumer):
+    """Nonblocking stop receipt, also safe while the reader has not exited."""
     # Overflow can occur without a subsequent readable frame.
     if getattr(consumer._engine, '_overflow_count', 0) != consumer._capture_overflows:
+        capture_snapshot.loss(consumer, 'input_overflow', consumer._last_capture_seq)
         consumer.capture_loss = True
         consumer._capture_logger.warning('[CAP] input overflow; missing frame count unknown')

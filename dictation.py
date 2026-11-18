@@ -10549,7 +10549,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
 
                 # Kill the mechanical hotkey press/release click transient
                 # before it can trigger the gate below or Whisper itself.
-                audio_faded = _fade_edges(audio, self.model_rate, _FADE_MS)
+                from samsara.audio_engine.capture_snapshot import fade_capture; audio_faded = fade_capture(audio, self.model_rate, _FADE_MS)
 
                 # Presence gate over the WHOLE capture (39): one VAD call for
                 # short buffers, no VAD for audible long ones, every chunk of
