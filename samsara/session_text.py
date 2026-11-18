@@ -252,11 +252,8 @@ class EllipsisSeam:
         }
         if words[-1] in open_tail or words[-1].endswith(('ing', 'ly')):
             return False
-        # Copula + complement ("the lamp is blue", "that was the plan").
-        if (any(word in {'is', 'are', 'was', 'were', 'am', "it's", "that's"}
-                for word in words[:-1])
-                and not any(word.endswith('ing') for word in words)):
-            return True
+        # 1253: a copula also occurs inside dependent clauses. Leave those
+        # uncertain pauses joined; the whole-draft re-decode supplies periods.
         # Unambiguous closed predicates and past-tense clauses with an object.
         if words[-1] in {'worked', 'stopped', 'finished', 'arrived', 'left', 'ended', 'failed'}:
             return True

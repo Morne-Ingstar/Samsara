@@ -30,7 +30,8 @@ def make_session(monkeypatch, *, single_line=None, config=None, correction=None)
         inject_prepared_fn=adapter.inject_prepared,
         remove_chars_fn=Mock(), command_dispatch_fn=Mock(), agent_dispatch_fn=Mock(),
         buffer_dictate_until_commit=True,
-        commit_redecode_fn=Mock(return_value='THIS MUST NEVER REPLACE THE PREVIEW.'),
+        # 1253: prepared drafts now try re-decode; no synthetic audio yields none.
+        commit_redecode_fn=Mock(return_value=None),
     )
     app._session_mode_manager = manager
     app._ensure_session_mode_manager = lambda: manager
@@ -52,7 +53,8 @@ def test_fragment_preview_and_delivered_text_are_identical(monkeypatch, decoded,
     outcome = manager.commit_pending_dictation()
     assert outcome.kind == 'dictate_committed'
     assert outcome.detail['text'] == preview == app._paste_preserving_clipboard.call_args.args[0]
-    manager._commit_redecode_fn.assert_not_called()
+    # 1253: a missing-audio re-decode keeps the already-prepared preview exactly.
+    manager._commit_redecode_fn.assert_called_once()
     assert smart.call_count == app.process_transcription.call_count == 1
     assert manager.stage_buffer == preview
     assert manager._stack.peek().payload == preview

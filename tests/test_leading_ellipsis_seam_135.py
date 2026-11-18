@@ -44,8 +44,8 @@ def test_a_leading_ellipsis_continuation_joins(previous, new):
 @pytest.mark.parametrize("previous,new", SEPARATES)
 def test_a_real_new_sentence_still_separates(previous, new):
     seam = decide_ellipsis_seam(previous, new)
-    # 1250: only a closed clause separates; a capital alone is no evidence.
-    assert seam is not None and seam.join == (previous != "that was the plan..."), seam
+    # 1253: a copula alone is uncertain too; all these decoder pauses join.
+    assert seam is not None and seam.join, seam
 
 
 def test_the_leading_ellipsis_is_stripped_even_when_separating():

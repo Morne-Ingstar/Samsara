@@ -176,7 +176,13 @@ def test_real_manager_matches_pre_move_state_scratch_and_injection():
                     for item in snapshot['stack']:
                         if item['kind'] == 'dictation_staged_chunk' and item['payload'] == ' another sentence.':
                             item['extra']['stripped_suffix'] = '...'
-        assert _manager_trace(case["recipe"]) == expected, case["id"]
+        actual = _manager_trace(case["recipe"])
+        # 1253: compare every historical field; new seam evidence has its own tests.
+        for snapshot in actual['snapshots']:
+            for item in snapshot['stack']:
+                if item['kind'] == 'dictation_staged_chunk':
+                    assert isinstance(item['extra'].pop('uncertain_seam'), bool)
+        assert actual == expected, case["id"]
 
 
 def test_manager_keeps_dynamic_facade_seam_override(monkeypatch):

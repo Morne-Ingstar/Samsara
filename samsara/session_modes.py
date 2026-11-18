@@ -2852,7 +2852,7 @@ class SessionModeManager(UtteranceUndoMixin):
 
         self._clear_draft_undo.drop()
         from samsara.draft_reread import retain
-        retain(self, audio_ref)
+        uncertain_seam = retain(self, audio_ref, raw=chunk_raw, seam=ellipsis_seam, stripped_period=stripped_terminal_period)
         self._draft.append(to_stage)
         from samsara.draft_reread import checkpoint
         checkpoint(self)
@@ -2862,7 +2862,7 @@ class SessionModeManager(UtteranceUndoMixin):
             kind="dictation_staged_chunk", payload=to_stage,
             mode=SessionMode.DICTATE, timestamp=self._clock(),
             extra={"stripped_terminal_period": stripped_terminal_period,
-                   "stripped_suffix": stripped_suffix},
+                   "stripped_suffix": stripped_suffix, "uncertain_seam": uncertain_seam},
         ))
         return DispatchOutcome(kind="dictate_staged", detail={
             "text": to_stage,
@@ -2940,8 +2940,9 @@ class SessionModeManager(UtteranceUndoMixin):
         owner = getattr(self._commit_redecode_fn, '__self__', None)
         refs = self._dictate_pending_audio
         models = getattr(self, '_dictate_audio_models', {})
+        from samsara.draft_reread import staged_chunks_stable
         try:
-            stable_chunks = bool(refs) and all(
+            stable_chunks = bool(refs) and staged_chunks_stable(self) and all(
                 ref is not None and len(ref) / owner.model_rate >= 1.5
                 and models[id(ref)][0]() is ref and models[id(ref)][1]() is owner.model
                 for ref in refs)
@@ -2949,14 +2950,14 @@ class SessionModeManager(UtteranceUndoMixin):
             stable_chunks = False
         if stable_chunks:
             log.info('[SESSION] Skipping commit re-decode: same_model_no_short_fragments')
-        if (not exact_draft and not stable_chunks and self._commit_redecode_fn is not None and not self._draft.edited
+        if (not stable_chunks and self._commit_redecode_fn is not None and not self._draft.edited
                 and not self._parked_hold):
             try:
-                redecode_text = self._commit_redecode_fn(
-                    final_text, list(self._dictate_pending_audio),
-                )
+                redecode_text = self._commit_redecode_fn(final_text, list(self._dictate_pending_audio))
                 if redecode_text and consumed_trailing_commit_word:
                     redecode_text = strip_redecoded_commit_word(redecode_text)
+                if redecode_text and self._prepare_dictate_fn is not None:
+                    redecode_text = self._prepare_dictate_fn(redecode_text.strip())
                 if redecode_text:
                     if redecode_is_poorer(final_text, redecode_text):
                         log.warning(
@@ -2974,8 +2975,7 @@ class SessionModeManager(UtteranceUndoMixin):
                     exc,
                     exc_info=True,
                 )
-
-        # A displayed draft is immutable at delivery, including clipboard retries.
+        # Deliver the selected, prepared text exactly, including clipboard retries.
         delivered = clipboard_recovery.inject_commit(
             self, final_text, commit_target_still_focused, target_mode,
             inject_fn=self._inject_prepared_fn if exact_draft else None)

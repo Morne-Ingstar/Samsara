@@ -29,8 +29,8 @@ def speech_pcm(audio, rate):
     return np.concatenate([pcm[s['start']:s['end']] for s in spans])
 
 
-def retain(manager, audio):
-    """One entry per accepted chunk; None preserves alignment after eviction."""
+def retain(manager, audio, *, raw='', seam=None, stripped_period=False):
+    """Retain aligned audio; return whether this chunk has an uncertain seam."""
     app = getattr(manager._agent_dispatch_fn, '__self__', None)
     refs = manager._dictate_pending_audio
     pool = getattr(manager, '_reread_pcm', None)
@@ -76,11 +76,32 @@ def retain(manager, audio):
     except (AttributeError, TypeError):
         pass  # Missing provenance keeps the optional re-decode path.
     manager._dictate_audio_models = models
+    # 1253: return per-chunk evidence before staging changes the terminal state.
+    from samsara.session_text import _is_continuation_chunk
+    return bool(seam is not None or stripped_period or (
+        manager._last_dictate_ended_terminal is not None
+        and (not manager._last_dictate_ended_terminal or _is_continuation_chunk(raw))))
 
 
 def checkpoint(manager):
     doc = manager.draft_document
     manager._reread_source = (doc.document_id, doc.revision, doc.text)
+
+
+def staged_chunks_stable(manager) -> bool:
+    """1253: duration can skip re-decode only with proof of clean seams.
+
+    Undo/redo and recovery already snapshot each staged stack item. A bounded
+    stack or older snapshot lacks complete evidence, so permit re-decode.
+    Previous committed output is not evidence about the current draft.
+    """
+    chunks = []
+    for item in manager._stack.items_newest_first():
+        if item.kind != 'dictation_staged_chunk':
+            break
+        chunks.append(item)
+    return (len(chunks) == len(manager._dictate_pending_audio)
+            and all(item.extra.get('uncertain_seam') is False for item in chunks))
 
 
 def request(app):

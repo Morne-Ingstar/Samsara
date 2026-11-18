@@ -152,8 +152,9 @@ def test_the_whole_owner_message_stages_cohesively():
                  "the there's the six little squares showing apps.", id="determiner-then-restart"),
     pytest.param(["the...", "I think that is fine."],
                  "the I think that is fine.", id="determiner-then-pronoun"),
+    # 1253: copula alone cannot close a decoder ellipsis; keep intrinsic I.
     pytest.param(["It was great...", "I loved it."],
-                 "It was great. I loved it.", id="I-after-non-conjunction"),
+                 "It was great I loved it.", id="I-after-non-conjunction"),
     pytest.param(["That is all?", "deal with it later"],
                  "That is all? deal with it later", id="question-mark-kept"),
 ])
