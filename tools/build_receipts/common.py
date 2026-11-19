@@ -8,8 +8,12 @@ from pathlib import Path
 import re
 import time
 
+if __package__:
+    from .installed_probe import ROOT_ENV, copied_executable, prepared_root, reject_links, validate_profile
+else:
+    from installed_probe import ROOT_ENV, copied_executable, prepared_root, reject_links, validate_profile
+
 TICKETS = ('T10', 'T29', 'T67', 'T68', 'T70', 'T73', 'T80', 'T81', 'T87')
-ROOT = Path('D:/samsara_tmp1241')
 # Set only by the unattended entry point; reserve shutdown time outside this.
 DEADLINE = None
 # Latest relevant landing named by the 1241 acceptance brief, not HEAD's date.
@@ -26,23 +30,20 @@ LANDINGS = {
 }
 
 
-def reject_links(path):
-    for part in (path, *path.parents):
-        if part.is_symlink() or (part.exists() and
-                                 getattr(part.stat(), 'st_file_attributes', 0) & 0x400):
-            raise ValueError('Isolation path contains a link or reparse point')
+def validate_app(app, root):
+    expected = root / 'app'
+    if app is not None and Path(app).absolute() != expected:
+        raise ValueError('Use the copied app directory under the scratch root')
+    copied_executable(root)
+    return expected
 
 
-def validate_paths(app, home, *, root=ROOT):
-    """Require the explicitly named scratch tree, with no owner-profile fallback."""
-    app, home, root = (Path(p).absolute() for p in (app, home, root))
-    for path in (app, home, root):
-        reject_links(path)
-    if app.resolve() != (root / 'app').resolve() or home.resolve() != (root / 'home').resolve():
-        raise ValueError('Use D:/samsara_tmp1241/app and D:/samsara_tmp1241/home')
-    if not (app / 'Samsara.exe').is_file():
-        raise ValueError('Copy the installed Daily build into the scratch app directory first')
-    if home.exists() and any(home.iterdir()):
+def validate_paths(app, home, *, root):
+    root = prepared_root(root)
+    app = validate_app(app, root)
+    home = Path(home).absolute()
+    validate_profile(home, root, daily=False)
+    if home.exists() and (not home.is_dir() or any(home.iterdir())):
         raise ValueError('Home must be empty; retain the previous run and use a fresh scratch tree')
     return app, home
 

@@ -18,9 +18,9 @@ import uuid
 import re
 
 try:
-    from .common import TICKETS, build_identity, receipt, validate_paths, wait_for, write_json
+    from .common import ROOT_ENV, TICKETS, build_identity, receipt, validate_paths, wait_for, write_json
 except ImportError:
-    from common import TICKETS, build_identity, receipt, validate_paths, wait_for, write_json
+    from common import ROOT_ENV, TICKETS, build_identity, receipt, validate_paths, wait_for, write_json
 
 
 class ProbeError(RuntimeError):
@@ -54,8 +54,9 @@ class Channel:
 
 
 class Harness:
-    def __init__(self, app, home, report, identity):
+    def __init__(self, app, home, report, identity, *, root):
         self.app, self.home, self.report, self.identity = app, home, report, identity
+        self.root = root
         stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex[:8]
         self.artifacts = report / 'artifacts' / 'claude' / stamp
         self.artifacts.mkdir(parents=True)
@@ -71,13 +72,14 @@ class Harness:
                 (channel / name).unlink(missing_ok=True)
         env = dict(os.environ)
         for key in ('SAMSARA_DUCKING_HOST', 'PYTHONPATH', 'PYTHONHOME', 'QT_QPA_PLATFORM',
-                    'QT_QPA_FONTDIR', 'SAMSARA_PROFILE', 'SAMSARA_DAILY'):
+                    'QT_QPA_FONTDIR', 'SAMSARA_PROFILE', 'SAMSARA_DAILY', 'SAMSARA_RECEIPTS_1262'):
             env.pop(key, None)
         for key in ('HOME', 'USERPROFILE', 'SAMSARA_HOME_DIR', 'APPDATA', 'LOCALAPPDATA',
                     'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'TEMP', 'TMP', 'TMPDIR'):
             env[key] = str(self.home)
         env.update(SAMSARA_RECEIPTS_1241='1', HF_HUB_OFFLINE='1',
                    HF_HUB_DISABLE_TELEMETRY='1', TRANSFORMERS_OFFLINE='1')
+        env[ROOT_ENV] = str(self.root)
         env = self.launch_environment(env)
         self.process = subprocess.Popen([str(self.app / 'Samsara.exe')], cwd=str(self.app), env=env,
                                         **self.launch_options())
@@ -317,12 +319,13 @@ class Harness:
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--app', type=Path, required=True)
+    parser.add_argument('--scratch-root', type=Path, required=True)
+    parser.add_argument('--app', type=Path, help='Copied app directory (defaults to SCRATCH_ROOT/app)')
     parser.add_argument('--home', type=Path, required=True)
     parser.add_argument('--report', type=Path, required=True)
     args = parser.parse_args(argv)
     try:
-        app, home = validate_paths(args.app, args.home)
+        app, home = validate_paths(args.app, args.home, root=args.scratch_root)
         identity = build_identity(app)
         # Dependencies checked before any launch/profile mutation. No auto-install.
         import psutil  # noqa: F401
@@ -355,7 +358,7 @@ def main(argv=None):
         'ducking': {'enabled': False, 'recording_mode': 'off', 'hands_free_enabled': False},
         'ava_edit': {'enabled': False}, 'ui': {'live_surface': {'enabled': True}},
     })
-    harness = Harness(app, home, args.report.resolve(), identity)
+    harness = Harness(app, home, args.report.resolve(), identity, root=app.parent)
     error = None
     try:
         harness.run()

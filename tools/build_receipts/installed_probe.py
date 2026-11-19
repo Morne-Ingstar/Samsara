@@ -7,31 +7,89 @@ Only fixed operations are accepted, through the disposable profile's mailbox.
 from pathlib import Path
 import json
 import os
+import stat
 import sys
 import threading
 import time
 
 
+ROOT_ENV = 'SAMSARA_RECEIPT_SCRATCH_ROOT'
+LIVE_PROFILES = {'.samsara', '.samsara-daily', '.samsara-private'}
+
+
+def reject_links(path):
+    for part in (path, *path.parents):
+        try:
+            info = part.lstat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(info.st_mode) or getattr(info, 'st_file_attributes', 0) & 0x400:
+            raise ValueError('Isolation path contains a link or reparse point')
+
+
+def prepared_root(root):
+    if not root:
+        raise ValueError('Specify the prepared scratch root')
+    root = Path(root)
+    if (not root.is_absolute() or root == Path(root.anchor) or '..' in root.parts
+            or any(part.casefold() in LIVE_PROFILES for part in root.parts)):
+        raise ValueError('Scratch root must be an absolute, dedicated directory')
+    reject_links(root)
+    if not root.is_dir():
+        raise ValueError('Prepare the scratch root before running receipts')
+    return root
+
+
+def copied_executable(root):
+    executable = root / 'app' / 'Samsara.exe'
+    reject_links(executable)
+    if not executable.is_file():
+        raise ValueError('Copy the installed Daily build into the scratch app directory first')
+    return executable
+
+
+def validate_profile(home, root, *, daily):
+    if daily:
+        valid = (home.name == 'home' and home.parent.parent == root / 'runs'
+                 and home.parent.name.casefold() not in LIVE_PROFILES | {'..'})
+    else:
+        valid = home == root / 'home'
+    if not valid:
+        raise ValueError('Use a dedicated receipt home under the scratch root')
+    reject_links(home)
+
+
+def staged_home(*, daily):
+    try:
+        root = prepared_root(os.environ.get(ROOT_ENV))
+        home = Path(os.environ['SAMSARA_HOME_DIR'])
+        validate_profile(home, root, daily=daily)
+        executable = Path(sys.executable)
+        reject_links(executable)
+        if executable.resolve() != copied_executable(root).resolve():
+            return None
+        plugin = Path(__file__)
+        if plugin != home / 'personal_plugins' / 'receipt_probe.py':
+            return None
+        reject_links(plugin)
+        if not plugin.is_file():
+            return None
+    except (OSError, KeyError, ValueError):
+        return None
+    return home
+
+
 def start_services(app):
-    if os.environ.get('SAMSARA_RECEIPTS_1262') == '1':
-        # This branch is allowed only in a fresh run below the fixed scratch
-        # root, using the copied executable. No arbitrary owner-profile opt-in.
-        expected = Path(os.environ.get('SAMSARA_HOME_DIR', '')).absolute()
-        root = Path('D:/samsara_tmp1241').resolve()
-        if (expected.name != 'home' or expected.parent.parent != root / 'runs'
-                or Path(sys.executable).resolve() != root / 'app' / 'Samsara.exe'):
-            return
-        if any(p.is_symlink() or (p.exists() and getattr(p.stat(), 'st_file_attributes', 0) & 0x400)
-               for p in (expected, *expected.parents)):
-            return
+    daily = os.environ.get('SAMSARA_RECEIPTS_1262') == '1'
+    if not daily and os.environ.get('SAMSARA_RECEIPTS_1241') != '1':
+        return
+    expected = staged_home(daily=daily)
+    if expected is None:
+        return
+    if daily:
         sys.path.insert(0, str(Path(__file__).parent))
         import receipt_daily_probe
         receipt_daily_probe.start(app, expected)
-        return
-    expected = Path('D:/samsara_tmp1241/home').resolve()
-    if (os.environ.get('SAMSARA_RECEIPTS_1241') != '1'
-            or Path(os.environ.get('SAMSARA_HOME_DIR', '')).resolve() != expected
-            or Path(sys.executable).resolve() != Path('D:/samsara_tmp1241/app/Samsara.exe').resolve()):
         return
     # Windows QSettings normally shares HKCU across profiles. Redirect before
     # the main/history/dictionary windows are constructed; no registry UI state.

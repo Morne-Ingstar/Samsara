@@ -45,9 +45,9 @@ and live profiles. No command opens a microphone, starts an app or downloads
 a model.
 
 ```powershell
-python -m tools.voice_corpus.handsfree_replay inventory --root D:\SamsaraCorpus --root C:\Users\Morne\.samsara-private --output <report-folder>\inventory.json
-python -m tools.voice_corpus.handsfree_replay preflight --root D:\SamsaraCorpus --root C:\Users\Morne\.samsara-private --output <report-folder>\fidelity-preflight.json
-python -m tools.voice_corpus.handsfree_replay derive --takes D:\SamsaraCorpus\takes --output <report-folder>\DERIVED_recipes.json
+python -m tools.voice_corpus.handsfree_replay inventory --root C:\Example\Corpus --root C:\Example\.samsara-private --output <report-folder>\inventory.json
+python -m tools.voice_corpus.handsfree_replay preflight --root C:\Example\Corpus --root C:\Example\.samsara-private --output <report-folder>\fidelity-preflight.json
+python -m tools.voice_corpus.handsfree_replay derive --takes C:\Example\Corpus\takes --output <report-folder>\DERIVED_recipes.json
 ```
 
 `preflight` always exits **2 / BLOCKED**. It never turns a file count into

@@ -1,6 +1,7 @@
 """1241: hermetic harness safety/receipt tests; no app, GUI, COM or subprocesses."""
 import json
 from pathlib import Path
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -53,11 +54,14 @@ def test_missing_executable_is_a_precondition_failure(copied_app):
 
 
 def test_reparse_point_is_refused_without_following_it(tmp_path, monkeypatch):
-    original = Path.stat
-    def stat(path, *args, **kwargs):
+    # 1276 reads link metadata without following the target.
+    original = Path.lstat
+
+    def lstat(path, *args, **kwargs):
         value = original(path, *args, **kwargs)
         return SimpleNamespace(st_file_attributes=0x400, st_mode=value.st_mode) if path == tmp_path else value
-    monkeypatch.setattr(Path, 'stat', stat)
+
+    monkeypatch.setattr(Path, 'lstat', lstat)
     with pytest.raises(ValueError, match='reparse'):
         common.reject_links(tmp_path)
 
@@ -189,13 +193,61 @@ def test_probe_cannot_boot_in_a_worker_or_normal_app(monkeypatch):
     assert installed_probe.start_services(object()) is None
 
 
+def test_interactive_requires_explicit_scratch_root(tmp_path):
+    with pytest.raises(SystemExit) as error:
+        runner.main(['--home', str(tmp_path / 'home'), '--report', str(tmp_path)])
+    assert error.value.code == 2
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize('daily', [False, True])
+@pytest.mark.parametrize('mismatch', ['missing-root', 'missing-home', 'wrong-executable', 'live-home', 'other-home'])
+def test_staged_probe_does_not_start_with_mismatched_binding(copied_app, monkeypatch, daily, mismatch):
+    root, app, legacy_home = copied_app
+    home = root / 'runs' / 'fake-run' / 'home' if daily else legacy_home
+    plugin = home / 'personal_plugins' / 'receipt_probe.py'
+    plugin.parent.mkdir(parents=True)
+    plugin.touch()
+    monkeypatch.setattr(installed_probe, '__file__', str(plugin))
+    monkeypatch.setattr(sys, 'executable', str(app / 'Samsara.exe'))
+    monkeypatch.setenv(installed_probe.ROOT_ENV, str(root))
+    monkeypatch.setenv('SAMSARA_HOME_DIR', str(home))
+    monkeypatch.setenv('SAMSARA_RECEIPTS_1241', '1')
+    monkeypatch.setenv('SAMSARA_RECEIPTS_1262', '1' if daily else '0')
+    assert installed_probe.staged_home(daily=daily) == home
+    if mismatch == 'missing-root':
+        monkeypatch.delenv(installed_probe.ROOT_ENV)
+    elif mismatch == 'missing-home':
+        monkeypatch.delenv('SAMSARA_HOME_DIR')
+    elif mismatch == 'wrong-executable':
+        other_app = root / 'other-app'
+        other_app.mkdir()
+        other_exe = other_app / 'Samsara.exe'
+        other_exe.write_bytes((app / 'Samsara.exe').read_bytes())
+        monkeypatch.setattr(sys, 'executable', str(other_exe))
+    elif mismatch == 'live-home':
+        live_root = root / '.samsara'
+        live_root.mkdir()
+        monkeypatch.setenv(installed_probe.ROOT_ENV, str(live_root))
+        monkeypatch.setenv('SAMSARA_HOME_DIR', str(live_root))
+    else:
+        other_plugin = root / 'other' / 'personal_plugins' / 'receipt_probe.py'
+        if daily:
+            other_plugin = root / 'runs' / 'other-run' / 'home' / 'personal_plugins' / 'receipt_probe.py'
+        other_plugin.parent.mkdir(parents=True)
+        other_plugin.touch()
+        monkeypatch.setattr(installed_probe, '__file__', str(other_plugin))
+    assert installed_probe.staged_home(daily=daily) is None
+    assert installed_probe.start_services(object()) is None
+
+
 def test_probe_rejects_arbitrary_operations(tmp_path):
     with pytest.raises(ValueError, match='UnknownOperation'):
         installed_probe.perform(object(), tmp_path, 'arbitrary-command')
 
 
 def test_failed_check_redacts_exception_and_continues(identity, tmp_path):
-    harness = runner.Harness(tmp_path, tmp_path, tmp_path / 'report', identity)
+    harness = runner.Harness(tmp_path, tmp_path, tmp_path / 'report', identity, root=tmp_path)
     def failed():
         raise ValueError('exception contents must not be recorded')
     harness.check('T67', 'selection > apply', failed, 'Live app untested')
@@ -207,7 +259,7 @@ def test_failed_check_redacts_exception_and_continues(identity, tmp_path):
 
 
 def test_quit_verifies_normal_exit_and_session_marker(identity, tmp_path):
-    harness = runner.Harness(tmp_path, tmp_path, tmp_path / 'report', identity)
+    harness = runner.Harness(tmp_path, tmp_path, tmp_path / 'report', identity, root=tmp_path)
     process = SimpleNamespace(pid=123, returncode=0, poll=lambda: None, wait=lambda **_: None)
     harness.process = process
     harness.channel = SimpleNamespace(call=lambda *_, **__: {'quit_requested': True})

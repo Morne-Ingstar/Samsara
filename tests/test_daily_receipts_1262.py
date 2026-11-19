@@ -180,7 +180,7 @@ def test_missing_or_failed_feature_never_returns_zero(identity, tmp_path):
 
 
 def test_check_redacts_exception_and_keeps_following_feature(identity, tmp_path):
-    harness = daily.DailyHarness(tmp_path, tmp_path, tmp_path, identity, tmp_path, tmp_path, (0, 0, 1, 1))
+    harness = daily.DailyHarness(tmp_path, tmp_path, tmp_path, identity, tmp_path, tmp_path, (0, 0, 1, 1), root=tmp_path)
     def failed(): raise ValueError('do not retain this exception text')
     harness.check('1252', 'silent input', failed, 'Scoped')
     harness.check('1135', 'help', lambda: {'correct': True}, 'Scoped')
@@ -190,7 +190,34 @@ def test_check_redacts_exception_and_keeps_following_feature(identity, tmp_path)
     assert all(Path(r['evidence']).is_file() for r in harness.rows)
 
 
-def test_once_daily_cache_does_not_launch_or_overwrite(identity, tmp_path, monkeypatch):
+@pytest.fixture
+def daily_args(tmp_path):
+    # 1276 passes runner paths through the CLI using a prepared synthetic copy.
+    root = tmp_path / 'scratch root'
+    app = root / 'app'
+    app.mkdir(parents=True)
+    (app / 'Samsara.exe').touch()
+    return ['--scratch-root', str(root), '--corpus', str(tmp_path / 'corpus'), '--report-root', str(tmp_path)]
+
+
+def test_daily_requires_explicit_scratch_root(tmp_path):
+    with pytest.raises(SystemExit) as error:
+        daily.main(['--corpus', str(tmp_path), '--report-root', str(tmp_path)])
+    assert error.value.code == 2
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_daily_requires_prepared_scratch_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(common, 'build_identity', lambda _: pytest.fail('must validate the copy first'))
+    root = tmp_path / 'unprepared'
+    report_root = tmp_path / 'reports'
+    assert daily.main(['--scratch-root', str(root), '--corpus', str(tmp_path),
+                       '--report-root', str(report_root)]) == 1
+    assert not root.exists()
+    assert 'Preflight refused: ValueError' in next(report_root.glob('*/RECEIPTS.md')).read_text(encoding='utf-8')
+
+
+def test_once_daily_cache_does_not_launch_or_overwrite(identity, tmp_path, monkeypatch, daily_args):
     report = tmp_path / daily.datetime.now().astimezone().date().isoformat()
     report.mkdir()
     completion = report / 'completion.json'
@@ -198,29 +225,29 @@ def test_once_daily_cache_does_not_launch_or_overwrite(identity, tmp_path, monke
     before = completion.read_bytes()
     monkeypatch.setattr(common, 'build_identity', lambda _: identity)
     monkeypatch.setattr(daily, 'validate_daily', lambda *_: pytest.fail('cached run must not prepare a profile'))
-    assert daily.main(['--report-root', str(tmp_path)]) == 0
+    assert daily.main(daily_args) == 0
     assert completion.read_bytes() == before
     assert not (report / 'RUNNING.lock').exists()
     changed = dict(identity, commit='b' * 40)
     monkeypatch.setattr(common, 'build_identity', lambda _: changed)
-    assert daily.main(['--report-root', str(tmp_path)]) == 1
+    assert daily.main(daily_args) == 1
     assert completion.read_bytes() == before
 
 
-def test_overlapping_run_does_not_remove_another_runs_lock(tmp_path):
+def test_overlapping_run_does_not_remove_another_runs_lock(tmp_path, daily_args):
     report = tmp_path / daily.datetime.now().astimezone().date().isoformat()
     report.mkdir()
     lock = report / 'RUNNING.lock'
     lock.write_text('another-run')
-    assert daily.main(['--report-root', str(tmp_path)]) == 1
+    assert daily.main(daily_args) == 1
     assert lock.read_text() == 'another-run'
 
 
-def test_preflight_failure_emits_thirteen_fail_rows_without_launch(tmp_path, monkeypatch):
+def test_preflight_failure_emits_thirteen_fail_rows_without_launch(tmp_path, monkeypatch, daily_args):
     def failed(_): raise ValueError('private details must not be copied')
     monkeypatch.setattr(common, 'build_identity', failed)
-    assert daily.main(['--report-root', str(tmp_path)]) == 1
-    report = next(tmp_path.iterdir())
+    assert daily.main(daily_args) == 1
+    report = tmp_path / daily.datetime.now().astimezone().date().isoformat()
     rows = json.loads((report / 'receipts.json').read_text())
     assert len(rows) == 13 and {r['result'] for r in rows} == {'FAIL'}
     assert 'private details' not in (report / 'RECEIPTS.md').read_text(encoding='utf-8')
@@ -292,10 +319,8 @@ def test_fake_daily_run_preserves_old_artifacts_and_finishes_all_rows(identity, 
     old = report / 'artifacts' / 'claude' / 'previous-run.json'
     old.parent.mkdir(parents=True)
     old.write_text('preserve')
-    monkeypatch.setattr(common, 'ROOT', root)
+    # 1276 exercises the real CLI-to-validator binding.
     monkeypatch.setattr(common, 'build_identity', lambda _: identity)
-    real_validate = daily.validate_daily
-    monkeypatch.setattr(daily, 'validate_daily', lambda a, h: real_validate(a, h, root=root))
     monkeypatch.setattr(replay_input, 'choose_take', lambda _: take)
     monkeypatch.setitem(sys.modules, 'win32api', SimpleNamespace(
         EnumDisplayMonitors=lambda: [(1,)], GetMonitorInfo=lambda _: dict(Device=desktop.DEVICE, Work=(0, 0, 1000, 1000))))
@@ -313,7 +338,10 @@ def test_fake_daily_run_preserves_old_artifacts_and_finishes_all_rows(identity, 
                 raise RuntimeError('arbitrary details')
             self.lifecycle.append(dict(event='normal_exit', verified=True))
     monkeypatch.setattr(daily, 'DailyHarness', FakeHarness)
-    assert daily.main(['--app', str(app), '--model', str(model), '--report-root', str(report_root), '--force']) == expected
+    assert daily.main(['--scratch-root', str(root), '--app', str(app), '--corpus', str(tmp_path),
+                       '--model', str(model), '--report-root', str(report_root), '--force']) == expected
+    assert instances[0].root == root
+    assert instances[0].home.parent.parent == root / 'runs'
     assert old.read_text() == 'preserve'
     assert len(json.loads((report / 'receipts.json').read_text())) == 13
     config = json.loads((instances[0].home / 'config.json').read_text())

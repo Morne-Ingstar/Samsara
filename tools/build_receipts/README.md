@@ -1,10 +1,11 @@
 # Unattended installed Daily receipts (1262)
 
-Runner command, from the repository after the build step has copied Daily to
-`D:\samsara_tmp1241\app` (including `BUILD_INFO.txt`):
+From the repository, pass the dedicated scratch root with the copied Daily
+build and `BUILD_INFO.txt` already in its `app` subdirectory. Supply the
+Python executable and corpus root from the runner's private configuration.
 
 ```powershell
-& .\tools\build_receipts\run_all.ps1
+& .\tools\build_receipts\run_all.ps1 -ScratchRoot 'C:\Example\Receipts' -Python 'C:\Example\venv\Scripts\python.exe' -Corpus 'C:\Example\Corpus'
 ```
 
 The worker must never execute that command. Only the runner launches and exits
@@ -35,19 +36,19 @@ filesystem operations are not forcibly interrupted.
 - An unlocked interactive desktop containing exactly `\\.\DISPLAY3`; absence
   refuses before launch. Owner work can continue; no keyboard/mouse injection,
   UIA focus, clipboard, layouts or owner audio sessions are changed.
-- Existing Python at `F:\envs\sami\python.exe`, with numpy, psutil and pywin32.
+- The Python executable passed to `-Python` has numpy, psutil and pywin32.
   No dependencies, model or virtual audio device are installed.
-- Owner corpus WAVs under `D:\SamsaraCorpus\takes`, and the recorder's offline
+- The directory passed to `-Corpus` contains WAVs under `takes` and offline
   `recorder-settings.json` pointing to an existing supported faster-whisper HF
-  cache snapshot. Only WAVs and that model pointer are read, never corpus
-  transcript JSONs. `-Corpus` overrides the corpus root; Python daily.py also
-  accepts `--model` for the explicit existing cache snapshot.
+  cache snapshot. The harness reads the WAVs and that model pointer. The
+  Python entry point also accepts `--model` for an explicit cache snapshot.
 - The copied executable must support personal plugin services and the named
   installed APIs. An older build fails visibly; no source product modules are
   substituted. Build metadata identifies what actually ran; timestamp freshness
   is checked, but commit ancestry is not claimed or automatically accepted.
-- Every run creates `D:\samsara_tmp1241\runs\<unique-run>\home` from scratch.
-  The exact copied executable and run-home paths gate the temporary plugin.
+- Every run creates `runs\<unique-run>\home` under the prepared scratch root.
+  The temporary plugin checks its staged location, the run home and the copied
+  executable before starting.
   Links/reparse points and reused homes are refused. HOME, USERPROFILE,
   SAMSARA_HOME_DIR, APPDATA, LOCALAPPDATA, XDG and temp paths point at that home;
   QSettings uses an isolated INI store. The installed single-instance identity

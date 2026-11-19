@@ -49,14 +49,11 @@ def local_model_name(model):
     return name
 
 
-def validate_daily(app, home, *, root=common.ROOT):
-    app, home, root = [Path(p).absolute() for p in (app, home, root)]
-    for path in (app, home):
-        common.reject_links(path)
-    if app != root / 'app' or home.name != 'home' or home.parent.parent != root / 'runs':
-        raise ValueError('Use the fixed copied app and a fresh run-specific home')
-    if not (app / 'Samsara.exe').is_file():
-        raise ValueError('Runner must copy Daily to D:/samsara_tmp1241/app first')
+def validate_daily(app, home, *, root):
+    root = common.prepared_root(root)
+    app = common.validate_app(app, root)
+    home = Path(home).absolute()
+    common.validate_profile(home, root, daily=True)
     if home.exists():
         raise ValueError('Preserve previous run; home must not already exist')
     return app, home
@@ -103,8 +100,8 @@ def write_summary(report, identity, rows, *, elapsed, lifecycle_ok, error=None):
 
 
 class DailyHarness(Harness):
-    def __init__(self, app, home, report, identity, take, model, rect):
-        super().__init__(app, home, report, identity)
+    def __init__(self, app, home, report, identity, take, model, rect, *, root):
+        super().__init__(app, home, report, identity, root=root)
         self.take, self.model, self.rect = take, model, rect
 
     def launch_environment(self, env):
@@ -217,8 +214,9 @@ class DailyHarness(Harness):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--app', type=Path, default=common.ROOT / 'app')
-    parser.add_argument('--corpus', type=Path, default=Path('D:/SamsaraCorpus'))
+    parser.add_argument('--scratch-root', type=Path, required=True)
+    parser.add_argument('--app', type=Path, help='Copied app directory (defaults to SCRATCH_ROOT/app)')
+    parser.add_argument('--corpus', type=Path, required=True)
     parser.add_argument('--model', type=Path)
     parser.add_argument('--report-root', type=Path, default=Path('reports/receipts'))
     parser.add_argument('--force', action='store_true', help='Explicitly rerun today; preserve earlier artifacts')
@@ -240,15 +238,17 @@ def main(argv=None):
         return 1
     previous_deadline = common.DEADLINE
     try:
-        identity = common.build_identity(args.app)
+        root = common.prepared_root(args.scratch_root)
+        app = common.validate_app(args.app, root)
+        identity = common.build_identity(app)
         if not identity.get('commit') or not re.fullmatch(r'[0-9a-fA-F]{7,40}', identity['commit']):
             raise ValueError('BuildHeadRequired')
         completion = report / 'completion.json'
         if completion.exists() and not args.force:
             previous = json.loads(completion.read_text(encoding='utf-8'))
             return previous['exit_code'] if previous['build'] == identity else 1
-        home = common.ROOT / 'runs' / (datetime.now().strftime('%Y%m%d-%H%M%S') + '-' + uuid.uuid4().hex[:8]) / 'home'
-        app, home = validate_daily(args.app, home)
+        run_name = datetime.now().strftime('%Y%m%d-%H%M%S') + '-' + uuid.uuid4().hex[:8]
+        app, home = validate_daily(app, root / 'runs' / run_name / 'home', root=root)
         take = replay_input.choose_take(args.corpus)
         common.reject_links(take)
         model = args.model
@@ -278,7 +278,7 @@ def main(argv=None):
             'ava_edit': {'enabled': False}, 'ui': {'live_surface': {'enabled': True}},
             'history': {'enabled': False}, 'privacy_mode': True,
         })
-        harness = DailyHarness(app, home, report, identity, take, model, rect)
+        harness = DailyHarness(app, home, report, identity, take, model, rect, root=root)
         common.write_json(harness.artifacts / 'input.json', dict(sha256=common.file_hash(take),
                           adapter='InputStream boundary; installed ACE ring, mic check capture/decoder/label'))
         common.DEADLINE = began + 480  # leave <= 65s for normal exit; never force kill
