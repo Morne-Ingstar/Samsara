@@ -53,9 +53,11 @@ def test_redacted_streaming_row_explains_privacy_without_recovering_words(captur
     monkeypatch.setattr(recent_privacy, 'focused_target', lambda: recent_privacy.TargetPrivacy(reason))
     app._log_history(raw_text='synthetic private fixture', mode='streaming')
     row = rows(app)[0]
-    assert row['raw_text'] == row['display_text'] == row['app_context'] == ''
-    assert 'Text hidden' in list_text(row)
-    assert copy_text(row) == ''
+    # 1275: unknown text is recoverable, concealed until Show; passwords remain withheld.
+    assert row['raw_text'] == row['display_text'] == ('' if reason == 'password_field' else 'synthetic private fixture')
+    assert row['app_context'] == ('' if reason == 'password_field' else 'Synthetic editor')
+    assert ('Text hidden' if reason == 'password_field' else 'Could not check') in list_text(row)
+    assert copy_text(row) == ('' if reason == 'password_field' else 'synthetic private fixture')
     assert 'synthetic' not in list_text(row)
 
 
@@ -64,7 +66,7 @@ def test_delivery_redaction_of_existing_success_also_explains_blank_row(capture,
     app._log_history(raw_text='synthetic text', mode='streaming')
     monkeypatch.setattr(recent_privacy, 'focused_target', lambda: recent_privacy.TargetPrivacy('unverified_target'))
     assert recent_privacy.before_delivery(app, 'synthetic text')
-    assert list_text(rows(app)[0]).startswith('Text hidden')
+    assert list_text(rows(app)[0]).startswith('Could not check')  # 1275: kept, initially collapsed.
 
 
 @pytest.mark.parametrize('text', ['', '  \n '])

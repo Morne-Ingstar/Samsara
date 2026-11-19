@@ -667,11 +667,13 @@ class _MainWindow(QMainWindow):
             self._header_mark.listeners.append(page.set_mark_frame)
             return page
         if name == "History":
+            from samsara.ui.history_unverified_qt import prepare_paste_again
             store = getattr(self._app, 'history_store', None)
             view = HistoryView(
                 store,
                 legacy_history_fn=lambda: getattr(self._app, 'history', []),
                 legacy_clear_fn=self._clear_legacy_history,
+                on_paste_again=lambda row: prepare_paste_again(self._app, row),
             )
             from samsara.ui.kept_dictations_qt import add_history
             add_history(view, self._app)

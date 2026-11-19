@@ -81,11 +81,12 @@ class HistoryManager:
             duration_ms=0, mode="hold", status="success",
             audio_path=None, entry_type="dictation",
             log_prob=None, matched_command=None, privacy_reason="", target_app="", microphone_name="",
-            entry_id=None):
+            entry_id=None, store_unverified_text=True):
         """Add a transcription to history. Returns the row id."""
         if not display_text:
             display_text = raw_text
-        if privacy_reason:
+        from samsara.recent_privacy import withhold_history
+        if withhold_history(privacy_reason, store_unverified_text):
             raw_text = display_text = app_context = ""
             audio_path = matched_command = None
         timestamp = datetime.now().isoformat()
@@ -94,12 +95,17 @@ class HistoryManager:
                 previous = self._conn.execute('SELECT * FROM history WHERE id=?', (entry_id,)).fetchone()
                 if previous is None:
                     return None  # A cleared take must never be recreated by its retry.
-                if previous['privacy_reason']:
-                    privacy_reason, target_app = previous['privacy_reason'], previous['target_app']
+                if previous['privacy_reason'] and (withhold_history(previous['privacy_reason'], store_unverified_text)
+                        or not (previous['raw_text'] or previous['display_text'])):
+                    if privacy_reason != 'password_field':
+                        privacy_reason, target_app = previous['privacy_reason'], previous['target_app']
                     raw_text = display_text = app_context = ''
                     audio_path = matched_command = None
-                elif status == 'failed' and not raw_text and not privacy_reason and previous['raw_text']:
-                    raw_text, display_text = previous['raw_text'], previous['display_text']
+                else:
+                    if previous['privacy_reason'] == 'unverified_target' and not withhold_history(privacy_reason, store_unverified_text):
+                        privacy_reason, target_app = previous['privacy_reason'], previous['target_app']
+                    if status == 'failed' and not raw_text and not withhold_history(privacy_reason, store_unverified_text) and previous['raw_text']:
+                        raw_text, display_text = previous['raw_text'], previous['display_text']
                 self._conn.execute('''
                     UPDATE history SET app_context=?, raw_text=?, display_text=?, duration_ms=?,
                         mode=?, status=?, audio_path=?, entry_type=?, log_prob=?, matched_command=?,
@@ -120,12 +126,20 @@ class HistoryManager:
             self._conn.commit()
             return cursor.lastrowid
 
-    def conceal_delivery(self, text, reason, target_app=""):
+    def conceal_delivery(self, text, reason, target_app="", store_unverified_text=True):
         """Conceal any matching pre-delivery record before protected injection."""
         with self._lock:
             ids = tuple(row[0] for row in self._conn.execute(
                 "SELECT id FROM history WHERE entry_type='dictation' AND TRIM(display_text)=?",
                 (text.strip(),)))
+            from samsara.recent_privacy import withhold_history
+            if not withhold_history(reason, store_unverified_text):
+                self._conn.execute("""
+                    UPDATE history SET privacy_reason=?, target_app=?
+                    WHERE entry_type='dictation' AND TRIM(display_text)=? AND privacy_reason!='password_field'
+                """, (reason, target_app, text.strip()))
+                self._conn.commit()
+                return ids
             self._conn.execute("""
                 UPDATE history SET raw_text='', display_text='', app_context='',
                     audio_path=NULL, matched_command=NULL, correction_source=NULL,
@@ -140,7 +154,8 @@ class HistoryManager:
         with self._lock:
             if display_text:
                 self._conn.execute(
-                    "UPDATE history SET status=?, display_text=CASE WHEN privacy_reason='' THEN ? ELSE '' END WHERE id=?",
+                    "UPDATE history SET status=?, display_text=CASE WHEN privacy_reason='' OR "
+                    "(privacy_reason='unverified_target' AND (raw_text!='' OR display_text!='')) THEN ? ELSE '' END WHERE id=?",
                     (status, display_text, row_id))
             else:
                 self._conn.execute(

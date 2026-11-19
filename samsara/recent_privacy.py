@@ -1,7 +1,7 @@
 """Privacy policy for automatic Home previews and dictation History writes.
 
 No control names, values, window titles or transcript logging. Unknown UIA
-metadata is concealed. Process-list sharing detection is deliberately a cheap,
+metadata is concealed on Home, but recoverable in History. Process-list sharing detection is a cheap,
 conservative hint, not an assertion that capture is (or is not) happening.
 """
 from __future__ import annotations
@@ -104,6 +104,8 @@ def sharing_detected(foreground=None, running=None):
 def _target_for_history(app):
     previous = getattr(app, "_recent_delivery_privacy", None)
     current = focused_target()
+    if current.reason == "password_field":
+        return current
     if previous and time.monotonic() - previous[0] < 5 and previous[1].sensitive:
         return previous[1]
     return current
@@ -115,11 +117,21 @@ def legacy_text(app, text, is_command=False):
     return text
 
 
+def store_unverified_text(app):
+    from samsara.config_defaults import cfg_get
+    return cfg_get(getattr(app, "config", {}) or {}, "history.store_unverified_text") is True
+
+
+def withhold_history(reason, store_unverified=True):
+    return bool(reason) and (reason != "unverified_target" or not store_unverified)
+
+
 def write_history(app, **fields):
     if fields.get("entry_type", "dictation") == "dictation":
         target = _target_for_history(app)
         fields.update(privacy_reason=target.reason, target_app=target.app)
-        if target.sensitive:
+        fields['store_unverified_text'] = store_unverified_text(app)
+        if withhold_history(target.reason, fields['store_unverified_text']):
             fields.update(raw_text="", display_text="", app_context="",
                           matched_command=None, audio_path=None)
     from samsara.paste_again import remember_history
@@ -146,7 +158,8 @@ def before_delivery(app, text):
         manager = getattr(app, "history_db", None)
         if manager is not None:
             try:
-                ids = manager.conceal_delivery(text, target.reason, target.app)
+                ids = manager.conceal_delivery(text, target.reason, target.app,
+                                               store_unverified_text=store_unverified_text(app))
                 concealed = getattr(app, "_recent_sensitive_ids", {})
                 app._recent_sensitive_ids = {**concealed, **dict.fromkeys(ids, target.reason)}
             except Exception:

@@ -15,13 +15,7 @@ view is built around recovery, not around a table of records:
     Ctrl+C; the detail card also copies the ORIGINAL words when a
     correction changed them.
 
-Everything shown comes from columns HistoryManager already records
-(display_text, raw_text, app_context, mode, status, entry_type,
-matched_command, duration_ms) -- no new storage.
-
-Embedded by BOTH the standalone history window (samsara/ui/history_qt.py)
-and the main window's History page (samsara/ui/main_window_qt.py) -- one
-implementation, not two. Takes the store it reads from directly (no globals,
+Shared by the standalone window and Home > History. Takes its store directly,
 no `app` object), so tests construct it against a tmp store.
 
 Row loading runs on a background thread (samsara.runtime.thread_registry),
@@ -52,6 +46,7 @@ from samsara import history_export
 from samsara import outcome_ring
 from samsara.message_durations import ReceiptDwell, message_duration_ms, restore_receipt_text as _safe_set_text
 from samsara.ui import history_entry_navigation, theme
+from samsara.ui import history_unverified_qt
 from samsara.ui.history_source import _elide_plain, row_context
 from samsara.ui.history_status import summary_text, SCOPE_LAST_7_DAYS as _SCOPE_LAST_7_DAYS
 from samsara.runtime import thread_registry
@@ -253,6 +248,8 @@ def copy_text(row: dict) -> str:
     """What Copy puts on the clipboard: exactly what was typed (or would
     have been), with its line breaks. Nothing for no-speech/failed rows."""
     if is_no_speech_attempt(row) or str(row.get('entry_type')) == 'failed':
+        return ""
+    if row.get('privacy_reason') not in (None, '', 'unverified_target'):
         return ""
     return _row_text(row)
 
@@ -917,7 +914,8 @@ class _HistoryRow(QWidget):
         self.copy_button.setVisible(bool(copy_text(row)))
         lay.addWidget(self.copy_button, alignment=Qt.AlignmentFlag.AlignVCenter)
 
-        if self.full_text:
+        history_unverified_qt.install_row(self, body)
+        if self.full_text and not row.get('privacy_reason'):
             self.text_label.setToolTip(plain_tooltip(_row_text(row)))
         self._lines = 1
 
@@ -943,7 +941,7 @@ class _HistoryRow(QWidget):
             meta_text(self.row), Qt.TextElideMode.ElideRight, max(text_w - pills_w - _TIME_COL_WIDTH - 6, 20)))
         text_h = self._lines * QFontMetrics(self.text_label.font()).lineSpacing()
         meta_h = max([meta_fm.height()] + [p.sizeHint().height() for p in self.pills])
-        return max(_ROW_MIN_HEIGHT, 2 * _ROW_PAD_V + text_h + 4 + meta_h)
+        return max(_ROW_MIN_HEIGHT, 2 * _ROW_PAD_V + text_h + 4 + meta_h) + getattr(self, '_recovery_height', 0)
 
 
 def _build_load_older_widget(on_click, parent: QWidget | None = None) -> QWidget:
@@ -1066,12 +1064,12 @@ class _DetailCard(QFrame):
             parts.append(f"{seconds:.0f} s" if seconds >= 10 else f"{seconds:.1f} s")
         self.meta.setText(" \u00b7 ".join(parts))
 
-        body = copy_text(row) or list_text(row)
+        body = list_text(row) if row.get('privacy_reason') else (copy_text(row) or list_text(row))
         self.text.setPlainText(body)
         self.fit_text()
         QTimer.singleShot(0, self, self.fit_text)   # cancel if the card is destroyed
 
-        corrected = is_corrected(row)
+        corrected = not row.get('privacy_reason') and is_corrected(row)
         self.heard_as.setVisible(corrected)
         self.copy_original_button.setVisible(corrected)
         if corrected:
@@ -1084,6 +1082,7 @@ class _DetailCard(QFrame):
         self.note.setText(note)
         self.note.setVisible(bool(note))
         self.copy_button.setVisible(bool(copy_text(row)))
+        history_unverified_qt.conceal_detail(self, row)
 
 
 def _size(height: int) -> QSize:
@@ -1116,11 +1115,12 @@ class HistoryView(history_entry_navigation.HistoryEntryNavigation, QWidget):
 
     _rows_ready = Signal(list, bool, int)   # (rows, append, request_generation)
 
-    def __init__(self, store, legacy_history_fn=None, legacy_clear_fn=None, parent=None):
+    def __init__(self, store, legacy_history_fn=None, legacy_clear_fn=None, parent=None, on_paste_again=None):
         super().__init__(parent)
         self._store = store
         self._legacy_history_fn = legacy_history_fn
         self._legacy_clear_fn = legacy_clear_fn
+        self._on_paste_again = on_paste_again
 
         self._rows_by_item_id = {}   # QListWidgetItem id() -> row id
         self._oldest_loaded_id = None

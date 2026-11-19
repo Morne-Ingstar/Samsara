@@ -62,11 +62,13 @@ def test_password_and_unknown_row_store_no_text(manager, monkeypatch, reason):
                                    app_context="private title", entry_type="dictation")
     row = dict(manager.recent()[0])
     assert row["id"] == row_id
-    assert row["raw_text"] == row["display_text"] == row["app_context"] == ""
+    # 1275: unknown targets retain words; only confirmed passwords withhold them.
+    assert row["raw_text"] == row["display_text"] == ("" if reason == "password_field" else "invented violet castle")
+    assert row["app_context"] == ("" if reason == "password_field" else "private title")
     assert row["privacy_reason"] == reason
     assert privacy.legacy_text(app, "invented violet castle") == ""
     manager.update_status(row_id, "success", "must stay concealed")
-    assert manager.recent()[0]["display_text"] == ""
+    assert manager.recent()[0]["display_text"] == ("" if reason == "password_field" else "must stay concealed")  # 1275
     assert presentation(row, True)[0] == "hidden"
 
 

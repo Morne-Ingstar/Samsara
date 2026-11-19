@@ -58,7 +58,10 @@ def test_failed_capture_with_recent_words_off_keeps_one_concealed_row(capture, m
     session.on_final(None)
     row, = rows(app)
     assert row['id'] == app._hold_retry_audio.history_entry_id
-    assert row['raw_text'] == row['display_text'] == row['app_context'] == ''
+    # 1275: unknown targets retain retry guidance while Home remains concealed.
+    assert row['raw_text'] == ''
+    assert (row['display_text'] == '') if reason == 'password_field' else ('Try again' in row['display_text'])
+    assert row['app_context'] == ('' if reason == 'password_field' else 'Synthetic editor')
     assert row['privacy_reason'] == reason
     np.testing.assert_array_equal(app._hold_retry_audio.audio, pcm)
     guidance(app)

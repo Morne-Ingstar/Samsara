@@ -100,6 +100,10 @@ SETTINGS_SCHEMA = {
     "home.show_recent_words": {
         "type": "bool", "default": True, "tab": "general",
     },
+    "history.store_unverified_text": {
+        "type": "bool", "default": True, "tab": "general", "settings_ui": False,
+        "ui_less_reason": "Config-only switch to withhold History text when the target could not be checked.",
+    },
     "ava.reply_window_seconds": {
         "type": "float", "min": 2, "max": 30, "default": 10, "tab": "general", "settings_ui": False,
         "ui_less_reason": "Reply window after question speech ends, allowing reaction, capture and decoding; config only.",

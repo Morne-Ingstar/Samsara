@@ -67,10 +67,12 @@ class _HistoryWindow(QMainWindow):
         self.setStyleSheet(f"QMainWindow {{ background-color: {theme.BG1}; }}")
 
         store = getattr(app, 'history_store', None)
+        from samsara.ui.history_unverified_qt import prepare_paste_again
         self._view = HistoryView(
             store,
             legacy_history_fn=lambda: getattr(app, 'history', []),
             legacy_clear_fn=self._clear_legacy,
+            on_paste_again=lambda row: prepare_paste_again(app, row),
         )
         self.setCentralWidget(self._view)
         from samsara.ui.kept_dictations_qt import add_history
