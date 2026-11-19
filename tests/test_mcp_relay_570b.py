@@ -1,13 +1,11 @@
-"""570b DIRECT: real child stdio + port-0 loopback server, no app bootstrap."""
+"""570b DIRECT: in-process stdio + port-0 loopback server, no app bootstrap."""
 import ast
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import io
 import json
-import os
 from pathlib import Path
 import secrets
 import socket
-import subprocess
 import sys
 from types import SimpleNamespace
 
@@ -25,15 +23,28 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / 'tools' / 'mcp_relay.py'
 
 
-def run_child(home, messages=(), url=relay.DEFAULT_URL):
-    env = os.environ.copy()
-    env['SAMSARA_HOME_DIR'] = str(home)
+def run_relay(home, messages=(), url=relay.DEFAULT_URL, extra_args=()):
+    # 1277: exercise the real entry point without launching a gate-forbidden child.
     body = b''.join(json.dumps(m).encode('utf-8') + b'\n' for m in messages)
-    args = [sys.executable, '-u', str(SCRIPT)]
+    args = list(extra_args)
     if url is not None:
         args += ['--url', url]
-    return subprocess.run(args,
-                          input=body, capture_output=True, env=env, timeout=50)
+    with (pytest.MonkeyPatch.context() as patch,
+          io.TextIOWrapper(io.BytesIO(body), encoding='utf-8') as incoming,
+          io.TextIOWrapper(io.BytesIO(), encoding='utf-8') as outgoing,
+          io.TextIOWrapper(io.BytesIO(), encoding='utf-8') as errors):
+        patch.setenv('SAMSARA_HOME_DIR', str(home))
+        patch.setattr(sys, 'stdin', incoming)
+        patch.setattr(sys, 'stdout', outgoing)
+        patch.setattr(sys, 'stderr', errors)
+        try:
+            returncode = relay.main(args)
+        except SystemExit as exit:
+            returncode = exit.code
+        outgoing.flush()
+        errors.flush()
+        return SimpleNamespace(returncode=returncode, stdout=outgoing.buffer.getvalue(),
+                               stderr=errors.buffer.getvalue())
 
 
 @pytest.fixture
@@ -70,7 +81,7 @@ def test_real_stdio_roundtrip_preserves_session_and_notification(server, caplog)
         seen.append((request['method'], headers.get('Mcp-Session-Id')))
         return original(request, headers, **kwargs)
     server.dispatch = dispatch
-    result = run_child(server._profile, messages, f'http://127.0.0.1:{server.port}/mcp')
+    result = run_relay(server._profile, messages, f'http://127.0.0.1:{server.port}/mcp')
     assert result.returncode == 0 and result.stderr == b''
     replies = [json.loads(line) for line in result.stdout.splitlines()]
     assert [r['id'] for r in replies] == [1, 'ping', 3, 4, 5]
@@ -90,15 +101,16 @@ def test_real_modern_protocol_metadata(server):
     messages = [{'jsonrpc': '2.0', 'id': 1, 'method': 'server/discover', 'params': {'_meta': meta}},
                 {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/call',
                  'params': {'_meta': meta, 'name': 'get_status', 'arguments': {}}}]
-    result = run_child(server._profile, messages, f'http://127.0.0.1:{server.port}/mcp')
+    result = run_relay(server._profile, messages, f'http://127.0.0.1:{server.port}/mcp')
     assert result.returncode == 0 and result.stderr == b''
     replies = [json.loads(line) for line in result.stdout.splitlines()]
     assert all('result' in r for r in replies)
     assert replies[1]['result']['resultType'] == 'complete'
 
 
-def test_eof_exits_zero_without_contacting_server(token_home):
-    result = run_child(token_home[0])
+def test_eof_exits_zero_without_contacting_server(token_home, monkeypatch):
+    monkeypatch.setattr(relay, 'HTTPConnection', lambda *a, **k: pytest.fail('HTTP attempted'))
+    result = run_relay(token_home[0])
     assert result.returncode == 0 and result.stdout == b'' and result.stderr == b''
 
 
@@ -106,7 +118,7 @@ def test_not_running_has_one_safe_stderr_line(token_home):
     with socket.socket() as held:
         held.bind(('127.0.0.1', 0))  # Bound, not listening; no port race.
         url = f'http://127.0.0.1:{held.getsockname()[1]}/mcp'
-        result = run_child(token_home[0], [{'jsonrpc': '2.0', 'id': 1, 'method': 'ping'}], url)
+        result = run_relay(token_home[0], [{'jsonrpc': '2.0', 'id': 1, 'method': 'ping'}], url)
     assert result.returncode == 1 and result.stdout == b''
     assert len(result.stderr.splitlines()) == 1 and b'Samsara is not running' in result.stderr
     assert bool(token_home[1].encode() not in result.stderr)
@@ -115,7 +127,7 @@ def test_not_running_has_one_safe_stderr_line(token_home):
 def test_wrong_token_and_rotation_do_not_repair_saved_token(server, token_home):
     path = token_home[0] / 'agent_server' / 'token.json'
     before = path.read_bytes()
-    result = run_child(token_home[0], [{'jsonrpc': '2.0', 'id': 1, 'method': 'ping'}],
+    result = run_relay(token_home[0], [{'jsonrpc': '2.0', 'id': 1, 'method': 'ping'}],
                        f'http://127.0.0.1:{server.port}/mcp')
     assert result.returncode == 1 and result.stdout == b''
     assert len(result.stderr.splitlines()) == 1 and b'token was rejected' in result.stderr
@@ -135,8 +147,9 @@ def test_wrong_token_and_rotation_do_not_repair_saved_token(server, token_home):
     'http://127.0.0.1:65536/mcp', 'http://127.0.0.1:47832/other',
     'http://127.0.0.1:47832/mcp?target=elsewhere', 'http://127.0.0.1:47832/mcp#fragment',
 ])
-def test_foreign_or_ambiguous_target_refused_before_token_read(tmp_path, url):
-    result = run_child(tmp_path, url=url)
+def test_foreign_or_ambiguous_target_refused_before_token_read(tmp_path, url, monkeypatch):
+    monkeypatch.setattr(relay, 'read_token', lambda: pytest.fail('Token read'))
+    result = run_relay(tmp_path, url=url)
     assert result.returncode == 1 and result.stdout == b''
     assert len(result.stderr.splitlines()) == 1 and b'accepts only' in result.stderr
 
@@ -179,7 +192,7 @@ def test_no_proxy_redirect_retry_or_diagnostic_body(token_home, status, monkeypa
     monkeypatch.setenv('HTTP_PROXY', 'http://example.org:8080')
     monkeypatch.setenv('HTTPS_PROXY', 'http://example.org:8080')
     try:
-        result = run_child(token_home[0], [{'jsonrpc': '2.0', 'id': 1, 'method': 'ping'}],
+        result = run_relay(token_home[0], [{'jsonrpc': '2.0', 'id': 1, 'method': 'ping'}],
                            f'http://127.0.0.1:{service.server_port}/mcp')
         assert result.returncode == 1 and result.stdout == b''
         assert calls == ['/mcp']
@@ -242,6 +255,8 @@ def test_spec_wires_standalone_console_relay_into_shared_internal():
     context = dict(_relay_version_resource=ROOT / 'relay-version-info.txt',
                    app_dir=ROOT, Analysis=analysis, PYZ=capture('PYZ'), EXE=capture('EXE'),
                    COLLECT=capture('COLLECT'), exe='GUI exe',
+                   mouse_exe='mouse worker exe',
+                   mouse_analysis=SimpleNamespace(binaries=['mouse DLLs'], datas=['mouse data']),
                    a=SimpleNamespace(binaries=['main DLLs'], zipfiles=[], datas=['main data']))
     exec(compile(ast.Module(body=nodes, type_ignores=[]), '<relay spec contract>', 'exec'), context)
     assert calls['Analysis'][0] == ([str(SCRIPT)],)
@@ -251,6 +266,8 @@ def test_spec_wires_standalone_console_relay_into_shared_internal():
     assert calls['EXE'][1]['name'] == 'samsara-mcp'
     assert calls['COLLECT'][0][:2] == ('GUI exe', 'EXE')
     assert ['relay DLLs'] in calls['COLLECT'][0] and ['relay data'] in calls['COLLECT'][0]
+    assert 'mouse worker exe' in calls['COLLECT'][0]
+    assert ['mouse DLLs'] in calls['COLLECT'][0] and ['mouse data'] in calls['COLLECT'][0]
     # The standalone executable never imports the app package or GUI bootstrap.
     source = ast.parse(SCRIPT.read_text())
     modules = [n.module for n in ast.walk(source) if isinstance(n, ast.ImportFrom)]
@@ -263,7 +280,7 @@ def test_old_entry_reads_custom_port_without_url(server, port, monkeypatch):
     # The actual listener chooses a free port; the edge ports are validated separately.
     home = server._profile
     (home / 'config.json').write_text(json.dumps({'agent_server': {'port': server.port}}))
-    result = run_child(home, [{'jsonrpc': '2.0', 'id': 7, 'method': 'ping'}], url=None)
+    result = run_relay(home, [{'jsonrpc': '2.0', 'id': 7, 'method': 'ping'}], url=None)
     assert result.returncode == 0 and result.stderr == b''
     assert json.loads(result.stdout)['id'] == 7
     monkeypatch.setenv('SAMSARA_HOME_DIR', str(home))
@@ -296,7 +313,7 @@ def test_malformed_config_and_absent_defaults(tmp_path, monkeypatch):
 
 def test_explicit_url_overrides_bad_saved_config(server):
     (server._profile / 'config.json').write_text('{broken')
-    result = run_child(server._profile, [{'jsonrpc': '2.0', 'id': 8, 'method': 'ping'}],
+    result = run_relay(server._profile, [{'jsonrpc': '2.0', 'id': 8, 'method': 'ping'}],
                        f'http://127.0.0.1:{server.port}/mcp')
     assert result.returncode == 0 and json.loads(result.stdout)['id'] == 8
 
@@ -305,7 +322,7 @@ def test_notifications_with_error_replies_never_write_stdout(server):
     messages = [{'jsonrpc': '2.0', 'method': 'notifications/roots/list_changed'},
                 {'jsonrpc': '2.0', 'id': None, 'method': 'ping'},
                 {'jsonrpc': '2.0', 'id': 0, 'method': 'ping'}]
-    result = run_child(server._profile, messages, f'http://127.0.0.1:{server.port}/mcp')
+    result = run_relay(server._profile, messages, f'http://127.0.0.1:{server.port}/mcp')
     assert result.returncode == 0 and result.stderr == b''
     assert [json.loads(line)['id'] for line in result.stdout.splitlines()] == [None, 0]
 
@@ -334,12 +351,12 @@ def test_plain_http_errors_are_accurate_body_free_and_notification_safe(status, 
     assert 'private' not in str(error.value) and outgoing.getvalue() == b''
 
 
-def test_help_needs_no_token_config_or_network(tmp_path):
-    env = os.environ.copy()
-    env['SAMSARA_HOME_DIR'] = str(tmp_path)
+def test_help_needs_no_token_config_or_network(tmp_path, monkeypatch):
     (tmp_path / 'config.json').write_text('{broken')
-    result = subprocess.run([sys.executable, str(SCRIPT), '--help'], env=env,
-                            capture_output=True, timeout=10)
+    monkeypatch.setattr(relay, 'read_token', lambda: pytest.fail('Token read'))
+    monkeypatch.setattr(relay, 'configured_url', lambda: pytest.fail('Config read'))
+    monkeypatch.setattr(relay, 'HTTPConnection', lambda *a, **k: pytest.fail('HTTP attempted'))
+    result = run_relay(tmp_path, url=None, extra_args=['--help'])
     assert result.returncode == 0 and b'--url' in result.stdout and result.stderr == b''
     assert not (tmp_path / 'agent_server').exists()
 
