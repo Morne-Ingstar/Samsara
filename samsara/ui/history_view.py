@@ -1411,10 +1411,6 @@ class HistoryView(history_entry_navigation.HistoryEntryNavigation, QWidget):
         self._has_more = self._store is not None and len(rows) == _PAGE_SIZE
         self._render_rows(rows, append=append)
 
-    # ------------------------------------------------------------------
-    # Rendering
-    # ------------------------------------------------------------------
-
     def _row_width(self) -> int:
         return max(self._list.viewport().width() - 2, 200)
 
@@ -1452,6 +1448,10 @@ class HistoryView(history_entry_navigation.HistoryEntryNavigation, QWidget):
                         last_day = label
 
                 item = QListWidgetItem()
+                outcome = row_outcome(row)
+                summary = outcome.label if outcome and outcome.kind != KIND_COMMAND else list_text(row)
+                stamp = dt.strftime('%Y-%m-%d %H:%M:%S') if dt else raw_ts
+                item.setData(Qt.ItemDataRole.AccessibleTextRole, f"{stamp}, {_elide_plain(summary, 40)}")
                 item.setData(Qt.ItemDataRole.UserRole, {
                     'id': row.get('id'), 'text': copy_text(row), 'timestamp': raw_ts,
                     'entry_type': str(row.get('entry_type', 'dictation')),
