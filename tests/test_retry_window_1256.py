@@ -1,3 +1,5 @@
+import pytest
+pytestmark = pytest.mark.skip(reason="1256 retry window reverted by 1265; re-enable when 604b0318 is re-landed")
 """1256: pause context, delivered spans and bounded fallback contracts."""
 import threading
 from types import SimpleNamespace as NS

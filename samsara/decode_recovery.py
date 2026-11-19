@@ -138,7 +138,7 @@ def cpu_decode_params(params, audio_s=None, *, retry=False):
     """Shared CPU bounds for ordinary holds and a CUDA fallback retry."""
     result = dict(params)
     tokens = 192 if audio_s is None else min(192, max(32, int(audio_s * 12 + 24)))
-    temperature = (0.0, 0.2) if isinstance(params.get('temperature'), (tuple, list)) or retry else 0.0
+    temperature = (0.0, 0.2) if isinstance(params.get('temperature'), (tuple, list)) else .2 if retry else 0.0
     result.update(temperature=temperature, best_of=1,
                   beam_size=min(3, result.get('beam_size', 3)),
                   max_new_tokens=min(tokens, result.get('max_new_tokens') or tokens))
@@ -153,6 +153,8 @@ def _params(app, params, audio_s, *, retry=False):
         result = cpu_decode_params(result, audio_s, retry=retry)
         result['beam_size'] = min(5, params.get('beam_size', 3))
         result['temperature'] = temperature_ladder(app)
+    if retry:
+        result['temperature'] = .4
     return result
 
 
@@ -238,26 +240,6 @@ def _valid_evidence(evidence, rate, samples):
             and evidence.samples == round(samples * 16000 / rate)
             and len(scores) == (evidence.samples + 511) // 512
             and np.isfinite(scores).all() and all(0 <= p <= 1 for p in scores))
-
-
-def _slice_evidence(evidence, rate, samples, start, end):
-    """Rebase 32 ms VAD frames onto a source slice without inventing silence.
-
-    A new frame takes the maximum of every source frame it overlaps. This
-    conservatively preserves speech at non-frame-aligned edges (within 32 ms).
-    Invalid or foreign evidence stays unknown rather than gaining validity.
-    """
-    from samsara.speech_presence import Presence
-    if not 0 <= start < end <= samples or not _valid_evidence(evidence, rate, samples):
-        return Presence(False)
-    first = round(start * 16000 / rate)
-    size = round((end - start) * 16000 / rate)
-    scores = tuple(max(evidence.probabilities[(first + offset) // 512:
-                      min(len(evidence.probabilities), (first + min(offset + 512, size) + 511) // 512)])
-                   for offset in range(0, size, 512))
-    result = Presence(True, frames=len(scores), probabilities=scores, samples=size)
-    (total, longest), _, _ = result.statistics()[0]
-    return Presence(True, total, longest, max(scores, default=0.), len(scores), scores, size)
 
 
 def _replace_text(segments, text):
