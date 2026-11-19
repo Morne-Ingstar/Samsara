@@ -51,6 +51,7 @@ from .startup_cue import (
 from samsara.constants import (
     DEFAULT_MIN_SPEECH_DURATION,
     DEFAULT_SPEECH_THRESHOLD,
+    LIVE_VAD_PROB_THRESHOLD,
     WAKE_DETECTION_SILENCE,
     WAKE_SPEECH_THRESHOLD_CAP,
 )
@@ -363,6 +364,7 @@ class WakeConsumer:
         # hotkey-deafness suppression state so _process_frame logs only on
         # the ENGAGE/RELEASE transitions, not every 100ms frame.
         self._hotkey_suppressed_last: bool = False
+        self._last_suppression_release = None
 
         # Latched Ava-lane half-duplex guard (2026-07-23 G3 live-test
         # finding) -- see _AVA_CMD_TTS_TAIL_S and _process_frame.
@@ -429,6 +431,7 @@ class WakeConsumer:
             self._app.is_speaking = False
             self._app.silence_start = None
             self._fatal_reported = False
+            self._last_suppression_release = None
             self._stop_event = threading.Event()
             self._reader.snap_to_head()
             self._running = True
@@ -1001,42 +1004,10 @@ class WakeConsumer:
         # Full hold deafness also applies after speech onset, preventing
         # concurrent wake/hold capture. Sound suppression observes every
         # frame above, including OWW barge-in and the legacy toggle exemption.
-        # Toggle-command-mode used to be UNCONDITIONALLY exempted here: an
-        # active, user-initiated listening session that must keep
-        # servicing regardless of a concurrent hotkey press (a hotkey
-        # press mid-DICTATE-chunk must not eat the chunk), and the
-        # always-live global abort phrase lives entirely inside
-        # SessionModeManager.dispatch_utterance(), reached only via
-        # _flush() -> app._handle_command_mode_utterance(), which only
-        # ever fires from THIS same poll loop's toggle-command branch --
-        # so exempting _is_toggle_cmd(app) here is what kept global abort
-        # reachable while a hotkey was held.
-        #
-        # hands_free.suspend_on_hold (2026-09-11, default true): that
-        # unconditional exemption is exactly the reported double-capture
-        # bug -- the SAME words landed both in the hold-to-record path's
-        # paste and in the toggle lane's own in-progress buffer. The
-        # exemption is now conditional on the setting being OFF (an
-        # explicit "reproduce the old behaviour" comparison mode); with it
-        # on (default), toggle-command-mode goes fully deaf for the
-        # duration of the hold, same as AI-command-mode below, and global
-        # abort is correspondingly unreachable while held (the trade the
-        # task accepted: a hold means the user is using the keyboard/hold
-        # path right now, not trying to voice-command the session
-        # simultaneously). discard_stale_wake_utterance() drops the same
-        # exemption the same way, so any in-progress toggle utterance is
-        # discarded the INSTANT the hold starts rather than waiting for
-        # this poll loop's next frame.
-        #
-        # AI-command-mode is DELIBERATELY NOT exempted (2026-07-19 nag
-        # incident): letting it keep servicing during a hotkey hold meant
-        # its utterance loop kept transcribing and speaking "I didn't catch
-        # a command in that" WHILE a hold-to-dictate recording was in
-        # progress (log-confirmed: [OK] dictation and the AI-CMD nag firing
-        # in the same second). AI-command-mode has no global-abort-style
-        # reachability requirement the way toggle-command-mode does, so it
-        # now goes fully deaf for the duration of the hotkey hold, same as
-        # plain wake-word mode.
+        # suspend_on_hold defaults on: toggle mode is suppressed too, avoiding
+        # duplicate capture. Turning it off restores the legacy toggle-only
+        # exemption (including global abort). AI-command-mode stays suppressed
+        # to avoid concurrent transcription and spoken replies during a hold.
         if wake_hold_suppressed(self, app):
             if not self._hotkey_suppressed_last:
                 self._log_frame(logging.DEBUG, 'hotkey_suppressed',
@@ -1062,6 +1033,7 @@ class WakeConsumer:
         if self._hotkey_suppressed_last:
             self._log_frame(logging.DEBUG, 'frame_625', "[SEAM] WakeConsumer suppression RELEASED (hotkey recording ended)")
             self._hotkey_suppressed_last = False
+            self._last_suppression_release = time.monotonic()
             # 516: the next onset's ring pre-roll cannot replay held audio.
             self._hold_not_before = time.perf_counter()
             # hands_free.suspend_on_hold: resume from HERE (the current ring
@@ -1136,6 +1108,7 @@ class WakeConsumer:
             if self._ava_cmd_tts_suppressed_last:
                 self._log_frame(logging.DEBUG, 'frame_665', "[SEAM] Ava lane suppression RELEASED (TTS + tail complete)")
                 self._ava_cmd_tts_suppressed_last = False
+                self._last_suppression_release = time.monotonic()
         elif self._ava_cmd_tts_was_speaking or self._ava_cmd_tts_speaking_end is not None:
             # Left the session without a clean SPEAKING->tail->RELEASE
             # cycle (e.g. exit mid-TTS) -- don't let stale state leak into
@@ -1217,9 +1190,11 @@ class WakeConsumer:
         # ── VAD / OWW ─────────────────────────────────────────────────────────
         # Data is already at SAMPLE_RATE (16kHz) — pass src_rate explicitly
         silero_onset = False
+        vad_used = False
         if app._vad_available:
             try:
                 is_speech = app._vad_is_speech(raw_chunk, src_rate=SAMPLE_RATE)
+                vad_used = True
                 silero_onset = bool(is_speech and not self._silero_was_speech)
                 self._silero_was_speech = bool(is_speech)
                 app._vad_consec_errors = 0
@@ -1513,6 +1488,8 @@ class WakeConsumer:
                     app.silence_start = None
 
                     if buffer_copy is not None:
+                        if self._is_toggle_cmd(app):
+                            self._log_silence_close(raw_chunk, rms, speech_threshold, silence_threshold, vad_used)
                         flight_recorder.record(
                             'wake.session_close', reason='silence_flush',
                             speech_s=speech_s,
@@ -1534,6 +1511,23 @@ class WakeConsumer:
                         )
                         self._close_hands_free_duck_safe(app, self._hands_free_capture_duck_token)
                         self._hands_free_capture_duck_token = None
+
+    def _log_silence_close(self, chunk, rms, rms_threshold, silence_s, vad_used):
+        # One stateless rescore of the closing frame; never changes admission.
+        peak = -1.0
+        if vad_used:
+            try:
+                with self._app._vad_lock:
+                    probabilities = self._app._vad_probabilities(chunk.copy())
+                peak = float(np.max(probabilities)) if len(probabilities) else -1.0
+            except Exception:
+                pass  # Missing telemetry cannot interrupt capture or dispatch.
+        released = self._last_suppression_release
+        logger.info(
+            '[HANDSFREE-SILENCE] vad_used=%d threshold=%.6f vad_peak=%.6f rms=%.6f '
+            'rms_threshold=%.6f silence_s=%.3f since_release_s=%.3f',
+            vad_used, LIVE_VAD_PROB_THRESHOLD if vad_used else rms_threshold, peak,
+            rms, rms_threshold, silence_s, time.monotonic() - released if released is not None else -1.)
 
     @staticmethod
     def _wrap_with_duck_close(app, fn, owner_token: int | None = None, kind: str = "unknown"):
