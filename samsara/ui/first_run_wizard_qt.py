@@ -14,7 +14,7 @@ import math
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, QRectF, QSize, Signal
+from PySide6.QtCore import Qt, QTimer, QRectF, QSize, Signal, Slot
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QApplication, QRadioButton, QCheckBox, QMainWindow, QWidget, QVBoxLayout,
@@ -587,6 +587,7 @@ class _WizardWindow(QMainWindow):
         seed_fresh(self._config, fresh=not Path(config_path).exists(), monitor=placement_monitor(self._config))
         self._mics: list[dict] = []
         self._mic_scan_busy = True
+        self._mic_focus_pending = False
         self._mic_result.connect(self._on_mic_result)
         self._mic_announcer = LiveSurfaceAnnouncer(self)
 
@@ -737,6 +738,7 @@ class _WizardWindow(QMainWindow):
         theme.apply_design_scale(self)
         self._decisions.prepare_navigation()
         self._show_step()
+        QApplication.instance().focusChanged.connect(self._cancel_initial_mic_focus)
         # 1006: reserve every page before display, using real frame margins.
         self.ensurePolished()
         self.winId()
@@ -859,6 +861,7 @@ class _WizardWindow(QMainWindow):
 
         mic_row = QHBoxLayout()
         self._mic_combo = _MicComboBox()
+        self._mic_combo.setAccessibleName("Microphone")
         self._mic_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self._mic_combo.setMaximumWidth(420)
         self._mic_combo.setMinimumWidth(0)
@@ -933,6 +936,7 @@ class _WizardWindow(QMainWindow):
         self._show_step()
 
     def _show_step(self):
+        self._mic_focus_pending = False
         # Tear down any running meter; restart if entering the mic step
         self._stop_meter()
 
@@ -946,6 +950,7 @@ class _WizardWindow(QMainWindow):
         self._current_page = page
 
         name = self._step_name
+        first_mic_visit = name == "Microphone" and name not in self._visited_steps
         self._visited_steps.add(name)
         title = dict(_STEPS + _OPTIONAL_STEPS)[name]
         # PLACEHOLDER COPY (837)
@@ -973,7 +978,16 @@ class _WizardWindow(QMainWindow):
         if _STEPS[self._step][0] == "Microphone":
             self._next_btn.setEnabled(False)
             self._start_meter()
-        self._next_btn.setFocus(Qt.FocusReason.OtherFocusReason)
+        if first_mic_visit and self._mic_combo.isEnabled():
+            self._mic_combo.setFocus(Qt.FocusReason.OtherFocusReason)
+        else:
+            self._next_btn.setFocus(Qt.FocusReason.OtherFocusReason)
+            # Start watching after the page's own focus changes.
+            self._mic_focus_pending = first_mic_visit and self._mic_scan_busy
+
+    @Slot()
+    def _cancel_initial_mic_focus(self):
+        self._mic_focus_pending = False
 
     def _go_next(self):
         if self._optional_step:
@@ -1357,11 +1371,12 @@ class _WizardWindow(QMainWindow):
     def _on_mic_result(self, msg: str, color: str):
         if msg in ("_load_done_", "_load_error_", "_refresh_done_", "__refresh_skipped__"):
             self._mic_scan_busy = False
-        if msg == "_load_done_":
+        if msg in ("_load_done_", "_load_error_"):
             self._populate_mic_combo()
-            return
-        if msg == "_load_error_":
-            self._populate_mic_combo()
+            if self._mic_focus_pending:
+                self._mic_focus_pending = False
+                if self.isActiveWindow() and self._mic_combo.isVisible() and self._mic_combo.isEnabled():
+                    self._mic_combo.setFocus(Qt.FocusReason.OtherFocusReason)
             return
         if msg == "_refresh_done_":
             self._populate_mic_combo(preserve_selection=True)
