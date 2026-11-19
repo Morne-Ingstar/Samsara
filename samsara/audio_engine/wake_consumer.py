@@ -777,6 +777,9 @@ class WakeConsumer:
         onset_context: OnsetContext | None = None,
     ) -> None:
         """Append one captured utterance and ensure one FIFO worker drains it."""
+        from samsara.handsfree_capture import observe_chunk
+        observe_chunk(self._app, buffer_copy, speech_start_ns=speech_start_ns,
+                      last_voice_ns=last_voice_ns, speech_end_ns=speech_end_ns)
         with self._toggle_queue_lock:
             self._toggle_queue.append(QueuedUtterance(
                 onset_context.utterance_id if onset_context else uuid.uuid4().hex,
@@ -967,27 +970,22 @@ class WakeConsumer:
             logger.warning("[ACE] Wake on_fatal callback failed: %s", callback_exc)
 
     def _poll_loop(self, stop_event=None) -> None:
+        from samsara.handsfree_capture import close, poll_frames
         app = self._app
         stop_event = self._stop_event if stop_event is None else stop_event
         try:
-            while self._running and not stop_event.is_set():
-                if not (
-                    app.wake_word_active
-                    or self._is_toggle_cmd(app) or getattr(getattr(app, '_ava_question', None), 'opened', False)
-                ):
-                    time.sleep(0.005)
-                    continue
-
-                if not self._poll_frame(stop_event):
-                    time.sleep(0.005)
+            poll_frames(self, stop_event, sleep=time.sleep)
         except Exception as exc:
             self._handle_fatal(exc)
         finally:
+            close(app)
             self._running = False
             self._close_capture_duck()
 
     def _process_frame(self, frame) -> None:  # noqa: C901 (complexity mirrors legacy callback)
         app = self._app
+        from samsara.handsfree_capture import observe_frame
+        observe_frame(app, frame)
         resume_wake_ready_output(app)
         if not mic_score.prepare_wake_frame(self):
             return
