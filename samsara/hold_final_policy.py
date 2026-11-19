@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from functools import wraps
 import logging
 import re
+from samsara import diagnostics as _mic_lab
 
 
 @dataclass
@@ -27,6 +28,8 @@ def final_decode(worker, audio, params):
     audit._hold_evidence_1121 = evidence.get(worker._session) or evidence.bind(worker._session)
     audit.hold_seq_id = audit._hold_evidence_1121.hold_seq_id
     token = current_audit.set(audit)
+    if _mic_lab._mic_lab_observer is not None:
+        _mic_lab.begin_mic_lab_hold(audit, audio, app=worker._session.app, route='streaming')
     try:
         result = mic_score.stream_final(worker, audio, params)
         evidence.decoded(worker._session, result[2])
@@ -76,6 +79,8 @@ def audited_batch(decode):
             audit._hold_evidence_1121 = joined
             audit.hold_seq_id = joined.hold_seq_id
         token = current_audit.set(audit)
+        if _mic_lab._mic_lab_observer is not None:
+            _mic_lab.begin_mic_lab_batch(audit, app, args, kwargs)
         text = ''
         try:
             result = decode(*args, **kwargs)
@@ -86,6 +91,8 @@ def audited_batch(decode):
         finally:
             current_audit.reset(token)
             log_audit(audit, text)
+            if _mic_lab._mic_lab_observer is not None:
+                _mic_lab.pending_mic_lab_batch(audit, app, text)
     return run
 
 

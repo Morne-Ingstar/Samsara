@@ -4,6 +4,7 @@ from difflib import SequenceMatcher
 import re
 import threading
 import time
+from samsara import diagnostics as _mic_lab
 
 
 # PLACEHOLDER COPY (1125)
@@ -135,6 +136,8 @@ def decode_slot(app, slot, guard=None):
     deadline, cancel = decoder._deadline(app, len(slot.audio) / app.model_rate), threading.Event()
     params = dict(slot.params, no_speech_threshold=None)
     token = current_audit.set(slot.audit or current_audit.get())
+    if _mic_lab._mic_lab_observer is not None:
+        _mic_lab.begin_mic_lab_retry(app, slot)
     try:
         for missed in slot.ranges:
             a, b = max(0, round(missed.start * app.model_rate)), min(len(slot.audio), round(missed.end * app.model_rate))
@@ -152,6 +155,8 @@ def decode_slot(app, slot, guard=None):
                                  for x in part.missed)
     finally:
         current_audit.reset(token)
+    if _mic_lab._mic_lab_observer is not None:
+        _mic_lab.complete_mic_lab_retry(slot, result)
     return result
 
 

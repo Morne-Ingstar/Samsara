@@ -235,6 +235,8 @@ def record(rec: DiagRecord, app=None) -> None:
     ['write_jsonl']` is true (app is optional -- omit it to skip the JSONL
     gate entirely and only use the ring buffer, e.g. in tests).
     """
+    if _mic_lab_observer is not None:
+        _mic_lab_record(rec, app)
     try:
         rec.text = (rec.text or "")[:_TEXT_CHAR_CAP]
         rec.verdicts = classify(rec)
@@ -271,3 +273,245 @@ def recent(n: int = 200) -> list:
 def clear() -> None:
     with _lock:
         _ring.clear()
+
+
+# 1267: this sink is absent, including its queue/thread, until explicitly set.
+# All producers below run on decode/completion threads, never PortAudio's
+# callback or the ring drain. Only the sink thread invokes consumer code.
+_mic_lab_observer = None
+_mic_lab_registration_lock = threading.Lock()
+_mic_lab_pending = threading.local()
+
+
+class _MicLabSink:
+    def __init__(self, callback):
+        from queue import SimpleQueue
+        self.callback = callback
+        self.queue = SimpleQueue()
+        self.warned = False
+        self.thread = threading.Thread(target=self._run, name='mic-lab-observer', daemon=True)
+        self.thread.start()
+
+    def warning(self):
+        if not self.warned:
+            self.warned = True
+            try:
+                logger.warning('[MIC_LAB] observation_failed=1')
+            except Exception:
+                pass
+
+    def _run(self):
+        while True:
+            item = self.queue.get()
+            try:
+                if item is None:
+                    return
+                if isinstance(item, threading.Event):
+                    item.set()
+                else:
+                    self.callback(item)
+            except Exception:
+                self.warning()  # Never log audio, text, params or exception bodies.
+
+
+def set_mic_lab_observer(callback) -> None:
+    """Set callback(MicLabHold dict) or None. Queued callbacks finish on detach.
+
+    Call flush_mic_lab_observer before reading a sink's results. Do not register
+    from a capture callback. Replacing/detaching a sink does not block decoding.
+    In-flight holds from an old registration are discarded, never sent to a new
+    consumer. A consumer must detach on close; no PCM is persisted by this API.
+    """
+    global _mic_lab_observer
+    if callback is not None and not callable(callback):
+        raise TypeError('Mic Lab observer must be callable or None')
+    with _mic_lab_registration_lock:
+        old = _mic_lab_observer
+        _mic_lab_observer = _MicLabSink(callback) if callback is not None else None
+        if old is not None:
+            old.queue.put(None)
+
+
+def flush_mic_lab_observer(timeout=30.) -> bool:
+    sink = _mic_lab_observer
+    if sink is None:
+        return True
+    if threading.current_thread() is sink.thread:
+        return False
+    done = threading.Event()
+    sink.queue.put(done)
+    return done.wait(timeout)
+
+
+def _mic_lab_safe(operation):
+    from functools import wraps
+    @wraps(operation)
+    def observe(*args, **kwargs):
+        try:
+            return operation(*args, **kwargs)
+        except Exception:
+            sink = _mic_lab_observer
+            if sink is not None:
+                sink.warning()
+    return observe
+
+
+def _mic_lab_coordinates(audio):
+    """Exact snapshot frame intersections; unknown provenance stays unknown.
+
+    Ring frame indices are FrameBus sequence numbers, end exclusive. Within a
+    frame, *_offset identifies the precise sample. Packed capture coordinates
+    remain separate: a sequence gap is never fabricated as silence.
+    """
+    snapshot = getattr(audio, 'capture_snapshot', None)
+    if snapshot is None:
+        return dict(start_frame=None, end_frame=None, ranges=[],
+                    capture_start=None, capture_end=None, provenance='unavailable')
+    origin = int(audio.capture_start)
+    end, offset, ranges = origin + len(audio), 0, []
+    for frame in snapshot.frames:
+        size = len(frame.pcm) // 2
+        a, b = max(origin, offset), min(end, offset + size)
+        if a < b:
+            ranges.append(dict(start_frame=frame.seq, end_frame=frame.seq + 1,
+                start_offset=a - offset, end_offset=b - offset, epoch=frame.epoch,
+                capture_start=a, capture_end=b))
+        offset += size
+    valid = sum(r['capture_end'] - r['capture_start'] for r in ranges) == len(audio)
+    return dict(start_frame=ranges[0]['start_frame'] if ranges and valid else None,
+                end_frame=ranges[-1]['end_frame'] if ranges and valid else None,
+                ranges=ranges if valid else [], capture_start=origin if valid else None,
+                capture_end=end if valid else None,
+                provenance='ring_snapshot' if valid else 'unavailable')
+
+
+@_mic_lab_safe
+def begin_mic_lab_hold(audit, audio, *, app, route):
+    import uuid
+    import numpy as np
+    sink = _mic_lab_observer
+    if sink is None or audit is None:
+        return
+    # Copy the pre-trim ring capture on this decode caller, never the drain.
+    snapshot = getattr(audio, 'capture_snapshot', None)
+    raw = snapshot.audio() if snapshot is not None else audio
+    audit._mic_lab_1267 = dict(id=uuid.uuid4().hex, hold_seq_id=getattr(audit, 'hold_seq_id', None),
+        route=route, raw=np.array(raw, dtype=np.float32, copy=True),
+        raw_coordinates=_mic_lab_coordinates(raw),
+        capture_receipt=snapshot.receipt() if snapshot is not None else None,
+        sample_rate=getattr(app, 'model_rate', 16000), slices=[], text='',
+        sink=sink, complete=False)
+
+
+@_mic_lab_safe
+def begin_mic_lab_batch(audit, app, args, kwargs):
+    audio = args[1] if len(args) > 1 else kwargs['audio']
+    begin_mic_lab_hold(audit, audio, app=app, route='batch')
+
+
+def mic_lab_model(model, audit, app):
+    """Wrap only observation; native calls/errors/lazy pulls retain their order."""
+    class Observed:
+        def __getattr__(self, name):
+            return getattr(model, name)
+
+        def transcribe(self, audio, **params):
+            state = getattr(audit, '_mic_lab_1267', None)
+            if state is None or state['complete']:
+                begin_mic_lab_hold(audit, audio, app=app, route='hold')
+                state = getattr(audit, '_mic_lab_1267', None)
+            item = _mic_lab_input(state, audio, params)
+            # Decoder exceptions deliberately propagate; only observer work is
+            # best effort. Do not eagerly consume a faster-whisper generator.
+            segments, info = model.transcribe(audio, **params)
+            def observed():
+                for segment in segments:
+                    _mic_lab_segment(item, segment)
+                    yield segment
+            return observed(), info
+    try:
+        return Observed()
+    except Exception:
+        sink = _mic_lab_observer
+        if sink is not None:
+            sink.warning()
+        return model
+
+
+@_mic_lab_safe
+def _mic_lab_input(state, audio, params):
+    import copy
+    import numpy as np
+    if state is None or state['sink'] is not _mic_lab_observer:
+        return
+    item = dict(audio=np.array(audio, dtype=np.float32, copy=True),
+        **_mic_lab_coordinates(audio), params=copy.deepcopy(params), segments=[],
+        temperature=None, avg_logprob=None, compression_ratio=None,
+        retry=state['route'] == 'retry', attempt=len(state['slices']))
+    # A relaxed no-speech retry can still return zero segments at temperature
+    # zero. Repeated identical native PCM is an attempt retry independently of
+    # segment metadata (ordinary neighboring chunks overlap but differ).
+    item['retry'] |= any(np.array_equal(item['audio'], prior['audio']) for prior in state['slices'])
+    state['slices'].append(item)
+    return item
+
+
+@_mic_lab_safe
+def _mic_lab_segment(item, segment):
+    import math
+    if item is None:
+        return
+    values = {}
+    for key in ('start', 'end', 'temperature', 'avg_logprob', 'compression_ratio', 'no_speech_prob'):
+        value = getattr(segment, key, None)
+        values[key] = float(value) if isinstance(value, (float, int)) and math.isfinite(value) else None
+    item['segments'].append(values)
+    for key, operation in (('temperature', max), ('avg_logprob', min), ('compression_ratio', max)):
+        value = values[key]
+        if value is not None:
+            item[key] = value if item[key] is None else operation(item[key], value)
+    item['retry'] |= bool(values['temperature'] and values['temperature'] > 0)
+
+
+@_mic_lab_safe
+def complete_mic_lab_hold(audit, text):
+    state = getattr(audit, '_mic_lab_1267', None)
+    if state is None or state['complete'] or state['sink'] is not _mic_lab_observer:
+        return
+    state['complete'] = True
+    state['text'] = str(text or '')  # Full final, before DiagRecord's 200-char cap.
+    sink = state['sink']
+    sink.queue.put({k: v for k, v in state.items() if k not in ('sink', 'complete')})
+    # The queue owns PCM now; the production audit retains no observer buffers.
+    audit._mic_lab_1267 = None
+
+
+@_mic_lab_safe
+def complete_mic_lab_session(session, text):
+    complete_mic_lab_hold(getattr(session, '_hold_final_audit', None), text)
+
+
+@_mic_lab_safe
+def pending_mic_lab_batch(audit, app, text):
+    # Completion may apply cleanup before record(). Correlate on this caller's
+    # thread and app identity, rather than the app's mutable latest-hold field.
+    _mic_lab_pending.batch = (app, audit, text)
+
+
+@_mic_lab_safe
+def _mic_lab_record(rec, app):
+    pending = getattr(_mic_lab_pending, 'batch', None)
+    if pending is not None and pending[0] is app and rec.mode == 'hotkey':
+        _mic_lab_pending.batch = None
+        complete_mic_lab_hold(pending[1], rec.text)
+
+
+@_mic_lab_safe
+def begin_mic_lab_retry(app, slot):
+    if slot.audit is not None:
+        begin_mic_lab_hold(slot.audit, slot.audio, app=app, route='retry')
+
+
+@_mic_lab_safe
+def complete_mic_lab_retry(slot, result):
+    complete_mic_lab_hold(slot.audit, ''.join(segment.text for segment in result.segments).strip())

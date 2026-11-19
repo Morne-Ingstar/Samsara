@@ -4,6 +4,7 @@ The explicit retry slot remains separate from opt-in incident diagnostics.
 History uses its normal privacy policy; only accepted previews may become text.
 """
 import logging
+from samsara import diagnostics as _mic_lab
 
 from samsara import decode_recovery
 
@@ -484,6 +485,8 @@ def incident_model(app):
                 return observe_incident_decode(app.model, (audio,), params)
             finally:
                 _incident_audit.reset(token)
+    if _mic_lab._mic_lab_observer is not None:
+        return _mic_lab.mic_lab_model(ObservedModel(), audit, app)
     return ObservedModel()
 
 
@@ -592,6 +595,8 @@ def prepare_final(session, text, raw_text, duration_s):
     result = ((text, raw_text, duration_s) if quiet or getattr(session, '_hold_final_audit', None)
               or getattr(session, '_hold_failed_ranges', ())
               else _prepare_final(session, text, raw_text, duration_s))
+    if _mic_lab._mic_lab_observer is not None:
+        _mic_lab.complete_mic_lab_session(session, result[0])
     complete_incident(session, result[0])
     return result
 
