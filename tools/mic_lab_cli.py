@@ -36,6 +36,8 @@ def parser():
     p.add_argument('--device', help='Exact input name or PortAudio input index')
     p.add_argument('--label', help='Your microphone label')
     p.add_argument('--from-folder', type=Path, help='Re-judge saved audio and reference results without a microphone')
+    # PLACEHOLDER COPY (1297)
+    p.add_argument('--json', action='store_true', help='Print only JSON when re-judging with --from-folder')
     p.add_argument('--config', type=Path, help='Explicit offline settings JSON; no live settings are discovered')
     p.add_argument('--profile', type=Path, help='Output/cache profile (defaults to the Samsara profile path)')
     p.add_argument('--output-dir', type=Path, help='Run storage root; overrides mic_lab.output_dir')
@@ -271,12 +273,41 @@ class RealCapture:
                 diagnostics.set_mic_lab_observer(None)
 
 
+def print_step(step_id, result, output=print):
+    # PLACEHOLDER COPY (1297)
+    output(f"{step_id}: {result['verdict']}")
+    seen = set()
+    for key in ('reasons', 'observations', 'unknown'):
+        for reason in result.get(key, []):
+            if reason not in seen:
+                output(f'  {reason}')
+                seen.add(reason)
+
+
+def print_summary(report, output=print):
+    # PLACEHOLDER COPY (1297)
+    output(f"Overall: {report['verdict']}.")
+    for finding in report['findings'][:3]:
+        output(f'  {finding}')
+    if report['unknown']:
+        output('Could not measure (excluded from grade):')
+        for reason in report['unknown']:
+            output(f'  {reason}')
+
+
 def main(argv=None, *, capture_factory=RealCapture, model_loader=_load_model, output=print):
     args = parser().parse_args(argv)
     if args.from_folder:
         report = rejudge_run(load_run(args.from_folder))
-        output(json.dumps(report, indent=2))
+        if args.json:
+            output(json.dumps(report, indent=2))
+        else:
+            for result in report['steps']:
+                print_step(result['step_id'], result, output)
+            print_summary(report, output)
         return 0 if report['complete'] else 2
+    if args.json:
+        parser().error('--json requires --from-folder')
     if not args.device or not args.label:
         parser().error('--device and --label are required for a microphone run')
     if not np.isfinite(args.distance_cm) or args.distance_cm <= 0:
@@ -314,12 +345,13 @@ def main(argv=None, *, capture_factory=RealCapture, model_loader=_load_model, ou
             capture.read_seconds, capture.gap_seconds = max(1., args.read_seconds), max(0., args.gap_seconds)
             runner = BatteryRunner(sandbox=args.sandbox)
             def progress(step, result):
-                output(f"{step.id}: {result['verdict']} ({', '.join(result['causes'])})")
+                print_step(step.id, result, output)
             report = runner.run(capture, capture._decode_reference,
                 save=lambda step, number, take: store.save_take(run_id, f'{step.id}-{number}', take).result(),
                 progress=progress)
             store.finish(run_id, report).result()
-            output(f"Overall: {report['verdict']}. Saved: {store.root / run_id}")
+            print_summary(report, output)
+            output(f'Saved: {store.root / run_id}')
     return 0
 
 

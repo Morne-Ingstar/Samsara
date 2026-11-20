@@ -97,7 +97,8 @@ def test_clean_offline_reference_attributes_bad_live_text_to_pipeline():
     assert result['cause'] == 'pipeline' and result['live']['first_word'] is False
     assert result['offline']['wer'] == 0.
     data['offline']['text'] = data['text']
-    assert battery.judge_take(step, data, battery.JudgeContext())['cause'] == 'undetermined'
+    # 1297: ambiguous attribution now carries the measured reason in plain words.
+    assert 'missing' in battery.judge_take(step, data, battery.JudgeContext())['cause']
 
 
 def test_boundaries_require_missing_word_and_acoustic_evidence():
@@ -133,8 +134,9 @@ def test_reference_failure_preserves_capture_and_never_blames_mic():
     step = replace(battery.STEPS['baseline'], target='testing', judges=('wer',))
     result = battery.judge_take(step, data, battery.JudgeContext())
     assert data['offline']['status'] == 'reference_failed'
-    assert result['verdict'] == 'Watch' and result['cause'] != 'pipeline'
-    assert result['metrics']['reference']['verdict'] == 'Watch'
+    # 1297: an unavailable reference is Unknown and never lowers the grade.
+    assert result['verdict'] == 'Good' and result['cause'] != 'pipeline'
+    assert result['metrics']['reference']['verdict'] == 'Unknown'
 
 
 def test_native_silence_is_not_penalized_by_speech_peak_range():
@@ -244,7 +246,8 @@ def test_saved_folder_cli_needs_no_device_or_model(tmp_path, monkeypatch):
         store.save_take(run_id, 'baseline-1', data).result()
     monkeypatch.setattr(cli, '_load_model', lambda *a: pytest.fail('model loaded'))
     output = []
-    assert cli.main(['--from-folder', str(tmp_path / run_id)], output=output.append) == 2
+    # 1297: human reasons are the default; --json preserves machine-readable output.
+    assert cli.main(['--from-folder', str(tmp_path / run_id), '--json'], output=output.append) == 2
     result = json.loads(output[0])
     assert result['complete'] is False and result['steps'][0]['incomplete']
     assert not (tmp_path / run_id / 'report.json').exists()

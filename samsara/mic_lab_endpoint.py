@@ -123,13 +123,19 @@ class _CoreAudio:
     def read(self, *, endpoint_id=None, name=None):
         if sys.platform != "win32":
             raise OSError("Windows Core Audio is unavailable on this platform")
-        ole = ct.OleDLL("ole32")
+        # 1297: inspect RPC_E_CHANGED_MODE ourselves; OleDLL raises before
+        # the existing-apartment handler and also misreads void returns.
+        ole = ct.WinDLL("ole32")
         ole.CoInitializeEx.argtypes = (ct.c_void_p, ct.c_uint32)
         ole.CoInitializeEx.restype = ct.c_long
         ole.CoCreateInstance.argtypes = (ct.POINTER(_GUID), ct.c_void_p, ct.c_uint32, ct.POINTER(_GUID), ct.POINTER(ct.c_void_p))
         ole.CoCreateInstance.restype = ct.c_long
         ole.CoTaskMemFree.argtypes = (ct.c_void_p,)
+        ole.CoTaskMemFree.restype = None
+        ole.CoUninitialize.argtypes = ()
+        ole.CoUninitialize.restype = None
         ole.PropVariantClear.argtypes = (ct.POINTER(_PropVariant),)
+        ole.PropVariantClear.restype = ct.c_long
         # RPC_E_CHANGED_MODE means this thread is already initialized as STA.
         hr = ole.CoInitializeEx(None, 0)
         if hr < 0 and (hr & 0xffffffff) != 0x80010106:

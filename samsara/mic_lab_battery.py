@@ -3,6 +3,7 @@
 No device, profile, Qt or model is opened on import. Capture and reference
 decode are injected so the same battery supports the CLI, a window and replay.
 """
+# PLACEHOLDER COPY (1297): judgment reasons and summary wording are stand-ins.
 from __future__ import annotations
 
 from collections import Counter
@@ -36,7 +37,7 @@ BATTERY = (
          ('speech', 'snr', 'wer', 'dropouts', 'gain')),
     Step('cold_onset', 'Start speaking immediately at the Speak now cue.',
          'Stop right there and check the first word.', 'Normal working distance', 2,
-         ('first_word', 'onset', 'wer', 'dropouts', 'gain')),
+         ('first_word', 'boundary', 'onset', 'wer', 'dropouts', 'gain')),
     Step('fricatives_hf', 'Speak clearly at a normal pace.',
          'Six thin fins shifted fast past the cheap seats.', 'Normal working distance', 2,
          ('bandwidth', 'wer', 'dropouts', 'gain')),
@@ -63,23 +64,51 @@ BATTERY = (
          ('wer', 'dropouts', 'gain'), 10., certification=False),
 )
 STEPS = {step.id: step for step in BATTERY}
-RANK = {'Good': 0, 'Watch': 1, 'Bad': 2}
+RANK = {'Unknown': -1, 'Good': 0, 'Watch': 1, 'Bad': 2}
+CURVEBALLS = {'proximity_pop', 'off_axis_2x'}
+WER_GOOD, WER_BAD = .05, .10  # 1297: <=5% Good, >5–<10% Watch, >=10% Bad.
 
 
 def _words(text):
     return re.findall(r"\w+(?:['’]\w+)*", str(text).casefold())
 
 
-def word_score(target, text):
-    a, b = _words(target), _words(text)
+def _edit_errors(a, b):
     row = list(range(len(b) + 1))
     for i, left in enumerate(a, 1):
         out = [i]
         for j, right in enumerate(b, 1):
             out.append(min(out[-1] + 1, row[j] + 1, row[j - 1] + (left != right)))
         row = out
-    errors = row[-1]
+    return row[-1]
+
+
+def word_score(target, text):
+    a, b = _words(target), _words(text)
+    raw_errors = _edit_errors(a, b)
+    slips, slip_words = 0, 0
+    # Only contiguous repeats of >=2 target words qualify. Require the entire
+    # removed phrase to account for insertions, preserving intended repetitions
+    # in the target. No transcript fragments are copied into run reports.
+    while True:
+        found = False
+        for size in range(len(b) // 2, 1, -1):
+            for i in range(len(b) - 2 * size + 1):
+                phrase = b[i:i + size]
+                if phrase != b[i + size:i + 2 * size] or not any(a[j:j + size] == phrase for j in range(len(a) - size + 1)):
+                    continue
+                shorter = b[:i + size] + b[i + 2 * size:]
+                if _edit_errors(a, shorter) + size == _edit_errors(a, b):
+                    b = shorter
+                    slips, slip_words, found = slips + 1, slip_words + size, True
+                    break
+            if found:
+                break
+        if not found:
+            break
+    errors = _edit_errors(a, b)
     return dict(errors=errors, words=len(a), wer=errors / max(1, len(a)),
+                raw_errors=raw_errors, speaker_slips=slips, speaker_slip_words=slip_words,
                 first_word=bool(a and b and a[0] == b[0]),
                 last_word=bool(a and b and a[-1] == b[-1]))
 
@@ -89,11 +118,11 @@ def _measurement(value, verdict, cause):
 
 
 def _unknown(cause):
-    return _measurement(None, 'Watch', cause)
+    return _measurement(None, 'Unknown', cause)
 
 
 def _worst(measurements):
-    return max((m.verdict for m in measurements), key=RANK.get, default='Watch')
+    return max((m.verdict for m in measurements if m.verdict != 'Unknown'), key=RANK.get, default='Unknown')
 
 
 def _native_clipping(probe):
@@ -170,7 +199,7 @@ def judge_take(step, take, context):
     pipeline = bool(live and live['errors'] and offline and offline['errors'] == 0)
     if step.target:
         metrics['reference'] = _measurement(reference.get('status'),
-            'Good' if reference.get('status') == 'ok' else 'Watch',
+            'Good' if reference.get('status') == 'ok' else 'Unknown',
             'Temperature-zero reference on the observed decoder inputs; unavailable/ambiguous references cannot certify a clean take')
     for judge in step.judges:
         if judge == 'noise':
@@ -193,7 +222,8 @@ def judge_take(step, take, context):
         elif judge == 'speech':
             metrics[judge] = dsp.speech_level(raw, rate, noise_dbfs=floor)
         elif judge == 'snr':
-            metrics[judge] = dsp.speech_snr(raw, silence, rate) if silence is not None else noise
+            metrics[judge] = (_unknown('Silence is gated; between-word frames may contain quiet speech or gate release, so no defensible noise-only floor is available')
+                              if any(noise.details.get('gated', [])) else dsp.speech_snr(raw, silence, rate) if silence is not None else noise)
         elif judge == 'bandwidth':
             metrics[judge] = dsp.upper_band_ratio(raw, rate)
         elif judge == 'clipping':
@@ -209,9 +239,8 @@ def judge_take(step, take, context):
             metrics[judge] = (_measurement(delta.value['delta'] * 100, 'Bad' if delta.value['changed'] else 'Good', 'Windows input gain moved by at least two percentage points; check other apps')
                               if delta.known else _unknown(delta.reason))
         elif judge == 'wer':
-            wer = live['wer']
-            metrics[judge] = _measurement(live, 'Good' if not wer else 'Watch' if wer <= .1 else 'Bad',
-                'Live text differs; clean temperature-zero reference identifies pipeline variance' if pipeline else 'Scripted word error rate; acoustic evidence is needed to blame the microphone')
+            metrics[judge] = _measurement(live, 'Bad' if not live['first_word'] or not live['last_word'] else 'Watch' if live['errors'] >= 2 else 'Good',
+                'Edge words and two-plus errors are checked here; accuracy is graded across the run')
         elif judge in ('first_word', 'edges'):
             survived = live['first_word'] and (judge == 'first_word' or live['last_word'])
             metrics[judge] = _measurement(survived, 'Good' if survived else 'Bad', 'Target first/last word survival')
@@ -258,24 +287,115 @@ def judge_take(step, take, context):
         probes = [take[k] for k in ('native_idle', 'native_load') if k in take]
         if any(p.get('input_overflow') for p in probes):
             metrics['native_overflow'] = _measurement(True, 'Bad', 'Native probe reported an input overflow')
-    verdict = _worst(metrics.values())
-    cause = 'pipeline' if pipeline else 'undetermined' if live and live['errors'] else 'mic_or_environment' if verdict != 'Good' else 'none'
+    judgment = grade_measurements(metrics, live=live, offline=offline)
+    cause = 'pipeline' if pipeline else judgment['reasons'][0]
     boundary = metrics.get('boundary')
     if boundary and boundary.verdict == 'Bad':
         cause = 'pipeline'
-    return dict(verdict=verdict, cause=cause, live=live, offline=offline,
+    return dict(judgment, cause=cause)
+
+
+def _rows(value):
+    return value if isinstance(value, list) else [value]
+
+
+def _number(value):
+    return ', '.join(f'{v:.2f}' for v in np.atleast_1d(value))
+
+
+def measurement_reason(judge, measurement):
+    """Plain CLI copy, shared by saved-run and live grading. PLACEHOLDER COPY (1297)."""
+    m, value = measurement, measurement.value
+    if m.verdict == 'Unknown':
+        return f'{judge}: Unknown — {m.cause}'
+    if judge in ('clipping', 'native_clipping'):
+        rows = _rows(value)
+        peak = max(v['peak_dbfs'] for v in rows)
+        flats = sum(v['flat_top_runs'] for v in rows)
+        full = sum(v['full_scale_samples'] for v in rows)
+        if flats or full:
+            return f'clipping: {flats} flat-top runs, {full} full-scale samples, peak {peak:.2f} dBFS; lower the microphone level in Windows'
+        if judge == 'clipping' and peak > -1.:
+            return f'peak {peak:.2f} dBFS: input level hot; lower the microphone level in Windows'
+        return f'peak {peak:.2f} dBFS: {"input level low; move closer or raise the microphone level" if judge == "clipping" and peak < -18. else "no flat-top clipping or full-scale samples"}'
+    if judge == 'wer':
+        return f"word check: {value['errors']}/{value['words']} errors; first word {'present' if value['first_word'] else 'missing'}, last word {'present' if value['last_word'] else 'missing'}; accuracy graded across the run"
+    if judge in ('first_word', 'edges'):
+        return f"{'first word' if judge == 'first_word' else 'first and last words'}: {'present' if value else 'missing; check the capture boundary and repeat the sentence'}"
+    if judge == 'onset':
+        return f'onset {_number(value)} s after cue: includes reaction time; observation only'
+    if judge == 'boundary':
+        return f'capture boundary: {m.cause}'
+    if judge == 'bandwidth':
+        return f'upper-band ratio {_number(value)} dB: {"high frequencies severely reduced; check for a narrowband device mode" if m.verdict == "Bad" else "fricative bandwidth " + m.verdict.lower()}'
+    if judge == 'dropouts':
+        rows = _rows(value)
+        if all(isinstance(v, dict) and 'zero_runs' in v for v in rows):
+            return f"dropouts: {sum(v['zero_runs'] for v in rows)} gaps, longest {max(v['longest_s'] for v in rows):.3f} s, {max(v['input_overflows'] for v in rows)} input overflows"
+        return 'capture loss: ring/device discontinuity or incomplete drain; check the audio device'
+    units = {'gain': 'percentage points', 'speech': 'dBFS', 'snr': 'dB', 'noise': 'dBFS', 'drift': '%', 'channels': 'dB', 'level_drop': 'dB'}
+    if judge in units:
+        return f'{judge} {_number(value)} {units[judge]}: {m.cause}'
+    # Select meaningful numbers without dumping sample ranges or spectra.
+    if judge in ('rumble_dc', 'proximity'):
+        return f"low-frequency excess {_number([v['rumble_db'] for v in _rows(value)])} dB: {m.cause}"
+    if judge == 'tones':
+        return f"tone prominence {_number([v['prominence_db'] for v in _rows(value)])} dB: {m.cause}"
+    if judge == 'agc':
+        return f"gain pumping: phrase shift {_number([v['phrase_shift_db'] for v in _rows(value)])} dB; pause rise {_number([v['pause_rise_db'] for v in _rows(value)])} dB"
+    return f'{judge}: {m.cause}'
+
+
+def grade_measurements(metrics, *, live=None, offline=None):
+    """Apply battery policy to acoustic measurements (including old sidecars).
+
+    DSP values stay intact. Missing evidence and human timing never count as
+    faults. Keeping policy here also lets regression data exclude owner audio.
+    """
+    metrics = dict(metrics)
+    noise = metrics.get('noise')
+    gated = noise is not None and any(noise.details.get('gated', []))
+    if gated:
+        metrics['noise'] = dsp.Measurement(noise.value, 'Unknown',
+            'this input goes fully silent when you are not speaking — a noise gate in the device or adapter; observation only', noise.details)
+        for key in ('rumble_dc', 'tones'):
+            if key in metrics:
+                metrics[key] = _unknown('Gated silence cannot establish a steady noise spectrum')
+    for key, m in list(metrics.items()):
+        if m.value is None:
+            metrics[key] = _unknown(m.cause)
+        elif key == 'onset':
+            metrics[key] = _measurement(m.value, 'Good', 'Includes human reaction time; observation only')
+    if live is not None and 'wer' in metrics:
+        metrics['wer'] = _measurement(live, 'Bad' if not live['first_word'] or not live['last_word'] else 'Watch' if live['errors'] >= 2 else 'Good',
+            'Edge words and two-plus errors are checked here; accuracy is graded across the run')
+    graded = {k: m for k, m in metrics.items() if k not in ('onset', 'reference')}
+    verdict = _worst(graded.values())
+    reasons = [measurement_reason(k, m) for k, m in graded.items() if m.verdict == verdict and verdict != 'Unknown']
+    observations = [measurement_reason('onset', metrics['onset'])] if 'onset' in metrics and metrics['onset'].value is not None else []
+    if live and live['errors'] == 1 and 'wer' in metrics:
+        observations.append(measurement_reason('wer', metrics['wer']))
+    if live and live.get('speaker_slip_words'):
+        observations.append(f"speaker slip: {live['speaker_slip_words']} repeated target words excluded from recognition errors (text-based repeat detection)")
+    unknown = [measurement_reason(k, m) for k, m in metrics.items() if m.verdict == 'Unknown']
+    return dict(verdict=verdict, reasons=reasons or ['No graded measurement is available'],
+                observations=observations, unknown=unknown, live=live, offline=offline,
                 metrics={key: asdict(value) for key, value in metrics.items()})
 
 
 def step_verdict(takes):
     votes = [t['judgment']['verdict'] for t in takes]
-    counts = Counter(votes)
-    verdict, count = counts.most_common(1)[0]
-    if len(votes) == 3 and count == 1:
+    counted = [v for v in votes if v != 'Unknown']
+    counts = Counter(counted)
+    verdict, count = counts.most_common(1)[0] if counts else ('Unknown', 0)
+    if len(counted) == 3 and count == 1:
         verdict = 'Watch'
     return dict(verdict=verdict, votes=votes, tie_breaker=len(takes) == 3,
-                agreement=count >= 2 if len(votes) > 1 else True,
-                causes=sorted({t['judgment']['cause'] for t in takes}))
+                agreement=count == len(counted) if len(counted) < 2 else count >= 2,
+                causes=sorted({t['judgment']['cause'] for t in takes}),
+                reasons=list(dict.fromkeys(reason for t in takes for reason in t['judgment'].get('reasons', []))),
+                observations=list(dict.fromkeys(reason for t in takes for reason in t['judgment'].get('observations', []))),
+                unknown=list(dict.fromkeys(reason for t in takes for reason in t['judgment'].get('unknown', []))))
 
 
 class BatteryRunner:
@@ -321,7 +441,7 @@ class BatteryRunner:
                     self.context.silence = takes[0]['raw']
                     self.context.sample_rate = takes[0]['sample_rate']
                 if step.id == 'baseline':
-                    best = min(takes, key=lambda t: RANK[t['judgment']['verdict']])
+                    best = min(takes, key=_baseline_rank)
                     self.context.baseline = best['raw']
                 if progress:
                     progress(step, result)
@@ -333,13 +453,83 @@ class BatteryRunner:
 
 
 def report_results(results):
-    core = [r['verdict'] for r in results if r['certification']]
-    # Reports are JSON summaries; PCM and transcripts live only in take files.
-    complete = all(s.id in {r['step_id'] for r in results} for s in BATTERY if s.certification)
-    verdict = max(core, key=RANK.get, default='Watch')
-    return dict(schema=1, verdict='Watch' if not complete and verdict == 'Good' else verdict,
-        complete=complete,
-        steps=[{k: v for k, v in r.items() if k != 'takes'} for r in results])
+    """1297: concrete core failures and pooled accuracy determine the run.
+
+    Any core dropout, lost edge word, clipping or fricative narrowband fault is
+    Bad, even when a step vote masks it. Other measured concerns are Watch.
+    Curveballs and optional mounting checks supply notes only.
+    """
+    complete = (all(s.id in {r['step_id'] for r in results} for s in BATTERY if s.certification)
+                and not any(r.get('incomplete') for r in results))
+    critical = {'dropouts', 'native_overflow', 'native_clipping', 'clipping', 'first_word', 'edges', 'boundary'}
+    votes, findings, unknown, observations = [], [], [], []
+    scores, all_scores = [], []
+    for result in results:
+        core = result['certification'] and result['step_id'] not in CURVEBALLS
+        if core and not result.get('takes'):
+            votes.append(result['verdict'])  # Legacy step-only summaries.
+        for take in result.get('takes', []):
+            judgment = take['judgment']
+            live = judgment.get('live')
+            if live and result['certification']:
+                all_scores.append(live)
+                if core:
+                    scores.append(live)
+                    if not live['first_word'] or not live['last_word']:
+                        votes.append('Bad')
+            for text in judgment.get('observations', []):
+                observations.append(f"{result['step_id']}: {text}")
+            for key, value in judgment.get('metrics', {}).items():
+                m = dsp.Measurement(**value)
+                text = measurement_reason(key, m)
+                if m.verdict == 'Unknown':
+                    unknown.append(text)
+                    continue
+                if key in ('onset', 'reference', 'wer'):
+                    continue
+                if not core:
+                    if m.verdict in ('Watch', 'Bad'):
+                        observations.append(f"{result['step_id']} (placement check only): {text}")
+                    continue
+                hard = key in critical or (key == 'bandwidth' and result['step_id'] == 'fricatives_hf')
+                votes.append('Bad' if hard and m.verdict == 'Bad' else 'Watch' if m.verdict in ('Watch', 'Bad') else 'Good')
+                if m.verdict in ('Watch', 'Bad'):
+                    findings.append((0 if hard and m.verdict == 'Bad' else 1 if 'input level hot' in text else 2, text))
+            if core and live and (not live['first_word'] or not live['last_word']):
+                findings.append((0, measurement_reason('wer', _measurement(live, 'Bad', ''))))
+
+    def accuracy(items):
+        words = sum(s['words'] for s in items)
+        errors = sum(s['errors'] for s in items)
+        wer = errors / words if words else None
+        return dict(words=words, errors=errors, wer=wer,
+                    raw_errors=sum(s.get('raw_errors', s['errors']) for s in items),
+                    speaker_slip_words=sum(s.get('speaker_slip_words', 0) for s in items),
+                    verdict='Unknown' if wer is None else 'Good' if wer <= WER_GOOD else 'Bad' if wer >= WER_BAD else 'Watch')
+
+    pooled, all_pooled = accuracy(scores), accuracy(all_scores)
+    votes.append(pooled['verdict'])
+    word_finding = (f"word accuracy: {pooled['errors']}/{pooled['words']} errors ({pooled['wer']:.2%}) in normal-use steps; "
+                    f"{all_pooled['errors']}/{all_pooled['words']} ({all_pooled['wer']:.2%}) including placement checks; "
+                    f"{all_pooled['speaker_slip_words']} repeated target words listed as speaker slips") if pooled['wer'] is not None else 'word accuracy: Unknown — no scripted words were scored'
+    if pooled['verdict'] in ('Watch', 'Bad'):
+        findings.append((0 if pooled['verdict'] == 'Bad' else 2, word_finding))
+    verdict = max(votes, key=RANK.get, default='Unknown')
+    if not complete and verdict in ('Good', 'Unknown'):
+        verdict = 'Watch'
+    ordered = []
+    for _, text in sorted(findings):
+        if text in ordered or ('input level hot' in text and any('input level hot' in v for v in ordered)):
+            continue
+        ordered.append(text)
+    if word_finding not in ordered:
+        ordered.append(word_finding)
+    if not complete:
+        ordered.append('Incomplete battery: finish the missing steps/takes before relying on the result')
+    return dict(schema=2, verdict=verdict, complete=complete, findings=ordered,
+                accuracy=pooled, all_scripted_accuracy=all_pooled,
+                unknown=list(dict.fromkeys(unknown)), observations=list(dict.fromkeys(observations)),
+                steps=[{k: v for k, v in r.items() if k != 'takes'} for r in results])
 
 
 def rejudge_run(run):
@@ -355,14 +545,21 @@ def rejudge_run(run):
         for take in takes:
             take['judgment'] = judge_take(step, take, context)
         result = dict(step_id=step.id, certification=step.certification, **step_verdict(takes), takes=takes)
-        expected = step.takes + int(step.takes == 2 and len(takes) >= 2 and takes[0]['judgment']['verdict'] != takes[1]['judgment']['verdict'])
-        if len(takes) != expected:
+        # Saved runs followed the earlier voting policy. A policy change must
+        # not demand another recording merely because new votes now differ.
+        allowed = (2, 3) if step.takes == 2 else (1,)
+        if len(takes) not in allowed:
             result.update(verdict='Watch', agreement=False, incomplete=True)
         results.append(result)
         if step.id == 'native_probe':
             context.silence, context.sample_rate = takes[0]['raw'], takes[0]['sample_rate']
         if step.id == 'baseline':
-            context.baseline = min(takes, key=lambda t: RANK[t['judgment']['verdict']])['raw']
+            context.baseline = min(takes, key=_baseline_rank)['raw']
     report = report_results(results)
     report['complete'] &= not any(r.get('incomplete') for r in results)
     return report
+
+
+def _baseline_rank(take):
+    verdict = take['judgment']['verdict']
+    return RANK[verdict] if verdict != 'Unknown' else 3
