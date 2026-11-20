@@ -224,15 +224,15 @@ def test_ava_rows_grouping_and_search(qapp, route):
         page = window._pages['Ava']
         rows = [page.base.itemAt(i).widget() for i in range(page.base.count())]
         rows = [row for row in rows if isinstance(row, SettingRow)]
-        # 1075: the Ava held-key summary takes the editor's place in this group.
-        assert [r.widget_keys[0] for r in rows[:6]] == ['providerRoute', 'cloud_provider', 'cloud_api_key', 'cloud_model', 'ava_cmd_model', 'ava_key_value']
+        # 1296: Ava's own picker occupies the existing held-key row.
+        assert [r.widget_keys[0] for r in rows[:6]] == ['providerRoute', 'cloud_provider', 'cloud_api_key', 'cloud_model', 'ava_cmd_model', 'ava_key_picker']
         assert window._rows_by_widget['cloud_provider'].isVisible() == (route == 'cloud')
         assert window._rows_by_widget['ava_cmd_model'].isVisible() == (route == 'local')
         route_control = window._widgets['providerRoute']
         assert [route_control.itemText(i) for i in range(3)] == ['Off', 'On this PC', 'In the cloud']
-        summary = window._rows_by_widget['ava_key_value']
-        assert summary.page_name == 'Ava'
-        assert summary.isAncestorOf(window._widgets['ava_mode_key_off_note'])
+        ava_editor = window._rows_by_widget['ava_key_picker']
+        assert ava_editor.page_name == 'Ava'
+        assert ava_editor.isAncestorOf(window._widgets['ava_mode_key_off_note'])
         assert page.smart_corrections.isAncestorOf(window._widgets['sc_status_label'])
         for name, row in window._rows_by_widget.items():
             if name.startswith('sc_'):
@@ -250,7 +250,7 @@ def test_ava_rows_grouping_and_search(qapp, route):
         window._stack.setCurrentWidget(page)
         window._apply_search_filter()
         assert window._stack.currentWidget() is page
-        assert summary.isVisible()
+        assert ava_editor.isVisible()
     finally:
         window.hide()
         window.deleteLater()

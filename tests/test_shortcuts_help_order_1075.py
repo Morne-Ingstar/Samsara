@@ -78,10 +78,12 @@ def test_shortcuts_and_help_order(window):
 
 def test_ava_summary_search_and_keyboard_navigation(window, qapp):
     window.show_tab('Ava')
-    ava = window._rows_by_widget['ava_key_value']
+    # 1296: keyboard activation starts capture on the Ava page.
+    ava = window._rows_by_widget['ava_key_picker']
     assert ava.isAncestorOf(window._widgets['ava_mode_key_off_note'])
     assert not window._widgets['ava_mode_key_off_note'].isHidden()
-    assert window._widgets['ava_key_value'].text() == 'Right Alt'
+    picker = window._widgets['ava_key_picker']
+    assert picker.text() == 'Right Alt'
     window._search_edit.setText('Ava held key')
     window._apply_search_filter()
     shortcut = window._rows_by_widget['ava_mode_key']
@@ -90,17 +92,16 @@ def test_ava_summary_search_and_keyboard_navigation(window, qapp):
     assert not ava.isHidden() and not shortcut.isHidden()
     assert not ava.config_keys
     assert shortcut.config_keys == ('ava_mode_key',)
-    for key in (Qt.Key.Key_Space, Qt.Key.Key_Return, Qt.Key.Key_Enter):
-        window.show_tab('Ava')
-        change = window._widgets['ava_key_change']
-        window.activateWindow()
-        change.setFocus()
-        qapp.processEvents()
-        assert change.hasFocus()
-        QTest.keyClick(change, key)
-        qapp.processEvents()
-        assert window._stack.currentWidget() is window._pages['Shortcuts']
-        assert window._widgets['ava_mode_key'].hasFocus()
+    window.show_tab('Ava')
+    window.activateWindow()
+    picker.setFocus()
+    qapp.processEvents()
+    assert picker.hasFocus()
+    QTest.keyClick(picker, Qt.Key.Key_Space)
+    assert picker._capturing
+    QTest.keyClick(picker, Qt.Key.Key_F9)
+    assert picker.combo == 'f9'
+    assert window._stack.currentWidget() is window._pages['Ava']
 
 
 def test_ava_wake_and_alarms_apply_once_and_cancel_reverts(window):
@@ -111,9 +112,9 @@ def test_ava_wake_and_alarms_apply_once_and_cancel_reverts(window):
     _capture(window._widgets['wake_word_hotkey'], 'ctrl', 'alt', 'y')
     _capture(window._widgets['alarms_complete_key'], 'f10')
     _capture(window._widgets['alarms_dismiss_key'], 'f11')
-    # Ava can be built after editing Shortcuts and must show the staged value.
+    # 1296: the Ava picker can be built after editing Shortcuts.
     window.show_tab('Ava')
-    assert window._widgets['ava_key_value'].text() == 'F9'
+    assert window._widgets['ava_key_picker'].text() == 'F9'
     assert window.app.config == before
     window.app.save_config.assert_not_called()
     window._apply_button.click()
@@ -128,8 +129,8 @@ def test_ava_wake_and_alarms_apply_once_and_cancel_reverts(window):
     assert window.app.config['alarms']['complete_hotkey'] == saved['alarms_complete_key']
     assert window.app.config['alarms']['dismiss_hotkey'] == saved['alarms_dismiss_key']
     window.show_tab('Ava')
-    summary = window._widgets['ava_key_value']
-    assert summary.text() == 'F9'
+    picker = window._widgets['ava_key_picker']
+    assert picker.text() == 'F9'
     window.show_tab('Shortcuts')
     assert {key: window._widgets[key].combo for key in saved} == saved
     window._pages['Shortcuts'].advanced.reveal()
@@ -137,10 +138,10 @@ def test_ava_wake_and_alarms_apply_once_and_cancel_reverts(window):
     _capture(window._widgets['wake_word_hotkey'], 'ctrl', 'alt', 'u')
     _capture(window._widgets['alarms_complete_key'], 'f12')
     _capture(window._widgets['alarms_dismiss_key'], 'f4')
-    assert summary.text() == 'F6'
+    assert picker.text() == 'F6'
     window._close_button.click()
     window.show_tab('Ava')
-    assert window._widgets['ava_key_value'].text() == 'F9'
+    assert window._widgets['ava_key_picker'].text() == 'F9'
     window.show_tab('Shortcuts')
     assert {key: window._widgets[key].combo for key in saved} == saved
     window.app.save_config.assert_called_once()

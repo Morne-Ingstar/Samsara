@@ -130,10 +130,11 @@ def test_settings_note_tracks_ava_route_and_keeps_capture(qapp, monkeypatch, qt_
     note = window._widgets['ava_mode_key_off_note']
     capture = window._widgets['ava_mode_key']
     assert note.text() == NOTE and not note.isHidden()
-    # 1075: the off note stays in Ava while the editor moves to Shortcuts.
-    summary = window._rows_by_widget['ava_key_value']
+    # 1296: the off note stays with the Ava page's own picker.
+    ava_editor = window._rows_by_widget['ava_key_picker']
     editor = window._rows_by_widget['ava_mode_key']
-    assert summary.page_name == 'Ava' and summary.isAncestorOf(note)
+    assert ava_editor.page_name == 'Ava' and ava_editor.isAncestorOf(note)
+    assert ava_editor.isAncestorOf(window._widgets['ava_key_picker'])
     assert editor.page_name == 'Shortcuts' and editor.isAncestorOf(capture)
     assert capture.combo == 'right_alt'
     window._widgets['providerRoute'].setCurrentIndex(1)

@@ -2,6 +2,7 @@
 
 TITLE = "Shortcuts"
 SUBTITLE = "Keep your essential actions within reach."
+AVA_HELD_KEY_COPY = ("Ava held key", "Hold a key while speaking to Ava.")
 BASE = [
     [
         "Primary dictation",
@@ -22,8 +23,7 @@ BASE = [
         "command_mode.button,command_mode.mode"
     ],
     [
-        "Ava held key",
-        "Hold a key while speaking to Ava.",
+        *AVA_HELD_KEY_COPY,
         "ava_mode_key",
         "ava_mode_key"
     ],

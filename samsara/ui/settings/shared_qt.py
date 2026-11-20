@@ -323,6 +323,22 @@ class _HotkeyButton(HoldKeyCapture, QPushButton):
     def combo(self) -> str:
         return self._combo
 
+    def linked_hold_picker(self):
+        """Create a second editor for the same hold binding."""
+        def update_source():
+            self._show_linked_binding(picker.combo)
+            if self._on_change is not None:
+                self._on_change()
+
+        picker = _HotkeyButton(self.combo, on_change=update_source)
+        picker.configure_hold(self._hold_action, self._hold_config, self._hold_overrides)
+        self.bindingChanged.connect(picker._show_linked_binding)
+        return picker
+
+    def _show_linked_binding(self, combo: str):
+        self._combo = combo
+        self.setText(self._idle_text(combo))
+
     @staticmethod
     def _idle_text(combo: str) -> str:
         return _readable_hotkey(combo) or "\u2014"

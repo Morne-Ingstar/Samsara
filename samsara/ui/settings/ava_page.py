@@ -1,5 +1,7 @@
 """Ava Settings destination with one consent-gated route control."""
 
+from .shortcuts_page import AVA_HELD_KEY_COPY
+
 TITLE = "Ava"
 SUBTITLE = "Choose how Ava helps, with permissions you control."
 BASE = [
@@ -34,10 +36,9 @@ BASE = [
         "ava_command_session.model"
     ],
     [
-        "Ava held key",
-        "Hold a key while speaking to Ava.",
-        "ava_key_value,ava_key_change",
-        ""
+        *AVA_HELD_KEY_COPY,
+        "ava_key_picker",
+        ""  # The Shortcuts control remains the config inventory entry.
     ],
     [
         "Before Ava can answer",
@@ -224,27 +225,19 @@ def _add_setup_guide(owner, page):
     return refresh_line
 
 
-def _prepare_held_key_summary(owner):
-    from PySide6.QtCore import Qt
-    from PySide6.QtWidgets import QLabel, QPushButton
-    from .shared_qt import _readable_hotkey
+def _prepare_held_key_picker(owner):
+    from PySide6.QtWidgets import QVBoxLayout, QWidget
+    from samsara.ui import theme
 
-    capture = owner._widgets["ava_mode_key"]
-    label = QLabel()
-    label.setTextFormat(Qt.TextFormat.PlainText)
-    label.setAccessibleName("Current Ava held key")
-
-    def show_key(combo):
-        label.setText(_readable_hotkey(combo) or "\u2014")
-
-    show_key(capture.combo)
-    capture.bindingChanged.connect(show_key)
-    button = QPushButton("Change in Shortcuts")
-    button.setAutoDefault(True)
-    button.clicked.connect(lambda: owner._focus_setting_row("Shortcuts", "ava_mode_key"))
-    owner._widgets["ava_key_value"] = label
-    owner._widgets["ava_key_change"] = button
-    owner._widgets["ava_key_value_warn"] = owner._widgets["ava_mode_key_off_note"]
+    picker = owner._widgets["ava_mode_key"].linked_hold_picker()
+    notes = QWidget()
+    layout = QVBoxLayout(notes)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(theme.SPACE_1)
+    layout.addWidget(picker.reason_label())
+    layout.addWidget(owner._widgets["ava_mode_key_off_note"])
+    owner._widgets["ava_key_picker"] = picker
+    owner._widgets["ava_key_picker_warn"] = notes
 
 
 def build(owner):
@@ -260,7 +253,7 @@ def build(owner):
         updates["ava"] = ava
         return updates
     owner._source_saves["ava"][0] = save_log
-    _prepare_held_key_summary(owner)
+    _prepare_held_key_picker(owner)
     page = owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)
     owner._widgets["ava_mode_key_off_note"].setVisible(not owner._widgets["ava_enabled"].isChecked())
     refresh_guide_line = _add_setup_guide(owner, page)

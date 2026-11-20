@@ -348,16 +348,6 @@ class _SettingsWindow(
         self._sidebar.setCurrentRow(_TAB_NAMES.index(name))
         window_activation.surface_requested(self)
 
-    def _focus_setting_row(self, page_name, widget_key):
-        self._sidebar.setCurrentRow(_TAB_NAMES.index(page_name))
-        row = self._rows_by_widget[widget_key]
-        if row.isHidden():
-            self._search_edit.clear()
-            self._search_debounce.stop()
-            self._apply_search_filter()
-        self._pages[page_name].ensureWidgetVisible(row, 0, 16)
-        self._widgets[widget_key].setFocus()
-
     def _prepare_requested_visit(self):
         if not self.isVisible() and self._visit_shown:
             self._refresh_visit()
