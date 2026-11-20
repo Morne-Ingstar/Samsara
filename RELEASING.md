@@ -1,6 +1,6 @@
 # Releasing Samsara
 
-## Asset layout from 0.40.4 (1003)
+## Asset layout from 0.40.4
 
 The version release contains exactly `SamsaraSetup-<version>.exe`,
 `Samsara-Windows-v<version>.zip`, `SamsaraSetup-<version>.exe.sha256`, and
@@ -10,9 +10,8 @@ files, and `manifest-<version>.json` / `manifest-latest.json` to one fixed
 release tagged `addons`, titled **Samsara add-ons**, normal release and never
 Latest. Do not remove or rename any asset on 0.40.3 or older releases.
 The layout below supersedes the historical 0.40.3 asset list in this document.
-1002 owns the CI upload guards; tag-triggered CI must not replace local
-assets. Its deliberate CI upload path must follow this two-place allowlist
-before being used for 0.40.4+; this task does not change workflows.
+Tag-triggered CI must not replace local assets. The deliberate CI upload path
+must follow this two-place allowlist before being used for 0.40.4+.
 
 1. Create `addons` once, explicitly excluding it from Latest:
    `gh release create addons --title "Samsara add-ons" --notes "Optional component downloads." --latest=false`.
@@ -277,8 +276,9 @@ build begins.
 - **Version identity is enforced before build.** The release tag,
   `samsara.__version__`, and `samsara.smart_actions_bridge.SAMSARA_VERSION`
   must agree or `tools/check_release_version.py` fails the workflow.
-- **`softprops/action-gh-release` is pinned to an exact commit SHA** in both
-  release workflows. Several `actions/*` dependencies still use major-version tags.
+- **`softprops/action-gh-release` is pinned to an exact commit SHA** in
+  **Release Build (CPU)** (`release-build.yml`). The publisher (`release.yml`)
+  uses the `v2` tag. Several `actions/*` dependencies still use major-version tags.
 - **Publisher concurrency group** (`release-${{ inputs.version }}`)
   queues runs for the same tag (`cancel-in-progress: false`).
 

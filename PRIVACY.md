@@ -62,7 +62,6 @@ in-memory “try again” recovery remains available.
 | **Web searches, links and integrations** | Contact the website, service or network device involved in the requested action. Their own data policies apply. |
 | **Packaged-app update checks** | Contact GitHub Releases. GitHub receives ordinary connection metadata, including IP address, request time and user agent. |
 
-API providers may charge for usage independently of Samsara.
 Cloud Ava is off by default. Turning Ava off stops Ava's model requests;
 it does not disable the separate commands and integrations above.
 

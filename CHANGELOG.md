@@ -32,7 +32,7 @@ All notable changes to Samsara are documented here.
 - **More voice commands.** New commands for on-screen messages, memo playback, dictation modes, searching History and commands, copying selected text and more.
 - **Tidier Help.** Help keeps its layout, with Quick Reference and Offline explanations in the guide menu.
 
-## [0.42.2] - 2026-11-13
+## [0.42.2] - 2026-11-13 (unpublished)
 
 0.42.2 - cleaner dictation that keeps your words and joins your sentences, easier hands-free, and more voice commands.
 
@@ -58,7 +58,7 @@ All notable changes to Samsara are documented here.
 - **More voice commands.** New commands for on-screen messages, memo playback, dictation modes, searching History and commands, copying selected text and more.
 - **Tidier Help.** Help keeps its layout, with Quick Reference and Offline explanations in the guide menu.
 
-## [0.42.1] - 2026-11-07
+## [0.42.1] - 2026-11-07 (unpublished)
 
 0.42.1 - steadier dictation that keeps every word, easier hands-free, clearer messages, and more voice commands.
 
@@ -81,7 +81,7 @@ All notable changes to Samsara are documented here.
 - **More voice commands.** New commands for on-screen messages, memo playback, dictation modes, searching History and commands, copying selected text and more.
 - **Tidier Help.** Help keeps its layout, with Quick Reference and Offline explanations in the guide menu.
 
-## [0.42.0] - 2026-11-06
+## [0.42.0] - 2026-11-06 (unpublished)
 
 0.42.0 - steadier dictation, easier hands-free, clearer messages, and more voice commands.
 
@@ -100,7 +100,7 @@ All notable changes to Samsara are documented here.
 - **More voice commands.** New commands for on-screen messages, memo playback, dictation modes, searching History and commands, copying selected text and more.
 - **Tidier Help.** Help keeps its layout, with Quick Reference and Offline explanations in the guide menu.
 
-## [0.41.2] - 2026-11-04
+## [0.41.2] - 2026-11-04 (unpublished)
 
 0.41.2 - dictation that is never thrown away, cleaner punctuation, a live microphone check, and fewer false warnings.
 
@@ -111,7 +111,7 @@ All notable changes to Samsara are documented here.
 - **Fewer false warnings.** Samsara no longer warns that a connected app changed when a check was only slow.
 - **Clearer Help.** Every Cockpit and Stats voice command has a one-sentence description.
 
-## [0.41.0] - 2026-11-03
+## [0.41.0] - 2026-11-03 (unpublished)
 
 0.41.0 - steadier dictation, a Stats page on Home, saved window layouts, clearer messages, and a tidier Settings.
 
@@ -1404,7 +1404,6 @@ This release bundles all work since v0.9.5: the new main hub window, dictation h
 
 - Scrollable Settings tabs — content no longer cut off
 - Model size dropdown shows disk space requirements
-- Created Samsara-dev folder for active development
 
 ---
 

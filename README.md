@@ -8,7 +8,7 @@ Hands-free dictation lets you speak a thought, then send it to the text box you'
 
 Samsara is free. No word limits, subscriptions, or paid feature tiers—and no email address or username required.
 
-**[Download for Windows](https://github.com/Morne-Ingstar/Samsara/releases/latest)**
+**[Download for Windows](https://github.com/Morne-Ingstar/Samsara/releases/download/v0.42.3/SamsaraSetup-0.42.3.exe)**
 · [Website](https://morneis.com/samsara)
 · [Discord](https://discord.gg/tPYvf369hQ)
 
