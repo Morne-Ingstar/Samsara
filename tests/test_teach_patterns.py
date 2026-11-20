@@ -397,9 +397,8 @@ class TestGrabClipboardText:
 
 class TestGrabSelectionText:
     """Mocks samsara.clipboard's module-level functions and pyautogui --
-    no real clipboard or keyboard event touched. Exercises the exact
-    algorithm commit 4ca1ad8 was built for and left unwired: snapshot ->
-    Ctrl+C -> poll sequence number -> read-or-refuse -> ALWAYS restore."""
+    no real clipboard or keyboard event touched. Exercises the preserved
+    Ctrl+C transaction, including the no-op and guarded restore paths."""
 
     def test_seq_advances_reads_and_restores(self, monkeypatch):
         from samsara import clipboard as clipboard_module
@@ -432,7 +431,7 @@ class TestGrabSelectionText:
 
         pre_snapshot = clipboard_module.ClipboardSnapshot({1: b"original"})
         monkeypatch.setattr(clipboard_module, "save_clipboard", lambda: pre_snapshot)
-        # Sequence number never changes -- "nothing was selected".
+        # 1287: no clipboard update means there is no change to undo.
         monkeypatch.setattr(clipboard_module, "get_clipboard_sequence_number", lambda: 100)
         monkeypatch.setattr(pyautogui, "hotkey", lambda *a, **kw: None)
 
@@ -442,15 +441,10 @@ class TestGrabSelectionText:
         result = tp.grab_selection_text(timeout_s=0.1)
 
         assert result is None
-        assert restore_calls == [pre_snapshot], "clipboard must be restored even on the empty-selection path"
+        assert restore_calls == []
 
     def test_pre_snapshot_seq_left_unset_so_restore_is_not_self_blocked(self, monkeypatch):
-        """Regression lock for the documented design decision: the
-        pre-Ctrl+C snapshot must NOT have .seq set to seq_before, or
-        restore_clipboard's own seq-guard (commit 4ca1ad8) would see
-        "clipboard changed since snapshot" (true -- our own Ctrl+C did
-        that) and silently skip the restore, permanently clobbering the
-        user's real clipboard with whatever was just selected."""
+        """1287: guard restore with the post-copy sequence, not the backup's."""
         from samsara import clipboard as clipboard_module
         import pyautogui
         import pyperclip
@@ -479,8 +473,7 @@ class TestGrabSelectionText:
 
         tp.grab_selection_text(timeout_s=1.0)
 
-        assert captured_snapshot['snap'].seq is None, \
-            "pre-Ctrl+C snapshot's .seq must stay None -- see grab_selection_text's docstring"
+        assert captured_snapshot['snap'].seq == 101
         assert real_restore_calls == [captured_snapshot['snap']]
 
     def test_restores_even_if_read_raises(self, monkeypatch):

@@ -25,6 +25,7 @@ def rig(monkeypatch):
     monkeypatch.setattr(selection, 'capture_result', lambda *_: state.selected)
     monkeypatch.setattr(clipboard, '_paste_target', lambda: state.selected.target)
     monkeypatch.setattr(teach_patterns, 'grab_selection_block', lambda: state.selected.text)
+    monkeypatch.setattr(teach_patterns, '_copy_modifiers_down', lambda: False)
     monkeypatch.setattr(session.thread_registry, 'spawn', lambda _name, fn, **_: fn())
     monkeypatch.setattr(session.thread_registry, 'timer',
                         lambda _name, _delay, fn, **_: state.timers.append(fn))
@@ -96,7 +97,8 @@ def test_empty_and_unknown_never_silently_retarget_explicit_selection(rig, state
     rig.manager.draft_document.append(SOURCE)
     request = typed(rig, target)
     result = actions.propose_and_stage(rig.app, request)
-    assert result is (target == 'auto' and state == 'verified_empty')
+    # 1287: unsupported passive capture allows auto to use the draft.
+    assert result is (target == 'auto' and state in {'verified_empty', 'unsupported'})
     assert not rig.mutations and not rig.window.calls
     if not result:
         assert rig.calls == [] and session.pending() is None
@@ -473,7 +475,8 @@ def test_native_adapter_protected_unknown_and_range_outcomes(rig, monkeypatch, k
         with pytest.raises(RuntimeError):
             selection._native_selection(TARGET)
     elif kind in {'password', 'readonly', 'elevated', 'terminal'}:
-        assert result.state == 'unsupported' and not sent
+        # 1287: protected controls never receive the explicit copy fallback.
+        assert result.state == 'protected' and not sent
     elif kind == 'selected':
         assert result.state == 'selected' and result.text == chr(0x1F642) and result.span == (2, 4)
     elif kind == 'empty':

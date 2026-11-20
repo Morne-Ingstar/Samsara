@@ -74,6 +74,7 @@ the dictionary) -- see each function's docstring for exactly which paths
 skip the readback and why that's still safe.
 """
 import difflib
+import logging
 import re
 import threading
 import time
@@ -481,15 +482,15 @@ def grab_selection_text(timeout_s: float = _SELECTION_POLL_TIMEOUT_S) -> "str | 
     return _grab_selection_text(timeout_s, _sanitize_source_text)
 
 
-def grab_selection_block(timeout_s: float = _SELECTION_POLL_TIMEOUT_S) -> "str | None":
-    """Raw selected prose, capped without truncation; sequence proof required."""
+def grab_selection_block(timeout_s: float = _SELECTION_POLL_TIMEOUT_S, *, before_copy=None) -> "str | None":
+    """Raw selected prose, capped without truncation; a fresh copy is required."""
     def validate(raw):
         return raw if raw and raw.strip() and len(raw) <= 20_000 else None
 
-    return _grab_selection_text(timeout_s, validate, require_sequence=True)
+    return _grab_selection_text(timeout_s, validate, require_sequence=True, before_copy=before_copy)
 
 
-def grab_selection_block_result(timeout_s: float = _SELECTION_POLL_TIMEOUT_S):
+def grab_selection_block_result(timeout_s: float = _SELECTION_POLL_TIMEOUT_S, *, before_copy=None):
     """Expose the existing preserved transaction without inventing emptiness.
 
     A no-op Ctrl+C is failed/unknown, not verified_empty. Callers need a safe
@@ -497,89 +498,131 @@ def grab_selection_block_result(timeout_s: float = _SELECTION_POLL_TIMEOUT_S):
     """
     from samsara.ava_edit.targets import SelectionCapture
     try:
-        text = grab_selection_block(timeout_s)
-    except Exception:
+        text = (grab_selection_block(timeout_s) if before_copy is None
+                else grab_selection_block(timeout_s, before_copy=before_copy))
+    except Exception as exc:
+        _selection_logger.debug("[AVA-EDIT] Selection copy failed: %s", type(exc).__name__)
         return SelectionCapture('failed')
     return SelectionCapture('selected', text) if text else SelectionCapture('failed')
 
 
-def _grab_selection_text(timeout_s, transform, *, require_sequence=False):
-    """Grab the CURRENTLY SELECTED/HIGHLIGHTED text (not the clipboard's
-    existing content) by sending Ctrl+C and reading what changed, then
-    restoring the clipboard to exactly what it held before this call.
+_COPY_MODIFIERS = (0x10, 0x11, 0x12, 0x5B, 0x5C)  # Shift, Ctrl, Alt, Win
+_COPY_MODIFIER_WAIT_S = 0.6
+_selection_logger = logging.getLogger(__name__)
 
-    Algorithm (spec-mandated): snapshot -> Ctrl+C -> poll the clipboard
-    SEQUENCE NUMBER (samsara.clipboard.get_clipboard_sequence_number, from
-    commit 4ca1ad8) for up to `timeout_s`; if it never advances, nothing
-    was selected (Ctrl+C was a no-op) -- return None. If it advances, read
-    the newly-copied text. Either way, the pre-existing clipboard content
-    is ALWAYS restored (finally) before returning.
 
-    Deliberately does NOT set ClipboardSnapshot.seq on the pre-Ctrl+C
-    snapshot before restoring: that guard exists to detect a USER
-    clipboard change during a paste window and skip restoring over it (see
-    samsara/clipboard.py's restore_clipboard). Here, the sequence change
-    we're about to restore over is OUR OWN Ctrl+C, not a concurrent user
-    edit -- setting .seq would make restore_clipboard see "clipboard
-    changed since snapshot" (true, but expected and intentional) and
-    silently skip the restore, leaving the user's clipboard clobbered with
-    whatever we just selected. Leaving .seq at its default None opts this
-    call out of that check entirely, which is the correct behavior for
-    this specific, self-caused clipboard change.
-    """
+def _copy_modifiers_down():
+    from samsara import clipboard
+    state = getattr(clipboard._user32, 'GetAsyncKeyState', None)
+    return bool(state and any(state(key) & 0x8000 for key in _COPY_MODIFIERS))
+
+
+def _wait_for_copy_modifiers():
+    deadline = time.monotonic() + _COPY_MODIFIER_WAIT_S
+    while _copy_modifiers_down():
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(_SELECTION_POLL_INTERVAL_S)
+    return True
+
+
+def _grab_selection_text(timeout_s, transform, *, require_sequence=False, before_copy=None):
+    """Serialize save, Ctrl+C, sequence-proven read, and best-effort restore."""
     import pyautogui
     from samsara import clipboard as clipboard_module
 
-    # Serialize this transaction with paste_with_preservation and other grabs.
+    if not _wait_for_copy_modifiers():
+        _selection_logger.debug("[AVA-EDIT] Selection copy refused: modifier release timed out")
+        return None
     with clipboard_module.clipboard_lock:
         return _capture_selection_locked(clipboard_module, pyautogui, timeout_s,
-                                         transform, require_sequence)
+                                         transform, require_sequence, before_copy)
 
 
 def _capture_selection_locked(clipboard_module, pyautogui, timeout_s,
-                              transform, require_sequence):
-    pre_snapshot = clipboard_module.save_clipboard()
-    if not getattr(pre_snapshot, "complete", True):
-        return None  # No mutation: an incomplete snapshot cannot be restored.
-    try:
-        seq_before = clipboard_module.get_clipboard_sequence_number()
-        if require_sequence and seq_before is None:
-            return None
-        if isinstance(pre_snapshot, clipboard_module.ClipboardSnapshot):
-            # Empty originals need the same restore marker as paste transport.
-            pre_snapshot.pasted_text = ""
-        pyautogui.hotkey('ctrl', 'c')
+                              transform, require_sequence, before_copy=None):
+    from samsara.clipboard_recovery import lost_is_image_only
 
+    pre_snapshot = clipboard_module.save_clipboard()
+    complete = getattr(pre_snapshot, "complete", True)
+    if not complete and not lost_is_image_only(pre_snapshot):
+        # A wholly unreadable clipboard may contain text. Keep it untouched.
+        _selection_logger.warning("[AVA-EDIT] Selection copy skipped: clipboard text preservation is unknown")
+        _selection_logger.debug("[AVA-EDIT] Selection copy refused: clipboard backup did not prove text preservation")
+        return None
+
+    source_seq = getattr(pre_snapshot, 'source_seq', None)
+    # Windows can advertise delayed-rendered text before advancing its sequence.
+    # A format that was absent immediately before Ctrl+C is safe to probe.
+    text_available = getattr(clipboard_module._user32, 'IsClipboardFormatAvailable', None)
+    text_formats = {clipboard_module.CF_UNICODETEXT, clipboard_module.CF_TEXT,
+                    clipboard_module.CF_OEMTEXT}
+    await_new_text = (source_seq is not None and text_available is not None
+                      and text_formats.isdisjoint(pre_snapshot)
+                      and not text_available(clipboard_module.CF_UNICODETEXT))
+    seq_before = clipboard_module.get_clipboard_sequence_number()
+    if require_sequence and not seq_before:
+        _selection_logger.debug("[AVA-EDIT] Selection copy refused: clipboard sequence unavailable")
+        return None
+    if source_seq is not None and seq_before != source_seq:
+        _selection_logger.debug("[AVA-EDIT] Selection copy refused: clipboard changed after backup")
+        return None
+    if before_copy is not None and not before_copy():
+        _selection_logger.debug("[AVA-EDIT] Selection copy refused: selection target changed")
+        return None
+    if _copy_modifiers_down():
+        _selection_logger.debug("[AVA-EDIT] Selection copy refused: modifier held before Ctrl+C")
+        return None
+    if not complete:
+        _selection_logger.warning("[AVA-EDIT] Selection copy: clipboard image can only be restored in part")
+
+    copy_seq = None
+    raw = None
+    restored = True
+    try:
+        pyautogui.hotkey('ctrl', 'c')
         deadline = time.monotonic() + timeout_s
-        advanced = False
         while time.monotonic() < deadline:
             current_seq = clipboard_module.get_clipboard_sequence_number()
-            if current_seq is not None and seq_before is not None and current_seq != seq_before:
-                advanced = True
+            if current_seq and (current_seq != seq_before
+                                or (await_new_text and text_available(clipboard_module.CF_UNICODETEXT))):
+                copy_seq = current_seq
                 break
-            if current_seq is None or seq_before is None:
-                if require_sequence:
-                    return None
-                # Sequence number unavailable (non-Windows / API failure) --
-                # can't detect "nothing selected" reliably; treat as if it
-                # advanced and let sanitization catch genuinely empty text.
-                advanced = True
+            if not require_sequence and not seq_before:
                 break
             time.sleep(_SELECTION_POLL_INTERVAL_S)
-
-        if not advanced:
-            return None
-
-        import pyperclip
-        try:
-            raw = pyperclip.paste()
-        except Exception:
-            raw = None
-        return transform(raw)
+        if copy_seq is not None or (not require_sequence and not seq_before):
+            import pyperclip
+            try:
+                raw = pyperclip.paste()
+            except Exception:
+                _selection_logger.warning("[AVA-EDIT] Selection copy could not read clipboard text")
     finally:
-        restored = clipboard_module.restore_clipboard(pre_snapshot)
-        if require_sequence and not restored:
-            raise RuntimeError("Clipboard restoration failed")
+        if copy_seq is None and seq_before:
+            # A key-send error can occur after Windows received part of it.
+            current_seq = clipboard_module.get_clipboard_sequence_number()
+            if current_seq and current_seq != seq_before:
+                copy_seq = current_seq
+        if copy_seq is not None or not seq_before:
+            if isinstance(pre_snapshot, clipboard_module.ClipboardSnapshot):
+                pre_snapshot.seq = copy_seq
+                pre_snapshot.pasted_text = raw
+            try:
+                restored = clipboard_module.restore_clipboard(pre_snapshot)
+            except Exception:
+                restored = False
+            if not restored:
+                _selection_logger.warning("[AVA-EDIT] Selection copy did not fully restore the clipboard")
+    if not restored and getattr(pre_snapshot, 'restore_status', None) not in {'put_back', 'kept_newer'}:
+        _selection_logger.debug("[AVA-EDIT] Selection copy refused: clipboard could not be restored")
+        return None
+    if copy_seq is None and seq_before:
+        _selection_logger.debug("[AVA-EDIT] Selection copy refused: no clipboard update after Ctrl+C")
+        return None
+    result = transform(raw)
+    if result is None:
+        _selection_logger.debug("[AVA-EDIT] Selection copy refused: copied text missing or outside capture limits")
+    return result
 
 
 # ============================================================================

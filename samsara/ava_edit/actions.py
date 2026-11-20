@@ -22,7 +22,8 @@ class EditTurn(str):
 def ingress_payload(app, text, context=''):
     # Do not put a source passage in the conversation prompt. Context previously
     # contained the draft; the shared editor resolves it locally when needed.
-    return EditTurn(text, targets.snapshot(app), text)
+    explicit = intent.selection_action(text) is None and intent.selection_request(text) == 'selection'
+    return EditTurn(text, targets.snapshot(app, explicit_selection=explicit), text)
 
 
 def from_utterance(app, text, *, snapshot=None):
@@ -35,7 +36,8 @@ def from_utterance(app, text, *, snapshot=None):
             and getattr(manager, 'dictate_pending_buffer', '')
             and intent.draft_cleanup_scope(text) is not None):
         target = 'draft'
-    captured = snapshot or targets.snapshot(app, selection_needed=target in {'auto', 'selection'})
+    captured = snapshot or targets.snapshot(app, selection_needed=target in {'auto', 'selection'},
+                                            explicit_selection=target == 'selection')
     return targets.EditRequest(target, text, captured, text)
 
 

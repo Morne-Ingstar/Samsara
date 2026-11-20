@@ -67,6 +67,7 @@ def rig(monkeypatch):
     # Keep fake time local: other test-owned workers use the real time module.
     clock = SimpleNamespace(sleep=sleep, monotonic=lambda: state.clock)
     monkeypatch.setattr(tp, "time", clock)
+    monkeypatch.setattr(tp, "_copy_modifiers_down", lambda: False)
     monkeypatch.setattr(cb, "time", clock)
     monkeypatch.setattr(session.thread_registry, "spawn", lambda _name, fn, **_: fn())
     monkeypatch.setattr(session, "enabled", lambda _: False)
@@ -115,8 +116,12 @@ def test_capture_restores_every_mutating_path(rig, monkeypatch, case):
     else:
         assert tp.grab_selection_block() == (SOURCE if case == "success" else None)
     assert rig.text == "original clipboard"
-    assert rig.restored == rig.snapshots
-    assert all(s.seq is None for s in rig.snapshots)
+    # 1287: only a changed clipboard is restored, with the copy sequence.
+    if case in {"success", "empty", "read_error"}:
+        assert rig.restored == rig.snapshots
+        assert rig.restored[0].seq == 11
+    else:
+        assert not rig.restored
 
 
 def test_block_is_raw_and_teaching_bounds_are_unchanged(rig):
@@ -144,9 +149,13 @@ def test_missing_sequence_does_not_read_old_clipboard(rig, monkeypatch):
 def test_incomplete_snapshot_never_copies_or_restores_partial_data(rig, monkeypatch):
     saved = cb.ClipboardSnapshot({1: b"partial"})
     saved.lost[2] = "unavailable format"
+    saved.fake_text = rig.text
+    saved.source_seq = rig.seq
     monkeypatch.setattr(cb, "save_clipboard", lambda: saved)
-    assert tp.grab_selection_block() is None
-    assert rig.keys == rig.restored == []
+    # 1287: partial picture loss permits a sequence-proven copy and text restore.
+    assert tp.grab_selection_block() == SOURCE
+    assert rig.keys == [("ctrl", "c")]
+    assert rig.restored == [saved] and rig.text == "original clipboard"
 
 
 def test_genuinely_empty_original_is_restored_by_real_empty_restore_branch(rig, monkeypatch):
@@ -289,7 +298,8 @@ def test_focus_race_during_paste_preparation_restores_clipboard(rig, app, monkey
 
 
 def test_apply_copy_exception_keeps_pending_and_restores(rig, app, monkeypatch):
-    assert session.handle_utterance(app, "clean up selection")
+    # 1287: only the legacy unbound adapter still needs its pre-paste copy.
+    assert selection.propose_and_stage(app, "clean up selection")
     staged = session.pending()
     monkeypatch.setattr(sys.modules["pyautogui"], "hotkey",
                         lambda *_: (_ for _ in ()).throw(RuntimeError("copy failed")))
@@ -305,8 +315,9 @@ def test_apply_and_discard_share_slot_and_preserve_clipboard(rig, app):
     assert rig.pasted == [RESULT]
     assert session.pending() is None
     assert rig.text == "original clipboard"
-    # 1036b: source snapshot is passive; revalidation copy and paste restore.
-    assert len(rig.restored) == 2
+    # 1287: native range revalidation is passive; only the paste restores.
+    assert rig.keys == [("ctrl", "v")]
+    assert len(rig.restored) == 1
     rig.selected = SOURCE
     assert session.handle_utterance(app, "clean up selection")
     assert session.handle_utterance(app, "discard")
@@ -325,7 +336,9 @@ def test_nothing_selected_is_visible_and_spoken(rig, app, selected):
 
 
 def test_missing_control_identity_fails_closed(rig, app):
-    rig.target = (101, 102, None)
+    # 1287: only the missing foreground here prevents Ctrl+C. A missing child
+    # with a known foreground process is covered by the real-app tests.
+    rig.target = (0, 0, 0)
     assert session.handle_utterance(app, "clean up selection")
     assert session.pending() is None
     assert rig.keys == []

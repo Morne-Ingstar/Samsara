@@ -359,16 +359,28 @@ def apply(app) -> dict:
     refusal. Staged-draft proposals clear on an answer; selection proposals
     remain pending when their original target can no longer be verified.
     """
-    staged = pending()
+    def refuse(reason, *, retire=True):
+        if retire:
+            with _lock:
+                if _pending is staged and staged is not None:
+                    clear()
+        _chip(app, "edit_refused", {"reason": reason})
+        _say(app, reason)
+        return {"applied": False, "reason": reason, "chars": 0}
+
+    with _lock:
+        staged = _pending
+        expired = staged is not None and staged.expired()
     if staged is None:
-        _chip(app, "edit_refused", {"reason": "nothing staged"})
-        return {"applied": False, "reason": "nothing staged", "chars": 0}
+        return refuse("nothing staged", retire=False)
+    if expired:
+        return refuse("the edit expired")  # PLACEHOLDER COPY (1287)
     if staged.request is not None:
         from samsara.ava_edit import targets
         if (not targets.request_valid(app, staged.request.snapshot)
                 or (staged.bound_target.kind != 'selection'
                     and not targets.source_valid(app, staged.bound_target))):
-            return {"applied": False, "reason": "the text changed", "chars": 0}
+            return refuse("the text changed")
     if staged.selection_target is not None:
         from samsara.ava_edit import selection
         return selection.apply(app, staged)
@@ -376,7 +388,7 @@ def apply(app) -> dict:
         manager, document_id, revision, original, start, *tail = staged.draft_target
         end = tail[0] if tail else len(original)
         if getattr(app, "_session_mode_manager", None) is not manager:
-            return {"applied": False, "reason": "the session changed", "chars": 0}
+            return refuse("the session changed")
         with manager._dispatch_lock:
             document = manager.draft_document
             valid = (document.document_id == document_id and document.revision == revision
@@ -390,22 +402,23 @@ def apply(app) -> dict:
                 manager._last_dictate_ended_terminal = None
                 manager._stack.push(StackItem(kind="draft_edit_apply", payload=document.text,
                     mode=manager.mode, timestamp=manager._clock(), extra={"document": before}))
-        clear()
-        _chip(app, "edit_applied" if valid else "edit_refused",
-              {"changes": staged.proposal.change_count, "reason": "the text changed"})
+        if not valid:
+            return refuse("the text changed")
+        with _lock:
+            if _pending is staged:
+                clear()
+        _chip(app, "edit_applied", {"changes": staged.proposal.change_count})
         surface = getattr(app, "live_surface", None)
-        if valid and surface is not None:
+        if surface is not None:
             surface.sync_draft(manager)
         preview = getattr(app, "_dictate_preview", None)
-        if valid and preview is not None:
+        if preview is not None:
             preview._resync_from_draft(manager)
             preview._render("")
-        return {"applied": valid, "reason": "" if valid else "the text changed",
-                "chars": len(staged.proposal.rewritten) if valid else 0}
+        return {"applied": True, "reason": "", "chars": len(staged.proposal.rewritten)}
     manager = getattr(app, "_session_mode_manager", None)
     if manager is None:
-        _chip(app, "edit_refused", {"reason": "nothing staged"})
-        return {"applied": False, "reason": "no session", "chars": 0}
+        return refuse("no session")
 
     proposal = staged.proposal
     # The text must still be the text we proposed against. Between the
@@ -414,10 +427,8 @@ def apply(app) -> dict:
     # rewrite would be the worst failure this feature could have.
     bound = staged.bound_target
     if (bound is None and source_text(app) != proposal.original):
-        _chip(app, "edit_refused", {"reason": "the text changed"})
-        _say(app, "The text changed, so I did not apply that edit.")
         logger.info("[AVA-EDIT] apply refused: the session buffer moved under the proposal")
-        return {"applied": False, "reason": "the text changed", "chars": 0}
+        return refuse("the text changed")
 
     _wire_raw_injector(app, manager)
     pace = pacing.resolve(app)
@@ -428,13 +439,14 @@ def apply(app) -> dict:
             and targets.source_valid(app, bound))
     result = manager.apply_edit(bound.replacement(proposal.rewritten) if bound else proposal.rewritten,
                                 **kwargs)
-    clear()
     if result.get("applied"):
-        n = proposal.change_count
-        _chip(app, "edit_applied", {"changes": n})
+        with _lock:
+            if _pending is staged:
+                clear()
+        _chip(app, "edit_applied", {"changes": proposal.change_count})
         _log_history(app, proposal)
     else:
-        _chip(app, "edit_refused", {"reason": result.get("reason")})
+        refuse(result.get("reason") or "the edit could not be applied")  # PLACEHOLDER COPY (1287)
     return result
 
 

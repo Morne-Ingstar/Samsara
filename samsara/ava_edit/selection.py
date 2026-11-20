@@ -231,6 +231,62 @@ def capture():
     return original, target
 
 
+def _window_process(hwnd):
+    import ctypes
+    from samsara import clipboard
+    if not hwnd or clipboard._user32 is None:
+        return None
+    pid = ctypes.c_ulong()
+    if clipboard._user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid)):
+        return pid.value or None
+    return None
+
+
+def _foreground_matches(target, process):
+    from samsara import clipboard
+    current = clipboard._paste_target()
+    return bool(target and current and current[0] == target[0]
+                and process and _window_process(current[0]) == process)
+
+
+_CONSOLE_CLASSES = {'consolewindowclass', 'cascadia_hosting_window_class', 'virtualconsoleclass'}
+
+
+def _window_class(hwnd):
+    import ctypes
+    from samsara import clipboard
+    if not hwnd or clipboard._user32 is None:
+        return ''
+    label = ctypes.create_unicode_buffer(256)
+    if clipboard._user32.GetClassNameW(hwnd, label, len(label)):
+        return label.value.lower()
+    return ''
+
+
+def capture_clipboard_result(target):
+    """Explicit fallback; keep ingress focus through the Ctrl+C transaction."""
+    from samsara import teach_patterns
+    from samsara.ava_edit.targets import SelectionCapture
+    from samsara.injection_safety import window_integrity
+
+    if not target or not target[0]:
+        return SelectionCapture('failed', target=target)
+    if _window_class(target[0]) in _CONSOLE_CLASSES:
+        return SelectionCapture('protected', target=target)
+    process = _window_process(target[0])
+    if not process or not window_integrity(target[0]).confirmed_ok:
+        return SelectionCapture('failed', target=target)
+
+    def current():
+        return _foreground_matches(target, process) and (
+            not target[2] or _target_matches(target))
+
+    result = teach_patterns.grab_selection_block_result(before_copy=current)
+    if result.state != 'selected' or not current():
+        return SelectionCapture('failed', target=target)
+    return SelectionCapture('selected', result.text, target, clipboard_process=process)
+
+
 def capture_result(app=None):
     """Safe passive snapshot; unsupported controls are explicitly unknown.
 
@@ -242,7 +298,7 @@ def capture_result(app=None):
     from samsara.ava_edit.targets import SelectionCapture
     target = clipboard._paste_target()
     if not target or not target[0] or not target[2]:
-        return SelectionCapture()
+        return SelectionCapture(target=target)
     try:
         draft = _draft_selection(app, target)
         if draft is not None:
@@ -294,17 +350,22 @@ def _native_selection(target):
     if api is None:
         return SelectionCapture(target=target)
     focus = target[2]
-    label = ctypes.create_unicode_buffer(256)
-    if not api.GetClassNameW(focus, label, len(label)) or label.value.lower() != 'edit':
+    control = _window_class(focus)
+    if not control:
+        return SelectionCapture('failed', target=target)
+    if control in _CONSOLE_CLASSES:
+        # In terminals Ctrl+C can interrupt a process.
+        return SelectionCapture('protected', target=target)
+    if control != 'edit':
         return SelectionCapture(target=target)
     if not window_integrity(focus).confirmed_ok:
-        return SelectionCapture(target=target)
+        return SelectionCapture('protected', target=target)
     # ES_PASSWORD / ES_READONLY. Do not read protected or non-editable fields.
     from ctypes import wintypes
     get_style = api.GetWindowLongW
     get_style.argtypes, get_style.restype = [wintypes.HWND, ctypes.c_int], ctypes.c_long
     if get_style(focus, -16) & (0x20 | 0x800):
-        return SelectionCapture(target=target)
+        return SelectionCapture('protected', target=target)
 
     def send(message, wparam=0, lparam=0):
         if not _target_matches(target):
@@ -374,7 +435,7 @@ def propose_and_stage(app, instruction: str) -> bool:
 
 def apply(app, staged) -> dict:
     """Keep the proposal on any refusal; paste only into the same selection."""
-    # Owner-editable stand-in wording; this is a pending chip, not a dismissal.
+    # The proposal stays pending so the user can return and apply it.
     reason = "Return to the original selection and say apply."
     result = {"applied": False, "reason": reason, "chars": 0}
     try:
@@ -388,28 +449,37 @@ def apply(app, staged) -> dict:
         session._chip(app, "edit_applied", {"changes": staged.proposal.change_count})
         session._log_history(app, staged.proposal)
         return {"applied": True, "chars": len(staged.proposal.rewritten), "reason": ""}
-    session._chip(app, "edit_proposed", {"changes": staged.proposal.change_count})
+    # PLACEHOLDER COPY (1287): fit the refusal in the Compact chip.
+    session._chip(app, "edit_refused", {"reason": "Return to the selection"})
     session._say(app, reason)
     return result
 
 
 def _paste(staged) -> bool:
     from samsara import clipboard, teach_patterns
+    from samsara.ava_edit import targets
     target = staged.selection_target
-    if not _target_matches(target):
+
+    def source_matches():
+        if staged.request is None:
+            return _target_matches(target)
+        app = session._worker_app
+        return (app is not None and targets.request_valid(app, staged.request.snapshot)
+                and targets.source_valid(app, staged.bound_target))
+
+    if not source_matches():
         return False
-    current = teach_patterns.grab_selection_block()
-    if current != staged.proposal.original:
+    # Legacy read/translation adapters have no bound native range or PID.
+    # Keep their existing copy check. A bound edit uses its own source guard.
+    if (staged.request is None
+            and teach_patterns.grab_selection_block() != staged.proposal.original):
         return False
+    if not teach_patterns._wait_for_copy_modifiers():
+        return False
+
     def prepare():
-        if not _target_matches(target) or session.pending() is not staged:
+        if session.pending() is not staged or not source_matches() or teach_patterns._copy_modifiers_down():
             return False
-        if staged.request is not None:
-            from samsara.ava_edit import targets
-            app = session._worker_app
-            if (app is None or not targets.request_valid(app, staged.request.snapshot)
-                    or not targets.source_valid(app, staged.bound_target)):
-                return False
         if staged.selection_mode == "below":
             import pyautogui
             # Collapse at the selection's right edge even for backward ranges,
@@ -431,10 +501,11 @@ def register_commands(module_name: str) -> None:
     groups = {}
     for instruction, aliases in intent.selection_phrases().items():
         canonical = instruction.replace("capitalize", "capitalise").replace("formalize", "formalise")
-        if canonical.split()[0] in intent.EDIT_VERBS and canonical.endswith(" this"):
-            canonical = canonical[:-5] + " selection"
         groups[canonical] = groups.get(canonical, ()) + aliases
-    groups.update({"apply": ("apply", "apply the edit"), "discard": ("discard", "discard the edit")})
+    for name, replies in (("apply", intent.APPLY_UTTERANCES), ("discard", intent.DISCARD_UTTERANCES)):
+        # Generic replies are matched by the pending-edit grammar. Registering
+        # e.g. "do it" globally would replace unrelated confirmation commands.
+        groups[name] = tuple(sorted(reply for reply in replies if reply.split()[0] == name))
     for instruction, aliases in groups.items():
         # The whole-request router selects the new reading path. These two
         # phrases already have catalogue owners; retain their registry entries
@@ -484,8 +555,6 @@ def command_for_utterance(text: str) -> "str | None":
     instruction = intent.selection_instruction(text)
     if instruction is not None:
         instruction = instruction.replace("capitalize", "capitalise").replace("formalize", "formalise")
-        if instruction.split()[0] in intent.EDIT_VERBS and instruction.endswith(" this"):
-            instruction = instruction[:-5] + " selection"
         return instruction
     if session.pending() is not None:
         if intent.is_apply_utterance(text):

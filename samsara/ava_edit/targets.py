@@ -18,6 +18,7 @@ class SelectionCapture:
     target: tuple | None = None
     span: tuple[int, int] | None = None
     draft_range: tuple[int, int] | None = None
+    clipboard_process: int | None = None
 
 
 @dataclass(frozen=True, repr=False)
@@ -101,7 +102,7 @@ def _chunk_identity(item):
             extra.get('target_process'), extra.get('suppressed'), extra.get('expired'))
 
 
-def snapshot(app, *, selection_needed=True, clock=time.monotonic):
+def snapshot(app, *, selection_needed=True, explicit_selection=False, clock=time.monotonic):
     from samsara import execution_policy
     from samsara.ava_edit import selection
     manager = getattr(app, '_session_mode_manager', None)
@@ -129,6 +130,8 @@ def snapshot(app, *, selection_needed=True, clock=time.monotonic):
                     committed = BoundTarget('committed', item.payload, 0, len(item.payload),
                                             manager, chunk=item, chunk_identity=identity)
     captured = selection.capture_result(app) if selection_needed else SelectionCapture()
+    if explicit_selection and captured.state in {'unsupported', 'failed'}:
+        captured = selection.capture_clipboard_result(captured.target)
     result = RequestSnapshot(uuid4().hex, created_at, generation,
         epoch, manager, getattr(manager, 'mode', None), scope,
         captured, draft, latest, committed, clock)
@@ -151,6 +154,8 @@ def request_valid(app, captured):
 def source_valid(app, bound, *, selection_text=True):
     if bound.selection is not None:
         from samsara.ava_edit import selection
+        if bound.selection.clipboard_process is not None:
+            return selection._foreground_matches(bound.selection.target, bound.selection.clipboard_process)
         if not selection._target_matches(bound.selection.target):
             return False
         if not selection_text and bound.kind == 'selection':
@@ -216,7 +221,7 @@ def bind(request):
                                selection=selected), ''
         if target == 'selection':
             return None, 'Select some text first'
-        if selected.state != 'verified_empty':
+        if selected.state not in {'verified_empty', 'unsupported'}:
             return None, 'selection unknown'
     bound = captured.draft if target in {'auto', 'draft'} else None
     if target == 'last_dictation':

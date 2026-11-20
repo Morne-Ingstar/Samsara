@@ -52,7 +52,7 @@ APPLY_UTTERANCES = frozenset({
 #: it to undo -- so discarding must have its own words.
 DISCARD_UTTERANCES = frozenset({
     "no", "nope", "no thanks", "never mind", "nevermind", "cancel",
-    "discard", "forget it", "leave it", "don't", "do not",
+    "discard", "discard the edit", "forget it", "leave it", "don't", "do not",
 })
 
 #: chr(), not literals: this repo keeps sources pure ASCII because
@@ -66,6 +66,22 @@ _WORD_RE = re.compile(r"[^\W\d_]+", re.UNICODE)
 
 def _normalize(text: str) -> str:
     return " ".join((text or "").lower().split()).strip(_TRIM)
+
+
+def _without_politeness(whole):
+    while True:
+        head, separator, tail = whole.rpartition(" ")
+        if not separator or tail not in {"please", "thanks"}:
+            return whole
+        whole = head.rstrip(_TRIM)
+
+
+def _selection_sources():
+    from samsara.teach_patterns import _SOURCE_KEYWORD_TO_KIND
+    return tuple(dict.fromkeys(
+        [key for key, kind in _SOURCE_KEYWORD_TO_KIND.items() if kind == "selection"]
+        + ["paragraph", "passage", "text", "highlighted"]
+    ))
 
 
 def _is_quoted(text: str) -> bool:
@@ -103,18 +119,16 @@ def is_edit_request(text: str) -> bool:
 
 def selection_phrases() -> dict[str, tuple[str, ...]]:
     """Whole requests grouped by instruction; reuse the teaching vocabulary."""
-    from samsara.teach_patterns import _SOURCE_KEYWORD_TO_KIND
-
-    sources = [key for key, kind in _SOURCE_KEYWORD_TO_KIND.items()
-               if kind == "selection"]
+    sources = _selection_sources()
+    articles = ("", "the ", "this ", "that ")
     groups = {}
     for verb in sorted(EDIT_VERBS):
         explicit = [f"{verb} {article}{source}{tail}"
-                    for source in sources for article in ("", "the ")
+                    for source in sources for article in articles
                     for tail in ("", " up") if not tail or verb in {"clean", "tidy", "fix"}]
         if verb in {"clean", "tidy"}:
             explicit += [f"{verb} up {article}{source}"
-                         for source in sources for article in ("", "the ")]
+                         for source in sources for article in articles]
         groups[f"{verb} selection"] = tuple(explicit)
         bare = [f"{verb} {ref}{tail}" for ref in ("this", "that", "it")
                 for tail in ("", " up") if not tail or verb in {"clean", "tidy", "fix"}]
@@ -137,9 +151,8 @@ LANGUAGES = dict(zip(
 
 
 def selection_verb_phrases() -> dict[str, tuple[str, ...]]:
-    from samsara.teach_patterns import _SOURCE_KEYWORD_TO_KIND
-    sources = [f"{article}{key}" for key, kind in _SOURCE_KEYWORD_TO_KIND.items()
-               if kind == "selection" for article in ("", "the ")]
+    sources = [f"{article}{key}" for key in _selection_sources()
+               for article in ("", "the ", "this ", "that ")]
     refs = sources + ["this"]
     groups = {
         "read selection": tuple(f"read {ref}" for ref in refs) + ("read that back",),
@@ -193,7 +206,7 @@ def selection_instruction(text: str) -> "str | None":
     words = _normalize(text).split()
     while words and words[0].strip(_TRIM) in _LEADING_FILLERS:
         words.pop(0)
-    whole = " ".join(words)
+    whole = _without_politeness(" ".join(words))
     for instruction, phrases in selection_phrases().items():
         if whole in phrases:
             return instruction
@@ -217,7 +230,7 @@ def selection_edit_parts(text):
     words = whole.split()
     while words and words[0].strip(_TRIM) in _LEADING_FILLERS:
         words.pop(0)
-    whole = " ".join(words)
+    whole = _without_politeness(" ".join(words))
     for instruction, aliases in selection_phrases().items():
         verb = instruction.split()[0]
         if verb not in {"make", "change", "edit", "reformat", "rewrite", "reword", "rephrase"}:
@@ -234,14 +247,15 @@ def is_apply_utterance(text: str) -> bool:
     """Whole-utterance only, and never inside quotation marks."""
     if _is_quoted(text):
         return False
-    return _normalize(text) in APPLY_UTTERANCES
+    return _without_politeness(_normalize(text)) in APPLY_UTTERANCES
 
 
 def is_discard_utterance(text: str) -> bool:
     """Whole-utterance only, and never inside quotation marks."""
     if _is_quoted(text):
         return False
-    return _normalize(text) in DISCARD_UTTERANCES
+    whole = _normalize(text)
+    return whole in DISCARD_UTTERANCES or _without_politeness(whole) in DISCARD_UTTERANCES
 
 
 def explicit_target(text):
@@ -253,6 +267,10 @@ def explicit_target(text):
         return 'last_dictation'
     if re.search(r'\b(draft|whole draft|everything)\b', normalized):
         return 'draft'
+    if selection_request(text) == "selection":
+        return 'selection'
+    # Generic nouns such as "text" only denote a selection in the whole
+    # grammar above. Preserve the existing explicit conversational references.
     from samsara.teach_patterns import _SOURCE_KEYWORD_TO_KIND
     if any(re.search(r'\b' + re.escape(key) + r'\b', normalized)
            for key, kind in _SOURCE_KEYWORD_TO_KIND.items() if kind == 'selection'):
