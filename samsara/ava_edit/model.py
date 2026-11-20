@@ -124,16 +124,15 @@ def _call_ollama(app, user_message: str, timeout_s: float):
         response = sc._session.post(f"{host}/api/chat", json=payload, timeout=timeout_s)
         response.raise_for_status()
         return response.json().get("message", {}).get("content", ""), None
-    except ai_transport.AITransportRefused as exc:
-        ai_transport.notify_refusal(app, exc)
+    except ai_transport.AITransportRefused:
         sc._probe_cache.pop(host, None)
-        return None, "the model could not be reached"
+        return None, "the model request was refused"
     except requests.exceptions.Timeout:
         sc._probe_cache.pop(host, None)
         return None, "the model took too long"
-    except Exception as exc:
+    except Exception:
         sc._probe_cache.pop(host, None)
-        logger.debug(f"[AVA-EDIT] Ollama call failed: {exc}")
+        logger.debug("[AVA-EDIT] Ollama call failed")
         return None, "the model could not be reached"
 
 
@@ -142,14 +141,16 @@ def _call_cloud(app, user_message: str, timeout_s: float):
     from samsara import cloud_llm  # noqa: PLC0415
     try:
         result, error_kind = cloud_llm.send_ex(
-            SYSTEM_PROMPT, user_message, app, timeout=timeout_s)
+            SYSTEM_PROMPT, user_message, app, timeout=timeout_s, for_edit=True)
         if error_kind == "timeout":
             return None, "the model took too long"
+        if error_kind == "refused":
+            return None, "the model request was refused"
         if error_kind is not None:
             return None, "the model could not be reached"
         return result, None
-    except Exception as exc:
-        logger.debug(f"[AVA-EDIT] cloud call failed: {exc}")
+    except Exception:
+        logger.debug("[AVA-EDIT] cloud call failed")
         return None, "the model could not be reached"
 
 
@@ -168,8 +169,8 @@ def resolve_backend(app) -> "str | None":
         from samsara import smart_corrections as sc  # noqa: PLC0415
         try:
             return "ollama" if sc._ollama_reachable(app) else None
-        except Exception as exc:
-            logger.debug(f"[AVA-EDIT] Ollama probe failed: {exc}")
+        except Exception:
+            logger.debug("[AVA-EDIT] Ollama probe failed")
             return None
     return "cloud"
 
@@ -218,8 +219,8 @@ def rewrite(text: str, instruction: str, app=None, *, backend=None,
     started = time.monotonic()
     try:
         raw, reason = call(app, user_message, _timeout_s(app))
-    except Exception as exc:                      # a call_fn or a backend that raises
-        logger.debug(f"[AVA-EDIT] model call raised: {exc}")
+    except Exception:                            # a call_fn or a backend that raises
+        logger.debug("[AVA-EDIT] model call raised")
         return None, "the model could not be reached"
     elapsed_ms = int((time.monotonic() - started) * 1000)
 

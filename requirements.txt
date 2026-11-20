@@ -100,6 +100,8 @@ protobuf>=3.20.3,<4
 
 # Rhyme/phonetic lookup (voice training / phonetic wash)
 pronouncing==0.3.0
+# Dictionary of English verb forms for explicit offline dictation cleanup.
+lemminflect==0.2.3
 
 # WASAPI loopback capture for echo cancellation (samsara/echo_cancel.py) --
 # a PyAudio fork; do not confuse with plain PyAudio, which lacks loopback support.

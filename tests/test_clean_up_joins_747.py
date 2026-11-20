@@ -106,9 +106,12 @@ def test_synthetic_proposal_passes_both_sanitizer_floors_and_logs_once(monkeypat
     assert sanitize.similarity(SOURCE, JOINED) == 1.0
     assert call.call_count == (path != "offline")
     actual_path = "model" if path == "model" else "offline"
-    info.assert_called_once_with(
-        f"[AVA-EDIT] cleanup path={actual_path} joins_made=2 "
-        f"chars_before={len(SOURCE)} chars_after={len(JOINED)}")
+    # 1288: record the fallback reason before the single cleanup summary.
+    if path == "fallback":
+        assert info.call_args_list[0].args == ("[AVA-EDIT] cleanup falling back offline: no model available",)
+    assert info.call_count == (2 if path == "fallback" else 1)
+    assert info.call_args.args == (f"[AVA-EDIT] cleanup path={actual_path} joins_made=2 "
+                                   f"chars_before={len(SOURCE)} chars_after={len(JOINED)}",)
 
 
 @pytest.mark.parametrize("raw, reason", [
@@ -121,10 +124,17 @@ def test_refused_or_unchanged_cleanup_logs_zero_applied_joins(monkeypatch, raw, 
     info = Mock()
     monkeypatch.setattr(session.logger, "info", info)
     proposal = session.propose(SOURCE, selection.DEFAULT_INSTRUCTION, SimpleNamespace(), cleanup=True)
-    assert not proposal.ok
     summaries = [call.args[0] for call in info.call_args_list if "cleanup path=" in call.args[0]]
-    assert summaries == [f"[AVA-EDIT] cleanup path=model joins_made=0 "
-                          f"chars_before={len(SOURCE)} chars_after={len(SOURCE)}"]
+    # 1288: a failed model call tries offline repair. An unchanged valid reply
+    # leaves no pending proposal and releases the captured source.
+    if raw == SOURCE:
+        assert not proposal.ok and proposal.rewritten == SOURCE
+        assert summaries == [f"[AVA-EDIT] cleanup path=model joins_made=0 "
+                             f"chars_before={len(SOURCE)} chars_after={len(SOURCE)}"]
+    else:
+        assert proposal.ok and proposal.rewritten == JOINED
+        assert summaries == [f"[AVA-EDIT] cleanup path=offline joins_made=2 "
+                             f"chars_before={len(SOURCE)} chars_after={len(JOINED)}"]
 
 
 @pytest.mark.parametrize("source, instruction", [("", "clean up"), (SOURCE, "")])

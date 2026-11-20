@@ -261,7 +261,7 @@ def _get_provider_config(app):
     return provider, base_url, model
 
 
-def _send_internal(system_prompt, user_message, app, timeout=30, messages=None):
+def _send_internal(system_prompt, user_message, app, timeout=30, messages=None, *, for_edit=False):
     """Return (text, legacy_error_kind, structured CloudError)."""
     cfg = _get_config(app)
     provider = cfg.get("provider", "deepseek")
@@ -276,21 +276,26 @@ def _send_internal(system_prompt, user_message, app, timeout=30, messages=None):
     max_tokens = cfg.get("max_tokens", DEFAULT_MAX_TOKENS)
     try:
         provider, base_url, model = _get_provider_config(app)
+        options = {"for_edit": True} if for_edit else {}
         if provider == "anthropic":
             text = _send_anthropic(base_url, api_key, model, system_prompt,
-                                   user_message, timeout, max_tokens, messages=messages)
+                                   user_message, timeout, max_tokens, messages=messages, **options)
         else:
             text = _send_openai_compatible(base_url, api_key, model, system_prompt,
-                                          user_message, timeout, max_tokens, messages=messages)
+                                          user_message, timeout, max_tokens, messages=messages, **options)
         return text, None, None
     except Exception as exc:
         failure = failure_from_exception(provider, exc)
-        if isinstance(exc, ai_transport.AITransportRefused):
+        if isinstance(exc, ai_transport.AITransportRefused) and not for_edit:
             ai_transport.notify_refusal(app, exc)
         # STAND-IN COPY (566): retain legacy safe text for existing callers.
         message = (f"Cloud LLM request timed out after {timeout}s." if failure.kind == "timeout" else
                    str(exc) if isinstance(exc, ai_transport.AITransportRefused) else None)
-        return None, "timeout" if failure.kind == "timeout" else "error", _error_result(failure, message)
+        if for_edit and (isinstance(exc, ai_transport.AITransportRefused) or failure.kind == "blocked"):
+            error_kind = "refused"
+        else:
+            error_kind = "timeout" if failure.kind == "timeout" else "error"
+        return None, error_kind, _error_result(failure, message)
 
 
 def send(system_prompt, user_message, app, timeout=30, messages=None):
@@ -315,7 +320,7 @@ def send(system_prompt, user_message, app, timeout=30, messages=None):
     return text
 
 
-def send_ex(system_prompt, user_message, app, timeout=30, messages=None):
+def send_ex(system_prompt, user_message, app, timeout=30, messages=None, *, for_edit=False):
     """Structured variant of send(): returns (text_or_None, error_kind)
     instead of encoding failure as an "Error: ..." string to substring-
     match. error_kind is None on success, 'timeout' for a request timeout,
@@ -325,15 +330,19 @@ def send_ex(system_prompt, user_message, app, timeout=30, messages=None):
     instead (see samsara.smart_corrections._call_cloud). send() itself is
     untouched -- other callers (ask_ollama, etc.) keep its exact existing
     string-return contract.
+
+    Ava edits request direct output and report failures at the proposal seam,
+    where cleanup may still produce an offline result.
     """
+    options = {"for_edit": True} if for_edit else {}
     text, error_kind, _error_message = _send_internal(
-        system_prompt, user_message, app, timeout=timeout, messages=messages,
+        system_prompt, user_message, app, timeout=timeout, messages=messages, **options,
     )
     return text, error_kind
 
 
 def _send_openai_compatible(base_url, api_key, model, system_prompt,
-                             user_message, timeout, max_tokens=300, messages=None):
+                             user_message, timeout, max_tokens=300, messages=None, *, for_edit=False):
     url = f"{base_url}/chat/completions"
     headers = {
         "Content-Type": "application/json",
@@ -355,13 +364,21 @@ def _send_openai_compatible(base_url, api_key, model, system_prompt,
     provider = next((name for name, cfg in BUILTIN_PROVIDERS.items()
                      if urlparse(base_url).hostname == cfg["host"]), "cloud")
     if provider == "openrouter":
-        payload["reasoning"] = {"effort": "low"}
+        payload["reasoning"] = {"enabled": False} if for_edit else {"effort": "low"}
+    elif for_edit and provider == "deepseek":
+        payload["thinking"] = {"type": "disabled"}
+    elif for_edit and provider == "openai" and model.startswith(("gpt-5.1", "gpt-5.2")):
+        if "pro" not in model:
+            payload["reasoning_effort"] = "none"
+            payload["max_completion_tokens"] = payload.pop("max_tokens")
     response = ai_transport.post_cloud(url, json=payload, headers=headers, timeout=timeout)
     _check_response(base_url, response)
     data = response.json()
     choices = data.get("choices") or []
     choice = choices[0] if choices and isinstance(choices[0], dict) else {}
     message = choice.get("message") if isinstance(choice.get("message"), dict) else {}
+    if for_edit and (message.get("refusal") or choice.get("finish_reason") == "content_filter"):
+        raise _CloudRequestFailed(make_failure("blocked", provider))
     content = message.get("content")
     answer = content.strip() if isinstance(content, str) else ""
     if not answer:
@@ -383,7 +400,7 @@ def _send_openai_compatible(base_url, api_key, model, system_prompt,
 
 
 def _send_anthropic(base_url, api_key, model, system_prompt,
-                    user_message, timeout, max_tokens=300, messages=None):
+                    user_message, timeout, max_tokens=300, messages=None, *, for_edit=False):
     url = f"{base_url}/messages"
     headers = {
         "Content-Type": "application/json",
@@ -406,9 +423,18 @@ def _send_anthropic(base_url, api_key, model, system_prompt,
         "system": system,
         "messages": api_messages,
     }
+    if for_edit and urlparse(base_url).hostname == BUILTIN_PROVIDERS["anthropic"]["host"]:
+        if model.startswith("claude-sonnet-5-5"):
+            payload["thinking"] = {"type": "between_tools"}
+        elif model.startswith(("claude-haiku-5-5", "claude-opus-5-", "claude-sonnet-5-",
+                               "claude-haiku-4-", "claude-3-", "claude-3-5-", "claude-3-7-")):
+            if not model.startswith("claude-opus-5-5"):
+                payload["thinking"] = {"type": "disabled"}
     response = ai_transport.post_cloud(url, json=payload, headers=headers, timeout=timeout)
     _check_response(base_url, response)
     data = response.json()
+    if for_edit and data.get("stop_reason") == "refusal":
+        raise _CloudRequestFailed(make_failure("blocked", "anthropic"))
     blocks = data.get("content", [])
     if not isinstance(blocks, list):
         blocks = []

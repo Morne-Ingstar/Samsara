@@ -9,7 +9,7 @@ import pytest
 
 from samsara import ava_pending, execution_policy
 from samsara.ava_edit import intent, model, sanitize, selection, session
-from tests.test_clean_up_selection_632 import TARGET, SOURCE, app, executor, rig
+from tests.test_clean_up_selection_632 import TARGET, SOURCE, RESULT, app, executor, rig
 
 TRANSLATED = "Compramos leche en la tienda."
 SUMMARY = "Bought milk."
@@ -210,7 +210,14 @@ def test_transform_keeps_output_hygiene(app, monkeypatch, operation, raw):
 def test_regular_edit_and_cleanup_keep_similarity_floor(app, monkeypatch, cleanup):
     monkeypatch.setattr(model, "rewrite", lambda *_: (TRANSLATED, None))
     assert sanitize.similarity(SOURCE, TRANSLATED) < sanitize.SIMILARITY_FLOOR
-    assert not session.propose(SOURCE, "Fix the text", app, cleanup=cleanup).ok
+    proposal = session.propose(SOURCE, "Fix the text", app, cleanup=cleanup)
+    if cleanup:
+        # 1288: A rejected cleanup rewrite falls back to offline repair.
+        assert proposal.ok
+        assert proposal.rewritten == RESULT
+        assert proposal.rewritten != TRANSLATED
+    else:
+        assert not proposal.ok
 
 
 @pytest.mark.parametrize("utterance, below", [

@@ -249,6 +249,7 @@ datas.append((str(app_dir / 'commands.json'), '.'))
 # checked-in catalog; release smoke verifies the staged copy is parseable.
 datas.append((str(app_dir / 'commands_catalog.json'), '.'))
 datas.append((str(app_dir / 'samsara' / 'data' / 'builtin_vocabulary.json'), 'samsara/data'))
+datas += collect_data_files('lemminflect', subdir='resources')
 # Home's "What's new" note reads this at the data root (samsara/ui/home_qt.py CHANGELOG_PATH).
 datas.append((str(app_dir / 'CHANGELOG.md'), '.'))
 # Explicit documentation payload; also copied beside the executable below.

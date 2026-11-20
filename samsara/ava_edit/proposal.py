@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import difflib
 import re
+import unicodedata
+from collections import Counter
 from dataclasses import dataclass
 
 #: Split into words and the whitespace between them, so "".join(tokens) is
@@ -34,6 +36,15 @@ from dataclasses import dataclass
 #: count meaningful to a human: "three changes" should mean three words or
 #: phrases, not thirty-one characters.
 _TOKEN_RE = re.compile(r"(\s+)")
+_SPOKEN_WORDS = re.compile(r"[^\W_]+")
+_PUNCTUATION_NAMES = {
+    ".": "period", ",": "comma", "?": "question mark", "!": "exclamation mark",
+    ":": "colon", ";": "semicolon", "'": "apostrophe", '"': "quotation mark",
+    "\u2019": "curly apostrophe", "\u2018": "opening quotation mark",
+    "\u201c": "opening quotation mark", "\u201d": "closing quotation mark",
+    "-": "hyphen", "\u2013": "en dash", "\u2014": "em dash",
+    "\u2026": "ellipsis", "(": "opening parenthesis", ")": "closing parenthesis",
+}
 
 REPLACE, INSERT, DELETE = "replace", "insert", "delete"
 
@@ -45,6 +56,39 @@ SPEAK_LIMIT = 3
 def tokenize(text: str) -> list:
     """Word and whitespace tokens. "".join(tokenize(t)) == t, exactly."""
     return [t for t in _TOKEN_RE.split(text or "") if t != ""]
+
+
+def _spoken_change(change):
+    # PLACEHOLDER COPY (1288)
+    old_words = _SPOKEN_WORDS.findall(change.old)
+    new_words = _SPOKEN_WORDS.findall(change.new)
+    if [word.lower() for word in old_words] == [word.lower() for word in new_words]:
+        old_marks, new_marks = (
+            [char for char in text if unicodedata.category(char).startswith("P")]
+            for text in (change.old, change.new))
+        descriptions = []
+        for verb, marks in (("removed", Counter(old_marks) - Counter(new_marks)),
+                            ("added", Counter(new_marks) - Counter(old_marks))):
+            for mark, count in marks.items():
+                name = _PUNCTUATION_NAMES.get(mark, "punctuation mark")
+                plural = "ellipses" if name == "ellipsis" else f"{name}s"
+                descriptions.append(f"{verb} {count} {plural}" if count > 1 else f"{verb} a {name}")
+        if old_marks and old_marks == new_marks and old_words == new_words and not descriptions:
+            descriptions.append("moved punctuation")
+        if old_words != new_words:
+            changed_case = [new for old, new in zip(old_words, new_words) if old != new]
+            details = f' of "{changed_case[0]}"' if len(changed_case) == 1 else ""
+            descriptions.append(f"corrected capitalization{details}")
+        if descriptions:
+            return " and ".join(descriptions)
+    if old_words and len(old_words) == len(new_words):
+        from samsara.ava_edit.sanitize import _same_sound
+        replacements = [(old, new) for old, new in zip(old_words, new_words)
+                        if old.lower() != new.lower()]
+        if replacements and all(_same_sound(old.lower(), new.lower()) for old, new in replacements):
+            return " and ".join(f'changed the spelling of "{old}" to {" ".join(new)}'
+                                for old, new in replacements)
+    return change.describe()
 
 
 @dataclass(frozen=True)
@@ -173,9 +217,7 @@ class Proposal:
             return f"I did not change anything: {reason}."
         n = self.change_count
         unit = "change" if n == 1 else "changes"
+        spoken = ", ".join(_spoken_change(change) for change in self.changes[:SPEAK_LIMIT])
         if n > SPEAK_LIMIT:
-            spoken = "; ".join(c.describe() for c in self.changes[:SPEAK_LIMIT])
-            return (f"{n} {unit}: {spoken}; and {n - SPEAK_LIMIT} more. "
-                    "Say apply to make it so.")
-        spoken = "; ".join(c.describe() for c in self.changes)
-        return f"{n} {unit}: {spoken}. Say apply to make it so."
+            spoken += f", and {n - SPEAK_LIMIT} more"
+        return f"{n} {unit}. {spoken}. Say apply to make it so."

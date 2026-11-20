@@ -262,6 +262,23 @@ def propose(text: str, instruction: str, app, *, offline=False, cleanup=False,
                         f"chars_before={len(original)} chars_after={len(rewritten)}")
         return proposal
 
+    def offline_proposal(failure=None):
+        nonlocal path
+        from samsara.ava_edit.selection import deterministic_cleanup
+        from samsara.dictionary_store import get_dictionary_store
+
+        path = "offline"
+        if failure:
+            logger.info(f"[AVA-EDIT] cleanup falling back offline: {failure}")
+        vocabulary = getattr(get_dictionary_store(app), "custom_vocab", ())
+        rewritten = deterministic_cleanup(original, vocabulary=vocabulary)
+        proposal = Proposal.build(original, rewritten, instruction=instruction)
+        if failure and not proposal.ok:
+            # PLACEHOLDER COPY (1288)
+            proposal = Proposal.none(f"{failure}, and offline cleanup found no changes",
+                                     original=original, instruction=instruction)
+        return finish(proposal)
+
     if not original.strip():
         return finish(Proposal.none("there is nothing to edit", original=original,
                                     instruction=instruction))
@@ -269,30 +286,27 @@ def propose(text: str, instruction: str, app, *, offline=False, cleanup=False,
         return finish(Proposal.none("no instruction", original=original, instruction=instruction))
 
     if offline:
-        from samsara.ava_edit.selection import deterministic_cleanup
-        raw, reason = deterministic_cleanup(original), None
-    else:
-        guard = {'before_submit': before_submit} if before_submit is not None else {}
-        raw, reason = model.rewrite(original, instruction, app, **guard)
-        if cleanup and raw is None and reason == "no model available":
-            path = "offline"
-            from samsara.ava_edit.selection import deterministic_cleanup
-            raw = deterministic_cleanup(original)
+        return offline_proposal()
+    guard = {'before_submit': before_submit} if before_submit is not None else {}
+    raw, reason = model.rewrite(original, instruction, app, **guard)
     if raw is None:
+        if cleanup and reason != "the text changed":
+            return offline_proposal(reason)
         return finish(Proposal.none(reason, original=original, instruction=instruction))
 
     if transform in {"translate", "summarize"}:
         from samsara.ava_edit.selection import check_transform
         refusal = check_transform(raw, original, instruction, transform)
     else:
-        refusal = sanitize.check(raw, original, instruction)
-    if refusal is None and cleanup and sanitize.similarity(original, sanitize.clean(raw)) < 0.85:
-        refusal = "not derived from the text"
+        refusal = sanitize.check(raw, original, instruction, cleanup=cleanup)
     if refusal is not None:
+        if cleanup:
+            return offline_proposal(refusal)
         logger.info(f"[AVA-EDIT] rewrite refused by the sanitizer: {refusal}")
         return finish(Proposal.none(refusal, original=original, instruction=instruction))
 
-    return finish(Proposal.build(original, sanitize.clean(raw), instruction=instruction))
+    rewritten = sanitize.clean(raw, original, cleanup=cleanup)
+    return finish(Proposal.build(original, rewritten, instruction=instruction))
 
 
 def stage(app, proposal: Proposal, **targets) -> bool:

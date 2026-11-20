@@ -254,8 +254,8 @@ def test_sanitizer_and_cleanup_similarity_reject_rewrites(rig, app, monkeypatch,
     monkeypatch.setattr(session, "is_available", lambda _: True)
     monkeypatch.setattr(model, "rewrite", lambda *_, **_kwargs: (raw, None))
     assert session.handle_utterance(app, "clean up selection")
-    assert session.pending() is None
-    assert app.chips[-1][1] == "warning"
+    # 1288: a rejected model rewrite stages the safe offline result instead.
+    assert session.pending().proposal.rewritten == RESULT
     assert not rig.pasted
     assert rig.text == "original clipboard"
 

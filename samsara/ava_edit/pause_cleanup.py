@@ -1,144 +1,455 @@
-"""Text-only pause repair for an explicitly requested, reviewable edit.
+"""Text-only repair of pause punctuation in an explicitly requested edit."""
 
-This is deliberately separate from automatic Clean hold delivery. No timing or
-spoken-punctuation provenance reaches this seam. Unknown capitalized words stay
-capitalized; shortness without a grammatical attachment is never enough.
-"""
+import logging
 import re
+from functools import lru_cache
+
+try:
+    from lemminflect import getAllInflections, getAllLemmas
+except ImportError:
+    getAllInflections = getAllLemmas = None
+    logging.getLogger(__name__).warning(
+        "LemmInflect unavailable; offline cleanup is using its built-in verb list")
 
 
-_WORD = re.compile(r"[^\W\d_]+(?:['’][^\W\d_]+)*", re.UNICODE)
-_DEPENDENT = frozenset(
-    'and but or so because which where when if with to of in on at for from '
-    'into by as while although unless until'.split())
-_DETERMINERS = frozenset('a an the my your our their this these whatever'.split())
-_SUBJECTS = frozenset('i you he she it we they there'.split())
-_FINITE = frozenset(
-    'am is are was were have has had do does did will would can could should '
-    'may might must want wants need needs go goes went work works worked know '
-    'knows knew think thinks thought say says said tell tells told make makes '
-    'made help helps helped live lives lived see sees saw arrive arrives arrived '
-    'leave leaves left stay stays stayed finish finishes finished stop stops '
-    'stopped like likes use uses used feel feels hear hears watch watches try '
-    'tries tried check checks checked bought waved'.split())
-_COMPLEMENTS = frozenset('try trying discuss discussed using saying'.split())
-_ADVERBS = frozenset('actually really still already always never only also finally'.split())
-_COMMON = frozenset(
-    'dictation pauses pause cleanup saying sort sure gonna wanna actually really '
-    'still already always never only also finally speaking trying checking '
-    'everything every single word before after remain keep parcel small blue '
-    'garden gate'.split())
-_REPLIES = frozenset('yes no okay ok thanks hello goodbye fine sure right stop cancel'.split())
-_QUESTIONS = frozenset(
-    'is are was were do does did can could will would should what why how when '
-    'where'.split())
+_WORD = re.compile(r"[^\W\d_]+(?:['\u2019][^\W\d_]+)*", re.UNICODE)
+_PREPOSITIONS = frozenset(
+    "about above across after against along among around as at before behind below beneath "
+    "beside between beyond by despite down during except for from in inside into like near of "
+    "off on onto out outside over past since through throughout till to toward under underneath "
+    "until up upon via with within without".split())
+_SUBORDINATORS = frozenset(
+    "after although as because before if once since though unless until when whenever where "
+    "wherever whether while".split())
+_COORDINATORS = frozenset("and but or nor so yet".split())
+_DETERMINERS = frozenset(
+    "a an another the my your his her its our their this that these those each every whatever".split())
+_SUBJECTS = frozenset("i you he she it we they there".split())
+_OBJECT_PRONOUNS = frozenset("me you him her us them".split())
+_AUXILIARIES = frozenset(
+    "am is are was were be been being have has had do does did will would can could should "
+    "shall may might must".split())
+_MODALS = frozenset("will would can could should shall may might must".split())
+_ADVERBS = frozenset(
+    "actually really still already always never only also finally just even often sometimes".split())
+_HESITATIONS = frozenset({"uh", "um"})
+_RELATIVES = frozenset("that which who whom whose".split())
+_REPLIES = frozenset("yes no okay ok thanks hello goodbye fine sure right stop cancel".split())
+_SIGN_OFFS = frozenset({"over", "done", "end"})
+_SENTENCE_OPENERS = frozenset({
+    "after all", "anyway", "as a result", "by the way", "for example", "frankly",
+    "honestly", "however", "if not", "if so", "in fact", "in other words",
+    "meanwhile", "nevertheless", "of course", "on the other hand", "otherwise",
+    "that said", "therefore",
+})
+_QUESTIONS = frozenset("what why how when where who whom whose which".split())
+_FINITE_FORMS = frozenset(("VBD", "VBZ", "VBP"))
+_CALENDAR = frozenset(
+    "monday tuesday wednesday thursday friday saturday sunday "
+    "january february march april may june july august september october november december".split())
+# Grammatical contexts that license particular complements, independent of
+# which inflected form of the verb occurs in the dictation.
+_OBJECT_INFINITIVE = frozenset("help let make hear see watch feel".split())
+_CLAUSAL_VERBS = frozenset("believe guess hope know say suppose think wonder".split())
+_SPEECH_VERBS = frozenset("ask reply say speak tell whisper yell".split())
+_NAME_CONTEXT = frozenset("called met named".split())
+_INFINITIVE_CONTEXT = frozenset(
+    "choose decide expect have hope learn like need plan promise seem start tend try want".split())
+# Compact fallback for installations missing the inflection dictionary.
+# Each row follows the common base, present singular, and past forms.
+_BUILTIN_VERBS = (
+    "arrive arrives arrived", "ask asks asked", "buy buys bought", "call calls called",
+    "check checks checked", "choose chooses chose", "decide decides decided",
+    "discuss discusses discussed", "feel feels felt", "finish finishes finished",
+    "fix fixes fixed", "get gets got", "go goes went", "hear hears heard",
+    "help helps helped", "hurt hurts hurt", "know knows knew", "leave leaves left",
+    "let lets let", "like likes liked", "live lives lived", "make makes made", "meet meets met",
+    "need needs needed", "see sees saw", "say says said", "stay stays stayed",
+    "stop stops stopped", "tell tells told", "think thinks thought", "try tries tried",
+    "use uses used", "want wants wanted", "watch watches watched", "work works worked",
+)
+_BUILTIN_FORMS = {}
+for _row in _BUILTIN_VERBS:
+    _base, _present, _past = _row.split()
+    for _form, _tags in ((_base, {"VB", "VBP"}), (_present, {"VBZ"}), (_past, {"VBD"})):
+        _BUILTIN_FORMS.setdefault(_form, (_base, set()))[1].update(_tags)
+
+_CLOSED_CLASS = (_PREPOSITIONS | _SUBORDINATORS | _COORDINATORS | _DETERMINERS
+                 | _SUBJECTS | _OBJECT_PRONOUNS | _AUXILIARIES | _RELATIVES
+                 | frozenset("all any both either everything hers himself itself mine neither nobody "
+                             "none nothing one oneself ourselves ours some somebody someone something "
+                             "theirs themselves what yours yourself yourselves".split()))
+_FUNCTION_WORDS = _CLOSED_CLASS | _ADVERBS | {"instead", "then"}
+_BUILTIN_COMMON = _HESITATIONS | frozenset(
+    "actually available being clinic done instead pausing pauses pause cleanup dictation "
+    "ready reviewed someone store working".split())
+_INLINE_CLEANUP_WORDS = frozenset({"cleanup", "dictation", "pause", "pauses"})
 _LITERAL = re.compile(
-    r'https?://|www\.|\S+@\S+|[\\/]|[`:;"“”]|(?<!\w)[\'‘]|[\'’](?!\w)'
-    r'|\b\d+\.\d+\b|\b(?:[A-Za-z]\.){2,}|\b[A-Z]\.(?=\s+[A-Z])'
-    r'|\b(?:Mr|Mrs|Ms|Dr|Prof|etc|vs)\.'
-    r'|\b[\w-]+\.[A-Za-z]{1,8}\b', re.IGNORECASE)
-_LIST = re.compile(r'^\s*(?:[-*+•]|\d+[.)]|[A-Za-z][.)])\s')
+    r"""https?://[^\s<>\"']*[^\s<>\"'.,!?;:)]|www\.[^\s<>\"']*[^\s<>\"'.,!?;:)]"""
+    r"""|[\w.+-]+@[\w.-]+\.\w+"""
+    r"""|(?:\b[A-Za-z]:[\\/]|\\\\|(?<!\w)/)[^\s<>\"']*[^\s<>\"'.,!?;:)]"""
+    r"""|[\w.-]+(?:[\\/][\w.-]+)+(?<![.])"""
+    r"""|\"[^\"\r\n]*\"|\u201c[^\u201d\r\n]*\u201d|[\x60][^\x60\r\n]*[\x60]"""
+    r"""|(?<!\w)'[^']+'(?!\w)|\u2018[^\u2019\r\n]+\u2019"""
+    r"""|\b\d+(?:\.\d+)+\b|\b(?:[A-Za-z]\.){2,}"""
+    r"""|\b(?:Mr|Mrs|Ms|Dr|Prof|St)\."""
+    r"""|\b(?:etc|vs)\.|\b[A-Z]\.(?=[ \t]+[A-Z])"""
+    r"""|\b[\w-]+\.[A-Za-z]{1,8}\b""")
+_LIST = re.compile(r"^\s*(?:[-*+\u2022]|\d+[.)]|[A-Za-z][.)])\s")
 _COMMAND = re.compile(
-    r'^(?:clean up|clear draft|show the change|bring it back|scratch that|'
-    r'pause (?:VLC|Spotify)|play VLC)\b', re.IGNORECASE)
+    r"^(?:clean up|clear draft|show the change|bring it back|scratch that|"
+    r"pause (?:VLC|Spotify)|play VLC)\b", re.I)
+_BOUNDARY = re.compile(r"([ \t]*(?:\.{3,}|\u2026)[ \t]*|(?<!\.)\.(?!\.)[ \t]+)")
+_HARD_BOUNDARY = re.compile(r"[.!?:;\u2026]")
+_ELLIPSIS = re.compile(r"\.{3,}|\u2026")
+_PERSON_CONTRACTION = re.compile(
+    r"(?:i'm|\w+'(?:re|ve|ll|d)|(?:it|that|he|she|there)'s|\w+n't)")
 
 
 def _words(text):
-    return [match[0].casefold().replace('’', "'") for match in _WORD.finditer(text)]
+    return [word.lower().replace("\u2019", "'") for word in _WORD.findall(text)]
 
 
-def _finite(words):
-    return any(word in _FINITE or re.fullmatch(r"(?:i'm|\w+'(?:re|ve|ll|d)|(?:it|that|he|she|there)'s|\w+n't)", word)
-               for word in words)
+def _subject(word):
+    return word.split("'", 1)[0] in _SUBJECTS
 
 
-def _independent(words):
-    return (len(words) > 1 and _finite(words)
-            and (words[0].split("'", 1)[0] in _SUBJECTS or words[0] in {'that', 'this'}
-                 and words[1] in _FINITE))
+@lru_cache(maxsize=4096)
+def _lemmas(word):
+    if getAllLemmas is None:
+        entry = _BUILTIN_FORMS.get(word)
+        return {"VERB": (entry[0],)} if entry else {}
+    return getAllLemmas(word)
 
 
-def _join(left, right, legacy_join):
-    previous, following = _words(left), _words(right)
-    if not previous or not following or '?' in right or '!' in right:
+@lru_cache(maxsize=4096)
+def _verb_forms(word):
+    if getAllInflections is None:
+        entry = _BUILTIN_FORMS.get(word)
+        return frozenset(entry[1]) if entry else frozenset()
+    return frozenset(tag for lemma in _lemmas(word).get("VERB", ())
+                     for tag, forms in getAllInflections(lemma, "VERB").items()
+                     if word in forms)
+
+
+def _verb(word):
+    return bool(_lemmas(word).get("VERB")) or word in _AUXILIARIES
+
+
+def _finite(word):
+    return (word in _AUXILIARIES - {"be", "been", "being"}
+            or bool(_verb_forms(word) & _FINITE_FORMS)
+            or bool(_PERSON_CONTRACTION.fullmatch(word)))
+
+
+def _unambiguous_predicate(word):
+    tags = _lemmas(word)
+    return (_finite(word)
+            and word not in _PREPOSITIONS
+            and (word in _AUXILIARIES or "NOUN" not in tags
+                 or any(lemma != word for lemma in tags.get("VERB", ()))
+                 and "VBZ" in _verb_forms(word)))
+
+
+def _clause(words):
+    """Look for a subject and predicate, allowing nouns also used as verbs."""
+    while words and words[0] in _ADVERBS | _HESITATIONS | {"now", "then"}:
+        words = words[1:]
+    if len(words) < 2:
         return False
-    if previous[0] in _QUESTIONS:
+    if _subject(words[0]) or words[0] in {"that", "this", "these", "those"}:
+        return any(_finite(word) for word in words[1:]) or bool(
+            _PERSON_CONTRACTION.fullmatch(words[0]))
+    if (words[0] in _PREPOSITIONS | _SUBORDINATORS | _COORDINATORS | {"being", "been"}
+            or _verb(words[0]) and "NOUN" not in _lemmas(words[0])):
         return False
-    if _COMMAND.match(right) or following[0] in _REPLIES or _independent(following):
+    start = 2 if words[0] in _DETERMINERS else 1
+    return any(_unambiguous_predicate(word) for word in words[start:])
+
+
+def _noun_phrase(words):
+    if not words or _subject(words[0]):
         return False
-    if legacy_join(left, right):
+    if words[0] in _DETERMINERS:
+        return len(words) > 1 and not _clause(words)
+    return (not _clause(words) and any("NOUN" in _lemmas(word) for word in words)
+            and not _unambiguous_predicate(words[0]))
+
+
+def _subordinate(words):
+    return (len(words) > 2 and words[0] in _SUBORDINATORS
+            and words[1] not in _AUXILIARIES and _clause(words[1:]))
+
+
+def _fronted_clause(text):
+    dependent, comma, main = text.partition(",")
+    if not comma:
+        return False
+    if text[0].isupper() and " ".join(_words(dependent)) in _SENTENCE_OPENERS:
         return True
-    if following[0] in _DEPENDENT or following[:2] == ['instead', 'of']:
-        return _finite(previous) or previous[-1] in _DEPENDENT
-    if (previous[-1] in _COMPLEMENTS and len(following) <= 7
-            and not _finite(following)):
-        return True
-    # "That" introducing a relative/complement clause is distinguishable from
-    # "That was odd"; the latter is an independent demonstrative sentence.
-    if following[0] == 'that' and not _independent(following):
-        return _finite(previous)
-    subject = previous
-    if 'that' in previous:
-        subject = previous[len(previous) - previous[::-1].index('that'):]
-    noun = (bool(subject) and len(subject) <= 7 and not _finite(subject)
-            and (subject[0] in _DETERMINERS or len(subject) == 1
-                 and subject[0] in _COMMON - _REPLIES))
+    if not _subordinate(_words(dependent)):
+        return False
+    words = _words(main)
+    if words[:1] == ["then"]:
+        words = words[1:]
+    return _clause(words) or bool(words and "VB" in _verb_forms(words[0]))
+
+
+def _ellipsis_continuation(previous, following):
+    first, ending = following[0], previous[-1]
+    new_clause = _clause(following) or first == "maybe" and _clause(following[1:])
+    if ending in _PREPOSITIONS and following[:2] == ["i", "mean"]:
+        return " — "
+    if (ending in _PREPOSITIONS and first in _HESITATIONS and len(following) > 1
+            and "VBG" in _verb_forms(following[1])):
+        return " "
+    if first in _HESITATIONS and _subject(ending):
+        return " — "
+    if (ending in {"am", "are", "was", "were"} | _HESITATIONS
+            or ending in _DETERMINERS - _RELATIVES - {"this", "these", "those"}
+            or ending in {"i'm", "you're", "he's", "she's", "it's", "we're", "they're"}):
+        # Mark an abandoned lead-in when the speaker starts a new clause.
+        return " — " if new_clause and first != ending else " "
+    if (ending == "like" and len(previous) > 1
+            and {"feel", "look", "seem", "sound"}.intersection(
+                _lemmas(previous[-2]).get("VERB", ()))):
+        return " "
+    if previous == ["now", "see"] and new_clause:
+        return ", "
+    return None
+
+
+def _subject_predicate(previous, following):
+    if "that" in previous:
+        previous = previous[len(previous) - previous[::-1].index("that"):]
+    if not _noun_phrase(previous):
+        return False
     predicate = following[1:] if following[0] in _ADVERBS else following
-    return noun and bool(predicate) and predicate[0] in _FINITE
+    if not predicate or len(previous) == len(following) == 1:
+        return False
+    verb = predicate[0]
+    # A short noun fragment does not establish a speaker. These could be
+    # separate utterances with an omitted "I" ("My mistake. Said it wrong.").
+    if _SPEECH_VERBS.intersection(_lemmas(verb).get("VERB", ())):
+        return False
+    forms = _verb_forms(verb)
+    if forms & {"VBD", "VBZ"} or verb in _AUXILIARIES - {"be", "been", "being"}:
+        return True
+    # A bare verb after a singular subject usually starts a real command.
+    plural = any(lemma != previous[-1] for lemma in _lemmas(previous[-1]).get("NOUN", ()))
+    return plural and "VBP" in forms
 
 
-def repair(text, legacy_join, lowercase_words):
-    """Keep hard boundaries; repair evidenced pauses to a stable fixed point.
+def _join(left, right, *, ellipsis):
+    previous, following = _words(left), _words(right)
+    if not previous or not following or right.endswith(("?", "!")) or _COMMAND.match(right):
+        return None
+    first, ending = following[0], previous[-1]
+    if first in _REPLIES or (first == "that" and len(following) > 1
+                             and following[1] in _AUXILIARIES):
+        return None
+    if len(following) == 1 and first in _SIGN_OFFS:
+        # A stranded copula still takes a one-word complement.
+        if not (first in {"done", "over"}
+                and ending in {"am", "is", "are", "was", "were", "be", "been", "being"}
+                and previous[0] != "there"
+                and not any(word in _QUESTIONS | _SUBORDINATORS for word in previous[:-1])):
+            return None
+    if _fronted_clause(right):
+        return None
+    # A fronted dependent clause can attach to its main clause. Once it has
+    # a main clause, only an open complement or a participial aside fits.
+    if _subordinate(previous) and _clause(following):
+        if (not _fronted_clause(left) or ending == "that"
+                or "VBG" in _verb_forms(first)):
+            return ", "
+    if previous[0] in _QUESTIONS | _AUXILIARIES:
+        return None
+    complete = _clause(previous)
+    if ellipsis and first == "then" and complete and following[1:2] == previous[:1]:
+        return " "
+    if ellipsis:
+        continuation = _ellipsis_continuation(previous, following)
+        if continuation:
+            return continuation
+    if (len(previous) > 1 and previous[-2] == "to" and ending in _ADVERBS
+            and "VB" in _verb_forms(first)):
+        return " "
 
-    Literal-bearing lines are opaque: a conservative miss is preferable to
-    editing a quote, list, abbreviation, number, path or filename as prose.
-    Only a small ordinary-word vocabulary loses stray capitals, like 747/1209;
-    unknown names, I/contractions, acronyms and mixed-case words survive.
-    """
-    common = lowercase_words | _COMMON | _FINITE | _DEPENDENT | _ADVERBS
-    lines = re.split(r'(\r\n|\r|\n)', text or '')
+    dependent = (first in _SUBORDINATORS | _RELATIVES | _PREPOSITIONS
+                 or following[:2] == ["instead", "of"])
+    if _subject(first) or _clause(following) and not (dependent or first in _COORDINATORS):
+        if ellipsis and (_CLAUSAL_VERBS.intersection(_lemmas(ending).get("VERB", ()))
+                         or ending == "that" and len(previous) > 2):
+            return " "
+        # A bare terminal 'while', 'once' etc. can finish a clause. Only
+        # a complement-selecting verb can license a new subject here.
+        open_clause = (ending == "because" and complete
+                       or ending in {"if", "whether"} and len(previous) > 1
+                       and _CLAUSAL_VERBS.intersection(_lemmas(previous[-2]).get("VERB", ())))
+        if not open_clause:
+            return None
+    # A repeated predicate after a comma is a continuation of the same list.
+    last_item = left.rpartition(",")
+    if (last_item[1] and len(following) > 2 and following[1] in _OBJECT_PRONOUNS
+            and "VBZ" in _verb_forms(first) and _words(last_item[2])[:2] == following[:2]):
+        return ", "
+    if not ellipsis and right[0].islower():
+        return " "
+
+    if ending in _PREPOSITIONS | _COORDINATORS | _SUBORDINATORS | _DETERMINERS | _RELATIVES:
+        if ending != "so" or previous == ["so"]:
+            return " "
+    if ending in _AUXILIARIES:
+        if len(previous) > 1 and previous[0] != "there":
+            return " "
+    if (ending in _OBJECT_PRONOUNS and len(previous) > 1
+            and _OBJECT_INFINITIVE.intersection(_lemmas(previous[-2]).get("VERB", ()))
+            and (first == "to" or "VB" in _verb_forms(first))):
+        return " "
+
+    if dependent and complete:
+        return " "
+    if first in _COORDINATORS and complete:
+        subject = next((word.split("'", 1)[0] for word in previous if _subject(word)), None)
+        if (not _clause(following[1:]) or right[0].islower() or following[1:2] == ["maybe"]
+                or subject is not None and following[1:2] == [subject]):
+            return " "
+
+    # A candidate object has no independent predicate. The verb immediately
+    # before the break must actually be in a verb position in the left clause.
+    if complete and _verb(ending) and following != ["the", "end"]:
+        after_infinitive = (previous[-2] == "to"
+                            or previous[-2] in _MODALS | {"gonna", "wanna"})
+        if after_infinitive or "NOUN" not in _lemmas(ending):
+            if first in _DETERMINERS and _noun_phrase(following):
+                return " "
+        if ellipsis and (_subject(previous[-2]) or ending in _NAME_CONTEXT):
+            if not _verb(first) or right[0].isupper() and ending in _NAME_CONTEXT:
+                return " "
+    return " " if _subject_predicate(previous, following) else None
+
+
+def _title_word(word):
+    return len(word) > 1 and word.isalpha() and word.istitle()
+
+
+def _governed_infinitive(word, before, governor):
+    return (before == "to" and "VB" in _verb_forms(word)
+            and _INFINITIVE_CONTEXT.intersection(_lemmas(governor).get("VERB", ())))
+
+
+def _original_capitals(line):
+    """Collect names before joins erase the original sentence boundaries."""
+    matches = list(_WORD.finditer(line))
+    words = [match[0].lower().replace("\u2019", "'") for match in matches]
+    protected = set()
+    for index, match in enumerate(matches):
+        word = match[0]
+        folded = words[index]
+        if len(word) < 2 or not word[0].isupper() or not word[1:].islower():
+            continue
+        previous = matches[index - 1] if index else None
+        between = line[previous.end() if previous else 0:match.start()]
+        if previous and between.isspace() and _title_word(previous[0]) and _title_word(word):
+            head = words[index - 1]
+            infinitive = index >= 3 and _governed_infinitive(head, words[index - 2], words[index - 3])
+            if head not in _FUNCTION_WORDS and not infinitive:
+                protected.add(head)
+                if folded not in _CLOSED_CLASS:
+                    protected.add(folded)
+        prefix = between.rstrip() or (previous[0] if previous else "")
+        if not prefix or _HARD_BOUNDARY.fullmatch(prefix[-1]):
+            continue
+        before = words[index - 1] if index else ""
+        following = words[index + 1] if index + 1 < len(words) else ""
+        # Keep the established lowercase repair for ordinary cleanup words,
+        # relative markers and predicative verbs with an object pronoun.
+        if (folded.partition("'")[0] in _CLOSED_CLASS or folded.endswith("n't")
+                or folded in _INLINE_CLEANUP_WORDS
+                or before in _DETERMINERS and folded in _BUILTIN_COMMON
+                or following in _OBJECT_PRONOUNS and "VBZ" in _verb_forms(folded)
+                or _subject(before) and _unambiguous_predicate(folded)):
+            continue
+        protected.add(folded)
+    return protected
+
+
+def _lowercase(line, protected, marker):
+    prior = ""
+    previous = ""
+
+    def lower(match):
+        nonlocal prior, previous
+        word = match[0]
+        before, previous = previous, word.lower().replace("\u2019", "'")
+        before_link, prior = prior, before
+        if (previous in protected or previous == "i" or previous.startswith("i'")
+                or not word[0].isupper() or (word != "A" and word.isupper())
+                or any(char.isupper() for char in word[1:])):
+            return word
+        prefix = line[:match.start()].rstrip()
+        if (not prefix or prefix[-1] in ".!?:;\u2026" or prefix.endswith(marker)
+                or before in _NAME_CONTEXT):
+            return word
+        # Adjacent title-case words can be a name. A capitalized function
+        # word still lowercases when it introduces a continuation.
+        tail = re.match(r"[ \t]+([^\W\d_]+)", line[match.end():])
+        if ((previous not in _FUNCTION_WORDS or previous == "will" and not _subject(before)) and tail
+                and _title_word(tail[1]) and tail[1].lower() not in _FUNCTION_WORDS
+                and not _governed_infinitive(previous, before, before_link)):
+            return word
+        if previous in {"will", "rose"} and before in _COORDINATORS and before_link in protected:
+            return word
+        if (previous.partition("'")[0] in _FUNCTION_WORDS or _PERSON_CONTRACTION.fullmatch(previous)
+                or previous in _BUILTIN_COMMON or _lemmas(previous)):
+            return word.lower()
+        return word
+
+    return _WORD.sub(lower, line)
+
+
+def repair(text, vocabulary=()):
+    """Mask local literals, then repair evidenced pauses without changing words."""
+    protected = {word for entry in vocabulary or () for word in _words(entry)}
+    protected.update(_CALENDAR)
+    lines = re.split(r"(\r\n|\r|\n)", text or "")
+    for line in lines[::2]:
+        protected.update(_original_capitals(line))
     for index in range(0, len(lines), 2):
         line = lines[index]
-        if _LITERAL.search(line) or _LIST.match(line):
+        if _LIST.match(line):
             continue
-        line = re.sub(r'(?<=\S)[ \t]{2,}(?=\S)', ' ', line)
-        # A final ellipsis remains deliberate/unfinished. At this plain-text
-        # seam an interior ellipsis has no explicit-command provenance.
-        line = re.sub(r'(?<=\w)[ \t]*(?:\.{3,}|…)[ \t]*(?=\w)', ' ', line)
+        marker = "\0"
+        while marker in line:
+            marker += "\0"
+        literals = []
+
+        def mask(match):
+            literals.append(match[0])
+            return marker
+
+        line = _LITERAL.sub(mask, line)
+        line = re.sub(r"(?<=\S)[ \t]{2,}(?=\S)", " ", line)
         while True:
-            parts = re.split(r'((?<!\.)\.(?!\.)[ \t]+)', line)
+            parts = _BOUNDARY.split(line)
             result = parts[0]
             for offset in range(1, len(parts), 2):
                 separator, following = parts[offset:offset + 2]
-                left = re.split(r'[.!?…]', result)[-1].strip()
-                # Questions/exclamations are hard bounds, including the right
-                # fragment's terminator, which the legacy predicate checks.
-                probe = re.split(r'(?<=[.!?…])', following, maxsplit=1)[0]
-                if _join(left, probe, legacy_join):
-                    result = re.sub(r',[ \t]*$', '', result).rstrip(' \t')
-                    separator = ' '
+                left = _HARD_BOUNDARY.split(result)[-1].strip()
+                # Keep a right-hand question or exclamation even when its
+                # words could be attached to the preceding sentence.
+                right = re.split(r"(?<=[.!?:;\u2026])", following, maxsplit=1)[0].strip()
+                join = (None if right.startswith(marker) or left.endswith(marker) and not _words(left)
+                        else _join(left, right, ellipsis=bool(_ELLIPSIS.search(separator))))
+                if join:
+                    result = result.rstrip(" \t").removesuffix(",")
+                    separator = join
                 result += separator + following
             if result == line:
                 break
             line = result
-
-        previous = ''
-
-        def lower(match):
-            nonlocal previous
-            word = match[0]
-            before, previous = previous, word.casefold().replace('’', "'")
-            if (word.casefold() not in common or not word[:1].isupper()
-                    or word.isupper() or any(c.isupper() for c in word[1:])):
-                return word
-            prefix = line[:match.start()].rstrip()
-            # Ambiguous modal/name spellings and an explicit naming context
-            # are positive name evidence, even for our ordinary vocabulary.
-            named = (before in {'met', 'named', 'called', 'mr', 'mrs', 'ms', 'dr', 'prof'}
-                     or word.casefold() in {'may', 'will'} and before not in _SUBJECTS)
-            if not named and prefix and prefix[-1] not in '.!?…':
-                return word.lower()
-            return word
-
-        lines[index] = _WORD.sub(lower, line)
-    return ''.join(lines)
+        line = _lowercase(line, protected, marker)
+        hidden = iter(literals)
+        lines[index] = re.sub(re.escape(marker), lambda _: next(hidden), line)
+    return "".join(lines)
