@@ -362,8 +362,9 @@ def observe_commit(method):
             _warning()
             return method(manager, *args, **kwargs)
         result = method(manager, *args, **kwargs)
-        from samsara.handsfree_capture import observe_dispatch
-        observe_dispatch(manager, result)
+        from samsara import handsfree_capture
+        if handsfree_capture.dispatch_target(app) is not None:
+            handsfree_capture.observe_dispatch(manager, result)
         try:
             if app and result.kind == 'dictate_committed':
                 arrays = [ref for ref in refs if ref is not None and np.asarray(ref).size]
@@ -405,8 +406,10 @@ def dispatch_session(manager, raw, signals, onset_context, timing):
     with manager._dispatch_lock:
         outcome = _dispatch_session(manager, raw, signals, onset_context)
     timing.mark("action_done")
-    from samsara.handsfree_capture import observe_dispatch
-    observe_dispatch(manager, outcome)
+    from samsara import handsfree_capture
+    app = getattr(getattr(manager, '_commit_redecode_fn', None), '__self__', None)
+    if handsfree_capture.dispatch_target(app) is not None:
+        handsfree_capture.observe_dispatch(manager, outcome)
     return outcome
 
 

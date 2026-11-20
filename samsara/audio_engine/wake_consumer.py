@@ -51,7 +51,6 @@ from .startup_cue import (
 from samsara.constants import (
     DEFAULT_MIN_SPEECH_DURATION,
     DEFAULT_SPEECH_THRESHOLD,
-    LIVE_VAD_PROB_THRESHOLD,
     WAKE_DETECTION_SILENCE,
     WAKE_SPEECH_THRESHOLD_CAP,
 )
@@ -60,7 +59,7 @@ from samsara.session_modes import SessionMode
 from samsara.subjects import OnsetContext
 from samsara.log import get_logger
 from samsara.runtime import thread_registry
-from samsara import flight_recorder, tutorial_capture, mic_score, wake_roles
+from samsara import flight_recorder, handsfree_capture, tutorial_capture, mic_score, wake_roles
 from samsara.wake_roles import AdmittedWakeBuffer, clear_oww_hits as _clear_oww_hits
 
 logger = get_logger(__name__)
@@ -780,9 +779,9 @@ class WakeConsumer:
         onset_context: OnsetContext | None = None,
     ) -> None:
         """Append one captured utterance and ensure one FIFO worker drains it."""
-        from samsara.handsfree_capture import observe_chunk
-        observe_chunk(self._app, buffer_copy, speech_start_ns=speech_start_ns,
-                      last_voice_ns=last_voice_ns, speech_end_ns=speech_end_ns)
+        if getattr(self._app, '_handsfree_capture_1259', None) is not None:
+            handsfree_capture.observe_chunk(self._app, buffer_copy, speech_start_ns=speech_start_ns,
+                                            last_voice_ns=last_voice_ns, speech_end_ns=speech_end_ns)
         with self._toggle_queue_lock:
             self._toggle_queue.append(QueuedUtterance(
                 onset_context.utterance_id if onset_context else uuid.uuid4().hex,
@@ -851,6 +850,7 @@ class WakeConsumer:
                 buffer_copy, owner_token = queued.frames, queued.owner_token
 
             if not self._is_toggle_cmd(self._app):
+                if evidence := getattr(buffer_copy, 'handsfree_evidence', None): evidence.finish('session_ended')
                 logger.info('[CMD-UTT] Session ended -- discarding queued post-exit utterance')
                 flight_recorder.record('session.dispatch', op='dropped', kind='toggle_command', reason='session_ended')
                 self._close_hands_free_duck_safe(self._app, owner_token)
@@ -865,8 +865,8 @@ class WakeConsumer:
                         kwargs['speech_start_ns'] = queued.speech_start_ns
                 if queued.onset_context is not None:
                     kwargs['onset_context'] = queued.onset_context
-                tutorial_capture.run(buffer_copy, self._app._handle_command_mode_utterance,
-                                     buffer_copy, SAMPLE_RATE, **kwargs)
+                handsfree_capture.decode_if_observed(tutorial_capture.run, buffer_copy,
+                    self._app._handle_command_mode_utterance, buffer_copy, SAMPLE_RATE, **kwargs)
             except Exception as exc:
                 logger.exception(f'[CMD-UTT] FIFO worker error: {exc}')
                 flight_recorder.record('session.dispatch', op='completed', kind='toggle_command', exc=True)
@@ -973,22 +973,24 @@ class WakeConsumer:
             logger.warning("[ACE] Wake on_fatal callback failed: %s", callback_exc)
 
     def _poll_loop(self, stop_event=None) -> None:
-        from samsara.handsfree_capture import close, poll_frames
         app = self._app
         stop_event = self._stop_event if stop_event is None else stop_event
         try:
-            poll_frames(self, stop_event, sleep=time.sleep)
+            handsfree_capture.poll_frames(self, stop_event, sleep=time.sleep)
         except Exception as exc:
             self._handle_fatal(exc)
         finally:
-            close(app)
+            if getattr(app, '_handsfree_capture_1259', None) is not None: handsfree_capture.close(app)
             self._running = False
             self._close_capture_duck()
 
-    def _process_frame(self, frame) -> None:  # noqa: C901 (complexity mirrors legacy callback)
+    def _process_frame(self, frame) -> None:
+        if handsfree_capture.enabled(self._app) or getattr(self._app, '_handsfree_capture_1259', None) is not None:
+            return handsfree_capture.process_frame(self, frame)
+        return self._listen_frame(frame)
+
+    def _listen_frame(self, frame, evidence=None) -> None:  # noqa: C901 (complexity mirrors legacy callback)
         app = self._app
-        from samsara.handsfree_capture import observe_frame
-        observe_frame(app, frame)
         resume_wake_ready_output(app)
         if not mic_score.prepare_wake_frame(self):
             return
@@ -1009,6 +1011,7 @@ class WakeConsumer:
         # exemption (including global abort). AI-command-mode stays suppressed
         # to avoid concurrent transcription and spoken replies during a hold.
         if wake_hold_suppressed(self, app):
+            if evidence is not None: evidence.state = handsfree_capture.HOLD
             if not self._hotkey_suppressed_last:
                 self._log_frame(logging.DEBUG, 'hotkey_suppressed',
                     "[SEAM] WakeConsumer suppression ENGAGED (hotkey recording "
@@ -1104,6 +1107,7 @@ class WakeConsumer:
                             "skipped until playback + tail complete"
                         )
                         self._ava_cmd_tts_suppressed_last = True
+                    if evidence is not None: evidence.state = handsfree_capture.TTS
                     return   # cursor already advanced (frame already read in _poll_loop)
             if self._ava_cmd_tts_suppressed_last:
                 self._log_frame(logging.DEBUG, 'frame_665', "[SEAM] Ava lane suppression RELEASED (TTS + tail complete)")
@@ -1152,8 +1156,10 @@ class WakeConsumer:
             _coordinator = getattr(app, 'audio_coordinator', None)
             if _coordinator and _coordinator.is_speaking:
                 app._tts_last_speaking = time.monotonic()
+                if evidence is not None: evidence.state = handsfree_capture.TTS
                 return
             if time.monotonic() - getattr(app, '_tts_last_speaking', 0.0) < 0.3:
+                if evidence is not None: evidence.state = handsfree_capture.TTS
                 return
 
         # ── RMS on raw signal (not AEC) ───────────────────────────────────────
@@ -1193,7 +1199,8 @@ class WakeConsumer:
         vad_used = False
         if app._vad_available:
             try:
-                is_speech = app._vad_is_speech(raw_chunk, src_rate=SAMPLE_RATE)
+                is_speech = (app._vad_is_speech(raw_chunk, src_rate=SAMPLE_RATE) if evidence is None
+                             else app._vad_is_speech(raw_chunk, src_rate=SAMPLE_RATE, _diagnostic=evidence))
                 vad_used = True
                 silero_onset = bool(is_speech and not self._silero_was_speech)
                 self._silero_was_speech = bool(is_speech)
@@ -1216,6 +1223,7 @@ class WakeConsumer:
         else:
             is_speech = rms > speech_threshold
 
+        if evidence is not None: evidence.decision(rms, speech_threshold, silence_threshold, vad_used, app.is_speaking)
         rms_positive = rms > speech_threshold
         rms_onset = bool(rms_positive and self._rms_was_speech is False)
         self._rms_was_speech = rms_positive
@@ -1309,6 +1317,7 @@ class WakeConsumer:
             app.silence_start = None
 
             if speech_onset:
+                if evidence is not None: evidence.state = handsfree_capture.ONSET
                 self._utterance_frames = tutorial_capture.start_frames(app, self._utterance_frames)
                 self._speech_start_ns = capture_ns
                 self._onset_context = (self._capture_onset_context(capture_ns)
@@ -1340,6 +1349,7 @@ class WakeConsumer:
                         if admission[1] == 'discard':
                             prebuffer_frames = 0
                             self._utterance_frames.append(raw_chunk)
+                            if evidence is not None: evidence.span(self._utterance_frames, frame, raw_chunk)
                             self._buffer_rms_history.append(rms)
                 if self._is_toggle_dictate(app):
                     if getattr(self, '_hold_not_before', None) is not None:
@@ -1364,6 +1374,7 @@ class WakeConsumer:
                         if not len(pb_pcm):
                             continue
                     self._utterance_frames.append(pb_pcm)
+                    if evidence is not None: evidence.span(self._utterance_frames, pb_frame, pb_pcm)
                     self._buffer_rms_history.append(
                         float(np.sqrt(np.mean(pb_pcm ** 2)))
                     )
@@ -1397,6 +1408,7 @@ class WakeConsumer:
             else:
                 # Non-onset speech frame — append normally
                 self._utterance_frames.append(raw_chunk)
+                if evidence is not None: evidence.span(self._utterance_frames, frame, raw_chunk)
                 self._buffer_rms_history.append(rms)
 
             # Stuck-buffer detector (same as legacy callback).
@@ -1433,6 +1445,7 @@ class WakeConsumer:
             # Hard buffer cap (same as legacy callback)
             buffer_s = len(self._utterance_frames) * (FRAME_MS / 1000.0)
             if buffer_s >= 7.0 and self._hard_cap_applies(app):
+                if evidence is not None: evidence.discard(self, 'hard_buffer_cap', speech_threshold, time.monotonic)
                 self._log_frame(logging.DEBUG, 'frame_922', f"[CAP] Buffer at {buffer_s:.1f}s cap — discarding (likely noise/echo)")
                 flight_recorder.record(
                     'wake.session_close', reason='hard_buffer_cap', buffer_s=buffer_s,
@@ -1457,6 +1470,7 @@ class WakeConsumer:
             # Silence
             if app.is_speaking:
                 self._utterance_frames.append(raw_chunk)
+                if evidence is not None: evidence.span(self._utterance_frames, frame, raw_chunk)
                 self._buffer_rms_history.append(rms)
 
                 preview = getattr(app, '_dictate_preview', None)
@@ -1466,6 +1480,7 @@ class WakeConsumer:
                     # Reuse the hold-tail setting, with a 400ms floor for provisional text.
                     silence_threshold = min(silence_threshold, max(
                         0.4, float(app.config.get('recording_tail_silence_ms', 300)) / 1000.0))
+                    if evidence is not None: evidence.silence_s = silence_threshold
                 if app.silence_start is None:
                     app.silence_start = time.time()
                 elif time.time() - app.silence_start >= silence_threshold:
@@ -1477,6 +1492,7 @@ class WakeConsumer:
                     speech_s = len(self._utterance_frames) * (FRAME_MS / 1000.0)
                     if speech_s >= min_speech:
                         buffer_copy = tutorial_capture.copy_frames(self._utterance_frames)
+                        if evidence is not None: evidence.copy_spans(self._utterance_frames, buffer_copy)
                     else:
                         buffer_copy = None
                     self._utterance_frames   = []
@@ -1489,7 +1505,7 @@ class WakeConsumer:
 
                     if buffer_copy is not None:
                         if self._is_toggle_cmd(app):
-                            self._log_silence_close(raw_chunk, rms, speech_threshold, silence_threshold, vad_used)
+                            handsfree_capture.log_silence_close(self, raw_chunk, rms, speech_threshold, silence_threshold, vad_used, logger=logger, now=time.monotonic, evidence=evidence)
                         flight_recorder.record(
                             'wake.session_close', reason='silence_flush',
                             speech_s=speech_s,
@@ -1504,6 +1520,7 @@ class WakeConsumer:
                         # Too short to count as a real utterance -- the
                         # capture window this onset opened closes here
                         # (buffer discarded, never reaches _flush at all).
+                        if evidence is not None: evidence.discard(self, 'too_short', speech_threshold, time.monotonic)
                         _clear_oww_hits(app)
                         flight_recorder.record(
                             'wake.session_close', reason='too_short',
@@ -1511,23 +1528,6 @@ class WakeConsumer:
                         )
                         self._close_hands_free_duck_safe(app, self._hands_free_capture_duck_token)
                         self._hands_free_capture_duck_token = None
-
-    def _log_silence_close(self, chunk, rms, rms_threshold, silence_s, vad_used):
-        # One stateless rescore of the closing frame; never changes admission.
-        peak = -1.0
-        if vad_used:
-            try:
-                with self._app._vad_lock:
-                    probabilities = self._app._vad_probabilities(chunk.copy())
-                peak = float(np.max(probabilities)) if len(probabilities) else -1.0
-            except Exception:
-                pass  # Missing telemetry cannot interrupt capture or dispatch.
-        released = self._last_suppression_release
-        logger.info(
-            '[HANDSFREE-SILENCE] vad_used=%d threshold=%.6f vad_peak=%.6f rms=%.6f '
-            'rms_threshold=%.6f silence_s=%.3f since_release_s=%.3f',
-            vad_used, LIVE_VAD_PROB_THRESHOLD if vad_used else rms_threshold, peak,
-            rms, rms_threshold, silence_s, time.monotonic() - released if released is not None else -1.)
 
     @staticmethod
     def _wrap_with_duck_close(app, fn, owner_token: int | None = None, kind: str = "unknown"):

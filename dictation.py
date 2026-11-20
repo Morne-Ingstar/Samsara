@@ -434,7 +434,7 @@ from samsara import config_defaults, listening_display, tutorial_capture, speech
 from samsara.onboarding import display_placement
 from samsara import injection_safety
 from samsara import diagnostics
-from samsara import flight_recorder
+from samsara import flight_recorder, handsfree_capture
 from samsara import outcome_ring
 from samsara import benchmark_store
 from samsara import languages as _languages
@@ -4894,6 +4894,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         with self._command_mode_lock:
             if not self.command_mode_active:
                 return
+            if (capture_exit := getattr(self, "_handsfree_capture_1259", None)) is not None: handsfree_capture.begin_exit(capture_exit)
             self.command_mode_active = False
             hold_ms = (time.monotonic() - self._command_mode_session_start) * 1000
         debounce_ms = self.config.get('command_mode', {}).get('enter_debounce_ms', 200)
@@ -4937,6 +4938,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                 if controller is not None and parked:
                     controller.sync_draft(self._session_mode_manager)
         finally:
+            if capture_exit is not None: handsfree_capture.close(self, current=capture_exit, parked=parked)
             # Parking failures must release both microphone and preview owners.
             try:
                 if is_toggle_session:
@@ -5650,7 +5652,8 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             from samsara.failure_reasons import skip_decode
             from samsara.handsfree_fragment_policy import CaptureEvidence
             fragment_capture = CaptureEvidence(self)
-            if skip_decode(audio, self, path='handsfree', evidence_sink=fragment_capture): self._log_cmd_utt_dropped('no_speech_in_audio', _capture_mode, audio_duration); return
+            sink = gate_evidence.gate_sink(fragment_capture) if (gate_evidence := getattr(buffer, 'handsfree_evidence', None)) is not None else fragment_capture
+            if skip_decode(audio, self, path='handsfree', evidence_sink=sink): self._log_cmd_utt_dropped('no_speech_in_audio', _capture_mode, audio_duration); return
             _self_hear = is_self_hear_capture(
                 getattr(self, 'audio_coordinator', None), speech_start_ns, last_voice_ns)
             if _capture_mode == 'command' and _self_hear:
@@ -5665,7 +5668,6 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             if audio_duration < 0.3:
                 self._log_cmd_utt_dropped('too_short', _capture_mode, audio_duration)
                 return
-
             logger.info(f'[CMD-UTT] capture mode={_capture_mode} duration={audio_duration:.1f}s')
             logger.debug(f'[CMD-UTT] Transcribing {audio_duration:.1f}s utterance')
 
@@ -6059,12 +6061,12 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         SessionModeManager.dispatch_utterance. The reason is a fixed token so the
         log answers "why did nothing happen?" without the transcript text."""
         logger.info(f'[CMD-UTT] dropped reason={reason} mode={mode} duration={duration_s:.1f}s')
+        if (evidence := handsfree_capture.decode_target()) is not None: evidence.drop(reason, duration_s)
         _cancel_windows = _cancel_window_module()
         if _cancel_windows is not None:
             # Queue 69: the sound that held a cancel window was not speech
             # that reached dispatch -- release the hold (the command runs).
             _cancel_windows.after_utterance(None, f'dropped_{reason}')
-
     def _intent_shadow_observe(self, text, outcome) -> None:
         """Hand one finalised DICTATE utterance to the shadow intent gate
         (samsara/intent/shadow.py). Observer only: reads the outcome KIND,
@@ -7751,23 +7753,21 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         probabilities = self._vad_model(audio_16k[:usable])
         return np.asarray(probabilities, dtype=np.float32).reshape(-1)
 
-    def _vad_is_speech(self, chunk_float32, src_rate=None):
+    def _vad_is_speech(self, chunk_float32, src_rate=None, *, _diagnostic=None):
         """Return True if the chunk contains human speech.
-
         chunk_float32: flattened mono audio at src_rate.
         src_rate: sample rate of chunk_float32 (default: self.capture_rate).
                   Pass SAMPLE_RATE (16kHz) when chunk comes from the ACE ring.
         """
         if not self._vad_available or self._vad_model is None:
             return False
-        if src_rate is None:
-            src_rate = self.capture_rate
+        src_rate = self.capture_rate if src_rate is None else src_rate
         chunk_16k = resample_audio(chunk_float32, src_rate, 16000)
         # Guarantee 1D — sounddevice returns (N, 1) for mono in some configs
-        if chunk_16k.ndim > 1:
-            chunk_16k = chunk_16k.flatten()
+        chunk_16k = chunk_16k.flatten() if chunk_16k.ndim > 1 else chunk_16k
         with self._vad_lock:
             probabilities = self._vad_probabilities(chunk_16k)
+        if _diagnostic is not None: _diagnostic.probabilities(probabilities)
         return bool(np.any(probabilities > LIVE_VAD_PROB_THRESHOLD))
 
     def _vad_reset(self):

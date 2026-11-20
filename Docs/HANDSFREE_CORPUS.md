@@ -15,28 +15,59 @@ have an explicit `SAMSARA_HOME_DIR` whose resolved directory name is
 `.samsara-private`. The switch defaults to off by absence and is not a Settings
 control. It was not enabled against an owner profile during 1259.
 
-During a toggle hands-free session, the existing WakeConsumer observes its
-frames, including room gaps. A bounded asynchronous writer saves UUID-named
-16 kHz mono PCM16 WAV, JSONL events and a JSON completion manifest under
-`<private-profile>/handsfree_sessions/`. The journal contains capture times,
-frame sequence/epoch, sample offsets, queued chunk sizes/endpoints, sampled
-draft revisions and dispatch/delivery text. Dispatch events observe actual
-results. Asynchronous draft changes are sampled on the following observation
-tick; their timestamps must not be treated as exact UI change times.
+During a toggle hands-free session, a bounded asynchronous writer saves the
+listener's input, including room gaps, under
+`<private-profile>/handsfree_sessions/`. Schema 2 has a session UUID, a
+`<uuid>.json` manifest and numbered `<uuid>-p000001` parts. Each part contains
+a 16 kHz mono PCM16 WAV and a segment of the session's shared journal
+(`.frames` for packed frame rows, `.jsonl` for events). The writer closes
+each part at 30 minutes of PCM or about 2 MiB of events, then continues in
+the next part. Part boundaries are half-open session sample offsets.
 
-Limits are 30 minutes per session, 16 MiB of events per session, 256 MiB total,
-and seven days of age. Retention runs when a recording starts or finishes.
-It touches only this recorder's UUID-named WAV/JSONL/JSON files, including
-orphaned partials. Queue overflow, frame discontinuity, duration/event limits
-and an end with a pending decode invalidate a session. Disk failure leaves
-no completed manifest. Diagnostics return no decision to capture or dispatch.
+The packed little-endian format `<QqQQIIffffBB` uses 58 bytes per 100 ms
+frame, or 2,088,000 bytes per hour. Fields are ring sequence, capture clock
+nanoseconds, observation clock nanoseconds, session sample offset, sample
+count, device epoch, RMS, peak probability from the actual live VAD call,
+selected speech threshold, silence threshold in seconds, state, and a flag
+for live VAD use. State codes 0–5 mean idle, onset, in utterance, suppressed
+by hold, suppressed by TTS, and skipped by another early guard. NaN marks
+values the listener did not compute. The 1286 silence-close rescore is
+recorded separately.
+
+Events include entering and leaving hands-free, lane changes, sampled draft
+revisions and character counts, parked draft length, hold and duck edges
+visible to the listener, mic epoch changes, and discontinuities. The manifest
+pairs the monotonic clock with wall-clock time. A chunk ID joins queued
+audio to the speech-presence verdict, decode drop reason or dispatch result.
+Each ordered, half-open ring span is `[device_epoch, start_sample, end_sample]`, with
+`start_sample = seq * 1600 + offset_within_frame`. This includes the actual
+pre-roll, trimmed slices, and silence tail. A long fragmented clip may append
+`chunk_spans` events with the same chunk ID and a zero-based `first_span`.
+First-onset pre-roll can reference frames older than the session WAV. A
+nonzero `unmapped_samples` means the
+observer attached after capture began or some provenance is unavailable.
+Dispatch rows save word and character counts only, including counts for
+text staged to a draft. The journal contains no transcript or draft text.
+
+The recorder-owned files have a 1 GiB budget, about 9 hours of PCM plus frame
+rows before sparse events. This is under 7% of a 15 GiB free drive. Ordinary
+parts expire after 48 hours. Parts from sessions with a parked draft or a
+short reject expire after 7 days. Short rejects include a presence rejection,
+empty decode or sign-off drop at up to 1.5 seconds. Size pressure removes oldest ordinary parts first, then
+oldest flagged parts. An open part is reserved and excluded from deletion.
+A session can run beyond the retained window as older parts are removed.
+Queue overflow, frame discontinuities, pruned history and unresolved queue
+results mark the recording incomplete. Results already in the decode FIFO
+can arrive for up to 120 seconds after session exit. Disk errors terminate
+the writer and emit one warning without affecting the listener.
 
 Completion is **not** fidelity admission. The source hashes and whitelisted
 settings aid diagnosis; they are not a complete imported-code/configuration
-snapshot. First-onset ring pre-roll can precede the first recorded frame.
-Capture-time dictionary, model, settings, pre-roll coverage and event coverage
-must be established before replay can claim historical reproduction. Every
-manifest therefore explicitly has `fidelity_ready: false`.
+snapshot. Capture-time dictionary, model, settings, pre-roll coverage and
+event coverage must be established before replay can claim historical
+reproduction. Every manifest has `fidelity_ready: false`. The original
+inventory's exact-text admission applies to legacy recordings. Schema 2
+provides numeric evidence for diagnosis.
 
 ## Preparation CLI
 

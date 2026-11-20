@@ -38,6 +38,16 @@ def finish(current):
     return json.loads(path.read_text())
 
 
+def record_frame(target, source):
+    observation = capture.observe_frame(target, source)
+    if observation is not None:
+        observation.record()
+
+
+def part(current, suffix):
+    return current.root / f"{current.id}-p000001.{suffix}"
+
+
 def test_off_does_not_create_recorder_or_profile(tmp_path):
     target = app(False)
     capture.observe_state(target)
@@ -61,33 +71,35 @@ def test_continuous_pcm_is_copied_with_timestamps_and_draft_events(tmp_path):
     target._session_mode_manager = manager
     source = frame()
     expected = source.pcm.copy()
-    capture.observe_frame(target, source)
+    record_frame(target, source)
     current = target._handsfree_capture_1259
     source.pcm[:] = 0  # Simulate ring reuse while the asynchronous writer runs.
-    capture.observe_frame(target, frame(1))
+    record_frame(target, frame(1))
     capture.observe_chunk(target, [expected], speech_start_ns=100, speech_end_ns=200)
     manager._commit_redecode_fn = NS(__self__=target)
     capture.observe_dispatch(manager, NS(kind="dictate_committed", detail={"text": "Synthetic draft."}))
     metadata = finish(current)
     assert metadata["complete"] and not metadata["fidelity_ready"]
     assert metadata["samples"] == 3200
-    saved = replay.read_wav(current.root / (current.id + ".wav"))
+    saved = replay.read_wav(part(current, "wav"))
     assert np.array_equal(saved[:1600], expected)
-    rows = [json.loads(line) for line in (current.root / (current.id + ".jsonl")).read_text().splitlines()]
-    assert [r["event"] for r in rows] == ["draft", "frame", "frame", "chunk", "dispatch"]
-    assert rows[1]["sample_offset"] == 0 and rows[2]["sample_offset"] == 1600
-    assert rows[3]["speech_end_ns"] == 200
-    assert rows[-1]["delivered"] == "Synthetic draft."
+    rows = [json.loads(line) for line in part(current, "jsonl").read_text().splitlines()]
+    assert [r["event"] for r in rows] == ["part_start", "enter", "mode", "draft", "chunk", "dispatch", "part_end"]
+    assert [r[3] for r in capture.FRAME_ROW.iter_unpack(part(current, "frames").read_bytes())] == [0, 1600]
+    assert rows[4]["speech_end_ns"] == 200
+    # 1302 records text lengths only. Schema 2 cannot satisfy legacy exact-text pair admission.
+    assert rows[5]["delivered_chars"] == 16 and rows[5]["delivered_words"] == 2
+    assert "Synthetic draft" not in json.dumps(rows)
     assert all(isinstance(r["observed_ns"], int) for r in rows)
     assert "samsara/session_modes.py" in metadata["source_sha256"]
-    assert replay.inventory([current.root])["paired_real_sessions"] == 1
+    assert replay.inventory([current.root])["paired_real_sessions"] == 0
 
 
 @pytest.mark.parametrize("second", [frame(2), frame(1, 1)])
 def test_frame_loss_or_device_change_invalidates_capture(tmp_path, second):
     target = app()
-    capture.observe_frame(target, frame())
-    capture.observe_frame(target, second)
+    record_frame(target, frame())
+    record_frame(target, second)
     metadata = finish(target._handsfree_capture_1259)
     assert not metadata["complete"] and metadata["incomplete_reason"] == "frame_discontinuity"
 
@@ -100,8 +112,8 @@ def test_queue_overflow_invalidates_instead_of_blocking_audio(tmp_path, monkeypa
         original(self)
     monkeypatch.setattr(capture.Capture, "_write", wait_writer)
     current = capture.Capture(tmp_path / "capture", {}, queue_size=1)
-    current.put("frame", (frame().pcm, 100., 0, 0))
-    current.put("draft", {"text": "Synthetic"})
+    capture.FrameEvidence(current, frame()).record()
+    current.put("draft", {"chars": 9})
     assert current.failed and current.closed.is_set()
     ready.set()
     metadata = finish(current)
@@ -111,16 +123,17 @@ def test_queue_overflow_invalidates_instead_of_blocking_audio(tmp_path, monkeypa
 def test_session_duration_cap_is_labelled(tmp_path, monkeypatch):
     monkeypatch.setattr(capture, "MAX_SECONDS", .1)
     target = app()
-    capture.observe_frame(target, frame())
-    capture.observe_frame(target, frame(1))
+    record_frame(target, frame())
+    record_frame(target, frame(1))
     metadata = finish(target._handsfree_capture_1259)
-    assert metadata["samples"] == 1600 and metadata["incomplete_reason"] == "duration_cap"
-    assert not metadata["complete"]
+    # 1302 rotates at the same cap and keeps recording into the next part.
+    assert metadata["samples"] == 3200 and metadata["parts"] == 2
+    assert metadata["complete"] and metadata["incomplete_reason"] is None
 
 
 def test_stop_and_disable_close_without_waiting_on_writer():
     target = app()
-    capture.observe_frame(target, frame())
+    record_frame(target, frame())
     current = target._handsfree_capture_1259
     target.command_mode_active = False
     capture.observe_state(target)
@@ -131,7 +144,7 @@ def test_stop_and_disable_close_without_waiting_on_writer():
 def test_ending_with_pending_decode_is_not_admitted_as_a_complete_session():
     target = app()
     target._wake_consumer = NS(_toggle_worker_active=True)
-    capture.observe_frame(target, frame())
+    record_frame(target, frame())
     current = target._handsfree_capture_1259
     target.command_mode_active = False
     capture.observe_state(target)
@@ -146,7 +159,7 @@ def test_capture_failures_do_not_escape_to_production(tmp_path):
     capture.observe_frame(invalid, NS())
     assert not finish(invalid._handsfree_capture_1259)["complete"]
     target = app()
-    capture.observe_frame(target, frame())
+    record_frame(target, frame())
     finish(target._handsfree_capture_1259)
     root = tmp_path / "not_a_directory"
     root.write_text("synthetic")
@@ -272,7 +285,7 @@ def test_production_enqueue_keeps_original_frames_and_fifo():
 def test_production_dispatch_and_button_commit_observers_preserve_result(monkeypatch):
     from samsara import kept_dictations as kept
     target = app()
-    capture.observe_frame(target, frame())
+    record_frame(target, frame())
     current = target._handsfree_capture_1259
     manager = NS(_commit_redecode_fn=NS(__self__=target), _dispatch_lock=threading.RLock(),
                  draft_document=NS(text="Synthetic draft."))
@@ -284,5 +297,5 @@ def test_production_dispatch_and_button_commit_observers_preserve_result(monkeyp
     wrapped = kept.observe_commit(lambda *args: outcome)
     assert wrapped(manager) is outcome
     assert finish(current)["complete"]
-    rows = [json.loads(line) for line in (current.root / (current.id + ".jsonl")).read_text().splitlines()]
+    rows = [json.loads(line) for line in part(current, "jsonl").read_text().splitlines()]
     assert sum(r["event"] == "dispatch" for r in rows) == 2
