@@ -391,7 +391,6 @@ class PageAssembly:
                 ('Interactive tutorial', 'replayTutorialButton'),
                 ('Microphone setup', 'openMicSetupGuideButton'),
                 ('Ava setup', 'openAvaSetupGuideButton'),
-                ('Manage profiles', 'profilesAction'),
             ])
             self._widgets['supportChoices'] = self._choice_button('Get help', [
                 ('Email the developer', 'betaFeedbackButton'),
@@ -404,6 +403,7 @@ class PageAssembly:
                 ('Export private configuration', 'exportConfigurationButton'),
                 ('Import private configuration', 'importConfigurationButton'),
                 ('Restore automatic backup', 'restoreConfigBackupButton'),
+                ('Manage profiles', 'profilesAction'),
             ])
         if destination == 'Ava':
             route = CleanComboBox()

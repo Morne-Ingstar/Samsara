@@ -224,25 +224,33 @@ def test_ava_rows_grouping_and_search(qapp, route):
         page = window._pages['Ava']
         rows = [page.base.itemAt(i).widget() for i in range(page.base.count())]
         rows = [row for row in rows if isinstance(row, SettingRow)]
-        assert [r.widget_keys[0] for r in rows[:6]] == ['providerRoute', 'cloud_provider', 'cloud_api_key', 'cloud_model', 'ava_cmd_model', 'ava_mode_key']
+        # 1075: the Ava held-key summary takes the editor's place in this group.
+        assert [r.widget_keys[0] for r in rows[:6]] == ['providerRoute', 'cloud_provider', 'cloud_api_key', 'cloud_model', 'ava_cmd_model', 'ava_key_value']
         assert window._rows_by_widget['cloud_provider'].isVisible() == (route == 'cloud')
         assert window._rows_by_widget['ava_cmd_model'].isVisible() == (route == 'local')
         route_control = window._widgets['providerRoute']
         assert [route_control.itemText(i) for i in range(3)] == ['Off', 'On this PC', 'In the cloud']
-        key = window._rows_by_widget['ava_mode_key']
-        assert key.page_name == 'Ava'
-        assert key.isAncestorOf(window._widgets['ava_mode_key_off_note'])
+        summary = window._rows_by_widget['ava_key_value']
+        assert summary.page_name == 'Ava'
+        assert summary.isAncestorOf(window._widgets['ava_mode_key_off_note'])
         assert page.smart_corrections.isAncestorOf(window._widgets['sc_status_label'])
         for name, row in window._rows_by_widget.items():
             if name.startswith('sc_'):
                 assert page.smart_corrections.isAncestorOf(row)
         assert window._widgets['sc_status_label'].text().startswith('Smart Corrections:')
         assert 'Cloud AI enabled' not in window._widgets['sc_status_label'].text()
-        window._stack.setCurrentWidget(window._pages['Shortcuts'])
+        # 1075: both pages match, so search retains the current matching page.
+        shortcuts = window._pages['Shortcuts']
+        window._stack.setCurrentWidget(shortcuts)
         window._search_edit.setText('Ava held key')
         window._apply_search_filter()
+        assert window._stack.currentWidget() is shortcuts
+        editor = window._rows_by_widget['ava_mode_key']
+        assert editor.page_name == 'Shortcuts' and editor.isVisible()
+        window._stack.setCurrentWidget(page)
+        window._apply_search_filter()
         assert window._stack.currentWidget() is page
-        assert key.isVisible()
+        assert summary.isVisible()
     finally:
         window.hide()
         window.deleteLater()

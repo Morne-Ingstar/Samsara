@@ -36,8 +36,8 @@ BASE = [
     [
         "Ava held key",
         "Hold a key while speaking to Ava.",
-        "ava_mode_key",
-        "ava_mode_key"
+        "ava_key_value,ava_key_change",
+        ""
     ],
     [
         "Before Ava can answer",
@@ -224,6 +224,29 @@ def _add_setup_guide(owner, page):
     return refresh_line
 
 
+def _prepare_held_key_summary(owner):
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QLabel, QPushButton
+    from .shared_qt import _readable_hotkey
+
+    capture = owner._widgets["ava_mode_key"]
+    label = QLabel()
+    label.setTextFormat(Qt.TextFormat.PlainText)
+    label.setAccessibleName("Current Ava held key")
+
+    def show_key(combo):
+        label.setText(_readable_hotkey(combo) or "\u2014")
+
+    show_key(capture.combo)
+    capture.bindingChanged.connect(show_key)
+    button = QPushButton("Change in Shortcuts")
+    button.setAutoDefault(True)
+    button.clicked.connect(lambda: owner._focus_setting_row("Shortcuts", "ava_mode_key"))
+    owner._widgets["ava_key_value"] = label
+    owner._widgets["ava_key_change"] = button
+    owner._widgets["ava_key_value_warn"] = owner._widgets["ava_mode_key_off_note"]
+
+
 def build(owner):
     from functools import wraps
     log_switch = _conversation_log_control(owner)
@@ -237,7 +260,9 @@ def build(owner):
         updates["ava"] = ava
         return updates
     owner._source_saves["ava"][0] = save_log
+    _prepare_held_key_summary(owner)
     page = owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)
+    owner._widgets["ava_mode_key_off_note"].setVisible(not owner._widgets["ava_enabled"].isChecked())
     refresh_guide_line = _add_setup_guide(owner, page)
     from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
     # A plain group, with no nested outline or second disclosure.

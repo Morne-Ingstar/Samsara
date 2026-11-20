@@ -22,6 +22,18 @@ BASE = [
         "command_mode.button,command_mode.mode"
     ],
     [
+        "Ava held key",
+        "Hold a key while speaking to Ava.",
+        "ava_mode_key",
+        "ava_mode_key"
+    ],
+    [
+        "Wake toggle",
+        "Start or stop wake listening.",
+        "wake_word_hotkey",
+        "wake_word_hotkey"
+    ],
+    [
         "Cancel",
         "Cancel the active recording.",
         "cancel_hotkey",
@@ -56,27 +68,9 @@ BASE = [
         "Capture a correction; report from that window.",
         "capture_correction_hotkey,openCorrections",
         "hotkeys.capture_correction"
-    ],
-    [
-        "Complete alarm",
-        "Mark the active alarm as completed.",
-        "alarms_complete_key",
-        "alarms.complete_hotkey"
-    ],
-    [
-        "Dismiss alarm",
-        "Dismiss an alarm without completing it.",
-        "alarms_dismiss_key",
-        "alarms.dismiss_hotkey"
     ]
 ]
 ADVANCED = [
-    [
-        "Wake toggle",
-        "Start or stop wake listening.",
-        "wake_word_hotkey",
-        "wake_word_hotkey"
-    ],
     [
         "Continuous toggle",
         "Start or stop the continuous preset.",
@@ -106,8 +100,24 @@ ADVANCED = [
         "Move the pointer into the active app before voice scrolling when needed.",
         "scroll_target_foreground",
         "scroll.target_foreground"
+    ],
+    [
+        "Complete alarm",
+        "Mark the active alarm as completed.",
+        "alarms_complete_key",
+        "alarms.complete_hotkey"
+    ],
+    [
+        "Dismiss alarm",
+        "Dismiss an alarm without completing it.",
+        "alarms_dismiss_key",
+        "alarms.dismiss_hotkey"
     ]
 ]
 
 def build(owner):
+    # The modes source groups both notices. Only capture feedback belongs here.
+    note = owner._widgets["ava_mode_key_off_note"]
+    if note.parentWidget() is owner._widgets["ava_mode_key_warn"]:
+        note.setParent(owner._source_store)
     return owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)

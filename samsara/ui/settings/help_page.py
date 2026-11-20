@@ -7,18 +7,6 @@ TITLE = "Help"
 SUBTITLE = "Set up, practise and recover when you need to."
 BASE = [
     [
-        "Documentation",
-        "Find commands and usage guidance.",
-        "openDocumentationButton",
-        ""
-    ],
-    [
-        "Help and community",
-        "Ask questions, report bugs, share ideas, or email me.",
-        "communityActions",
-        ""
-    ],
-    [
         "Setup / practice",
         "Find tutorials and microphone or Ava guides.",
         "setupGuides",
@@ -28,6 +16,18 @@ BASE = [
         "Support / problem",
         "Review diagnostics and get help with a problem.",
         "supportChoices",
+        ""
+    ],
+    [
+        "Documentation",
+        "Find commands and usage guidance.",
+        "openDocumentationButton",
+        ""
+    ],
+    [
+        "Help and community",
+        "Ask questions, report bugs, share ideas, or email me.",
+        "communityActions",
         ""
     ],
     [
