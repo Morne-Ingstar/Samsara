@@ -185,7 +185,7 @@ def test_cli_live_workflow_with_fake_capture_writes_complete_run(tmp_path, monke
     assert cli.main(['--device', '0', '--label', 'Fixture', '--profile', str(tmp_path),
                      '--output-dir', str(tmp_path / 'runs')], capture_factory=FakeCapture,
                     model_loader=lambda *a: (object(), 'cpu', 'int8'), output=output.append) == 0
-    runs = list((tmp_path / 'runs').iterdir())
+    runs = [path for path in (tmp_path / 'runs').iterdir() if path.is_dir()]  # 1299 adds root-level ledger files.
     assert len(runs) == 1
     saved = load_run(runs[0])
     assert len(saved['takes']) == 13

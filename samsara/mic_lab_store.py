@@ -32,13 +32,17 @@ def json_value(value):
     return value
 
 
-def _json(path, value):
+def _write_text(path, content):
     temporary = path.with_name(path.name + '.' + uuid.uuid4().hex + '.tmp')
     try:
-        temporary.write_text(json.dumps(json_value(value), indent=2, allow_nan=False), encoding='utf-8')
+        temporary.write_text(content, encoding='utf-8')
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _json(path, value):
+    _write_text(path, json.dumps(json_value(value), indent=2, allow_nan=False))
 
 
 def storage_root(profile, config=None):
@@ -143,7 +147,14 @@ class MicLabStore:
         return folder
 
     def finish(self, run_id, report):
-        return self._writer.submit(_json, _inside(self.root, _component(run_id)) / 'report.json', report)
+        folder = _inside(self.root, _component(run_id))
+        return self._writer.submit(self._finish, folder, report)
+
+    def _finish(self, folder, report):
+        from samsara.mic_lab_ledger import rebuild_devices
+
+        _json(folder / 'report.json', report)
+        rebuild_devices(self.root)
 
     def delete_run(self, run_id):
         return self._writer.submit(self._delete_run, _component(run_id))
@@ -156,6 +167,10 @@ class MicLabStore:
         for child in path.rglob('*'):
             _inside(path, child.relative_to(path))
         shutil.rmtree(path)
+        if (self.root / 'devices.json').exists() or (self.root / 'DEVICES.md').exists():
+            from samsara.mic_lab_ledger import rebuild_devices
+
+            rebuild_devices(self.root)
 
     def close(self):
         self._writer.shutdown(wait=True)

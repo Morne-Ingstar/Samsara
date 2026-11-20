@@ -532,7 +532,7 @@ def report_results(results):
                 steps=[{k: v for k, v in r.items() if k != 'takes'} for r in results])
 
 
-def rejudge_run(run):
+def rejudge_run(run, *, on_step=None):
     """Use saved references; no mic/model and no mutation of saved evidence."""
     context, results = JudgeContext(), []
     for step in BATTERY:
@@ -544,6 +544,8 @@ def rejudge_run(run):
             raise ValueError('Saved run has duplicate or nonsequential take numbers')
         for take in takes:
             take['judgment'] = judge_take(step, take, context)
+        if on_step is not None:
+            on_step(step, takes)
         result = dict(step_id=step.id, certification=step.certification, **step_verdict(takes), takes=takes)
         # Saved runs followed the earlier voting policy. A policy change must
         # not demand another recording merely because new votes now differ.

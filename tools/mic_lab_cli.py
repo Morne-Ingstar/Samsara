@@ -35,7 +35,11 @@ def parser():
     p = argparse.ArgumentParser(description='Run a local microphone battery; all audio stays on this PC.')
     p.add_argument('--device', help='Exact input name or PortAudio input index')
     p.add_argument('--label', help='Your microphone label')
-    p.add_argument('--from-folder', type=Path, help='Re-judge saved audio and reference results without a microphone')
+    action = p.add_mutually_exclusive_group()
+    action.add_argument('--from-folder', type=Path, help='Re-judge saved audio and reference results without a microphone')
+    # PLACEHOLDER COPY (1299)
+    action.add_argument('--devices', action='store_true', help='Show the tested microphones table')
+    action.add_argument('--rebuild-devices', action='store_true', help='Re-grade saved runs and rebuild the tested microphones table')
     # PLACEHOLDER COPY (1297)
     p.add_argument('--json', action='store_true', help='Print only JSON when re-judging with --from-folder')
     p.add_argument('--config', type=Path, help='Explicit offline settings JSON; no live settings are discovered')
@@ -308,6 +312,15 @@ def main(argv=None, *, capture_factory=RealCapture, model_loader=_load_model, ou
         return 0 if report['complete'] else 2
     if args.json:
         parser().error('--json requires --from-folder')
+    if args.devices or args.rebuild_devices:
+        from samsara.mic_lab_ledger import rebuild_devices, show_devices
+        from samsara.paths import samsara_home_dir
+
+        config = json.loads(args.config.read_text(encoding='utf-8-sig')) if args.config else {}
+        root = args.output_dir or storage_root(args.profile or samsara_home_dir(), config)
+        table = rebuild_devices(root) if args.rebuild_devices else show_devices(root)
+        output(table.rstrip('\n'))
+        return 0
     if not args.device or not args.label:
         parser().error('--device and --label are required for a microphone run')
     if not np.isfinite(args.distance_cm) or args.distance_cm <= 0:
