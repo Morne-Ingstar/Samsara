@@ -15,11 +15,57 @@ from shiboken6 import isValid
 from samsara.ui import theme
 
 
+def _is_retry_button(button):
+    parent = button.parentWidget()
+    notice = getattr(parent, 'notice', None)
+    return (getattr(notice, 'owner', None) == 'dictation_retry'
+            and getattr(parent, 'report', None) is button
+            and button.isVisible() and button.isEnabled())
+
+
+def _is_reviewable(window):
+    if window.windowFlags() & Qt.WindowDoesNotAcceptFocus:
+        return True
+    # Full and Compact drop the focus flag to expose their History links.
+    return window.testAttribute(Qt.WA_ShowWithoutActivating) and any(
+        button.window() is window and _is_retry_button(button)
+        for button in window.findChildren(QPushButton)
+    )
+
+
+def _remember_foreground():
+    if QApplication.platformName() == 'windows':
+        import win32gui
+        from samsara.handlers import _get_foreground_hwnd
+
+        hwnd = _get_foreground_hwnd()
+
+        def restore():
+            if not hwnd:
+                return False
+            if _get_foreground_hwnd() != hwnd:
+                try:
+                    win32gui.SetForegroundWindow(hwnd)
+                except win32gui.error:
+                    return False
+            return _get_foreground_hwnd() == hwnd
+    else:
+        window = QApplication.activeWindow()
+
+        def restore():
+            if window is None or not isValid(window) or not window.isVisible():
+                return False
+            QApplication.setActiveWindow(window)
+            return window.isActiveWindow()
+    return restore
+
+
 class ReviewSession(QObject):
-    def __init__(self, window, on_finished=None):
+    def __init__(self, window, on_finished=None, *, on_retry=None):
         super().__init__(window)
         self.window = window
         self.on_finished = on_finished
+        self.on_retry = on_retry
         self.active = False
         self._policies = []
         self._links = []
@@ -83,6 +129,12 @@ class ReviewSession(QObject):
                                               and self.window.isAncestorOf(watched))
         if belongs and event.type() == QEvent.KeyPress and event.key() == Qt.Key_Escape:
             self.finish()
+            return True
+        if (belongs and self.on_retry and isinstance(watched, QPushButton)
+                and event.type() in (QEvent.KeyPress, QEvent.KeyRelease)
+                and event.key() == Qt.Key_Space and _is_retry_button(watched)):
+            if event.type() == QEvent.KeyRelease and not event.isAutoRepeat():
+                self.on_retry(watched)
             return True
         if watched is self.window and event.type() == QEvent.Hide:
             # The hiding callback may still update flags (e.g. a completed
@@ -151,13 +203,14 @@ class ReviewWindow(QDialog):
         self.review.clicked.connect(self._review)
         self.surfaces.itemActivated.connect(lambda _item: self._review())
         self._session = None
+        self._restore_foreground = None
         self.refresh()
 
     def refresh(self):
         self.surfaces.clear()
         self._windows = sorted(
             (w for w in QApplication.topLevelWidgets() if w is not self and w.isVisible()
-             and w.windowFlags() & Qt.WindowDoesNotAcceptFocus),
+             and _is_reviewable(w)),
             key=lambda w: w.accessibleName() or w.windowTitle() or type(w).__name__)
         for window in self._windows:
             self.surfaces.addItem(window.accessibleName() or window.windowTitle() or 'Dictation preview')
@@ -176,8 +229,22 @@ class ReviewWindow(QDialog):
             self.refresh()
             return
         self.hide()
-        self._session = ReviewSession(window, self._returned)
+        on_retry = self._retry if self._restore_foreground is not None else None
+        self._session = ReviewSession(window, self._returned, on_retry=on_retry)
         self._session.start()
+
+    def _retry(self, button):
+        # The existing retry delivers to the foreground. Restore the editor
+        # while review still owns activation, then release the review session.
+        restore = self._restore_foreground
+        if not restore():
+            QApplication.beep()
+            return
+        session, self._session = self._session, None
+        session.on_finished = None
+        session.finish()
+        if restore() and isValid(button) and _is_retry_button(button):
+            button.click()
 
     def _returned(self):
         self._session = None
@@ -193,6 +260,8 @@ def open_review(app):
     if window is None or not isValid(window):
         window = ReviewWindow()
         app._passive_review_window = window
+    if not window.isVisible() and window._session is None:
+        window._restore_foreground = _remember_foreground()
     window.refresh()
     window.show()
     window.raise_()
