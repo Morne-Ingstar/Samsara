@@ -44,6 +44,9 @@ def parser():
     p.add_argument('--mount', default='unspecified')
     p.add_argument('--distance-cm', type=float, default=20.)
     p.add_argument('--pop-filter', choices=('yes', 'no', 'unknown'), default='unknown')
+    p.add_argument('--read-seconds', type=float, default=12.,
+                   help='Reading time before each Speak now cue (default 12)')
+    p.add_argument('--gap-seconds', type=float, default=4., help='Rest after each take (default 4)')
     p.add_argument('--sandbox', action='append', choices=('desk_typing',), default=[],
                    help='Optional mounting check; does not affect the grade')
     return p
@@ -107,6 +110,18 @@ class RealCapture:
         self.events = Queue()
         self.started = False
 
+    read_seconds, gap_seconds = 12., 4.
+
+    def _countdown(self, seconds):
+        """Reading time before a cue, counted down so the cue never arrives unannounced."""
+        left = max(1, int(round(seconds)))
+        self.output(f'    Read it first. Speak at the cue, in {left} seconds.')
+        while left > 0:
+            if left <= 3:
+                self.output(f'    {left}...')
+            self.sleep(1.)
+            left -= 1
+
     def _decode_reference(self, audio, params):
         segments, _ = self.model.transcribe(audio, **params)
         return ''.join(s.text for s in segments).strip()
@@ -160,9 +175,12 @@ class RealCapture:
             self.started = True
             self.sleep(.5)  # Let the production prebuffer fill.
         else:
-            self.output(step.target)
-            self.output('Prepare; Speak now in three seconds.')
-            self.sleep(3.)
+            if self.gap_seconds > 0:
+                self.sleep(self.gap_seconds)
+            self.output(f'    SAY:  "{step.target}"')
+            if step.id == 'dyn_contrast':
+                self.output('    Four cues follow, about four seconds each: normal voice, LOUD, stay silent, quiet voice.')
+            self._countdown(self.read_seconds)
         before = endpoint_volume(name=self.config['microphone_name'])
         hold_diagnostics.begin(self.app)
         self.app._speech_presence_capture = HoldEvidence(time.perf_counter())
@@ -282,6 +300,8 @@ def main(argv=None, *, capture_factory=RealCapture, model_loader=_load_model, ou
     volume = endpoint_volume(name=info['name'])
     pin['windows_gain_percent'] = volume.value * 100 if volume.known else None
     output('Audio is saved locally. Follow the timed prompts; no key presses are needed.')
+    output(f'Each sentence is shown for {max(1., args.read_seconds):.0f} seconds before its cue. '
+           'Too fast or too slow: add --read-seconds <number>.')
     model, backend, compute = model_loader(args.model, args.backend)
     settings.update(microphone=device, microphone_name=info['name'], _capture_rate=int(info['default_samplerate']),
         model_size=args.model, device=backend, compute_type=compute, mode='hold',
@@ -291,6 +311,7 @@ def main(argv=None, *, capture_factory=RealCapture, model_loader=_load_model, ou
             sample_rate=16000, capture_route='production_batch_hold', random_seed=0))
         output(f'Run: {store.root / run_id}')
         with capture_factory(device, model, settings, backend, output=output, sound_backend=sd) as capture:
+            capture.read_seconds, capture.gap_seconds = max(1., args.read_seconds), max(0., args.gap_seconds)
             runner = BatteryRunner(sandbox=args.sandbox)
             def progress(step, result):
                 output(f"{step.id}: {result['verdict']} ({', '.join(result['causes'])})")
