@@ -151,9 +151,9 @@ def test_refusal_offers_working_try_again_on_both_displays(display, make_worker,
     assert button.isVisible() and button.text() == 'Try again'
     np.testing.assert_array_equal(dictation_retry.live(session.app).audio, audio)
     monkeypatch.setattr('samsara.runtime.thread_registry.spawn', lambda name, target, **kw: target())
-    # 1165: model the two original PCM ranges rather than repeat one whole-take fake.
+    # 1256: normal chunking decodes this 6.1s recording in one window, not 4.5s cores.
     session.app.model.transcribe.side_effect = lambda pcm, **k: (
-        iter([segment('Recovered' if len(pcm) > 3 * RATE else 'synthetic words.', .25, 1.5)]), NS(language='en'))
+        iter([segment('Recovered synthetic words.', .25, 1.5)]), NS(language='en'))
     QTest.mouseClick(button, Qt.MouseButton.LeftButton)
     display.flush(); qapp.processEvents()
     session.app._paste_preserving_clipboard.assert_called_once_with(

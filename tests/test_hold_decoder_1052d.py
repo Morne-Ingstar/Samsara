@@ -98,7 +98,8 @@ def test_one_loop_retry_at_point_four_keeps_prompt_and_original_chunk(make_worke
     assert text == 'The spoken sentence.' and len(calls) == 2
     assert all(np.shares_memory(pcm, audio) for pcm, _ in calls)
     assert calls[0][1]['temperature'] == (0., .2)
-    assert calls[1][1]['temperature'] == .4
+    # 1256: loop recovery also retains the normal device ladder.
+    assert calls[1][1]['temperature'] == (.0, .2)
     assert all(p['initial_prompt'] == 'Explicit prose hint.' for _, p in calls)
 
 
