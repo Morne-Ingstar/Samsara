@@ -917,7 +917,10 @@ def test_1031a_local_resolver_cannot_trust_another_window(app, monkeypatch):
     monkeypatch.setattr(ep, "foreground_window_identity", lambda: {"hwnd": 2, "process": "chat.exe"})
     app._resolve_submit_target = lambda: effect_policy.SubmitTarget(
         "known_person", 1, "chat.exe", "edit", "revision", "a", "c", "p")
-    assert effect_policy.send_handling(_real_submit_target(app)) == effect_policy.CONFIRM
+    resolved = _real_submit_target(app)
+    # Another window's local port is never trusted: no DM identity, no grace window.
+    assert resolved.kind == "unknown" and not resolved.recipient
+    assert effect_policy.send_handling(resolved) != effect_policy.PRIVATE_SEND
 
 
 @pytest.mark.parametrize("provider", ["claude", "chatgpt"])

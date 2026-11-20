@@ -61,7 +61,7 @@ def harness(tmp_path, monkeypatch):
 @pytest.mark.parametrize("kind,tier,mode,wait", [
     ("ai", "T0", "immediate", 0), ("editor", "T1", "undoable", 0),
     ("known_person", "T2", "short_send_grace", 1),
-    ("email", "T3", "explicit_confirm", 0), ("unknown", "T3", "explicit_confirm", 0),
+    ("email", "T3", "explicit_confirm", 0), ("unknown", "T0", "immediate", 0),  # owner 2026-11-20: own submit never asks
     ("public", "T3", "explicit_confirm", 0), ("shell", "T3", "explicit_confirm", 0),
 ])
 def test_resolved_destination_selects_handling(kind, tier, mode, wait):
@@ -70,12 +70,15 @@ def test_resolved_destination_selects_handling(kind, tier, mode, wait):
     assert effects.send_handling(target) == effects.Handling(tier, mode, wait)
 
 
-@pytest.mark.parametrize("field,value", [("account", ""), ("conversation", ""),
-                                         ("recipient", ""), ("user_authored", False)])
-def test_dm_requires_stable_identity_and_user_authorship(field, value):
+@pytest.mark.parametrize("field,value,expected", [("account", "", "immediate"), ("conversation", "", "immediate"),
+                                         ("recipient", "", "immediate"), ("user_authored", False, "confirm")])
+def test_dm_requires_stable_identity_and_user_authorship(field, value, expected):
+    # Owner rule 2026-11-20: the user's own submit never asks; without a stable DM
+    # identity it is a plain Enter (no grace). Text the user did not author still asks.
     target = effects.SubmitTarget("known_person", 42, "chat.exe", "edit", "revision",
                                   "account", "conversation", "person")
-    assert effects.send_handling(replace(target, **{field: value})) == effects.CONFIRM
+    want = effects.IMMEDIATE if expected == "immediate" else effects.CONFIRM
+    assert effects.send_handling(replace(target, **{field: value})) == want
     assert effects.send_handling(target, route=ep.Route.MODEL) == effects.CONFIRM
     assert effects.send_handling(target, route=ep.Route.SCHEDULE) == effects.CONFIRM
 
@@ -84,7 +87,7 @@ def test_dm_requires_stable_identity_and_user_authorship(field, value):
 @pytest.mark.parametrize("kind,expected", [("ai", DispatchState.COMPLETED),
                                             ("editor", DispatchState.COMPLETED),
                                             ("email", DispatchState.QUEUED),
-                                            ("unknown", DispatchState.QUEUED)])
+                                            ("unknown", DispatchState.COMPLETED)])  # owner 2026-11-20
 def test_raw_and_registered_keys_inherit_destination(harness, phrase, kind, expected):
     app, executor, target, calls = harness
     target[0] = replace(target[0], kind=kind)

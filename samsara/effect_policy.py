@@ -58,7 +58,18 @@ def send_handling(target, *, route="exact"):
             and route in {"exact", "grammar"}
             and target.account and target.conversation and target.recipient):
         return PRIVATE_SEND
-    return CONFIRM  # email, public, money, shell and unresolved commits
+    # Owner rule (2026-11-02, restated 2026-11-20): the user's own spoken "submit"
+    # never asks. Pressing Enter in a chat/agent/terminal they just dictated into is
+    # their own send, so an unrecognised composer submits like the Enter key would.
+    # Email (and any explicitly public/money/shell destination) still confirms, and
+    # model- or schedule-initiated sends keep the question.
+    if (target.kind in {"unknown", "known_person"} and target.user_authored
+            and route in {"exact", "grammar"} and target.process not in EMAIL_PROCESSES):
+        return IMMEDIATE
+    return CONFIRM  # email, public, money, shell, and non-user routes
+
+
+EMAIL_PROCESSES = frozenset({"outlook.exe", "olk.exe", "thunderbird.exe"})
 
 
 def raw_key_command(keys):
@@ -183,7 +194,11 @@ def input_refusal(inv, app=None, executor=None):
     requires_composer = kind in {"submit", "delete"} or (kind == "macro" and any(
         input_kind(dict(step, type=step.get("action"))) in {"submit", "delete"}
         for step in command.get("steps") or []))
-    if (target is not None and requires_composer
+    # Only a send that still asks (email) or a delete needs a readable composer;
+    # an ordinary submit is the Enter key and must not be refused for it (2026-11-20).
+    needs_composer = kind == "delete" or (target is not None and (
+        target.kind == "email" or target.process in EMAIL_PROCESSES))
+    if (target is not None and requires_composer and needs_composer
             and not (target.hwnd and target.control and target.revision)):
         return "composer unavailable"
     from samsara.message_delivery import email_preview_missing
