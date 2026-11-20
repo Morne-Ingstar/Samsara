@@ -13,6 +13,7 @@ except ImportError:
 
 
 _WORD = re.compile(r"[^\W\d_]+(?:['\u2019][^\W\d_]+)*", re.UNICODE)
+_CLAUSE_WORD = re.compile(r"[^\W\d_]+(?:[-'\u2019][^\W\d_]+)*", re.UNICODE)
 _PREPOSITIONS = frozenset(
     "about above across after against along among around as at before behind below beneath "
     "beside between beyond by despite down during except for from in inside into like near of "
@@ -29,11 +30,22 @@ _OBJECT_PRONOUNS = frozenset("me you him her us them".split())
 _AUXILIARIES = frozenset(
     "am is are was were be been being have has had do does did will would can could should "
     "shall may might must".split())
+_FINITE_AUXILIARIES = _AUXILIARIES - {"be", "been", "being"}
+_BARE_AUXILIARIES = frozenset({"be", "do", "have"})
 _MODALS = frozenset("will would can could should shall may might must".split())
 _ADVERBS = frozenset(
     "actually really still already always never only also finally just even often sometimes".split())
 _HESITATIONS = frozenset({"uh", "um"})
 _RELATIVES = frozenset("that which who whom whose".split())
+# These prepositions can also finish a clause as adverbs or verb particles.
+_ADVERBIAL_PREPOSITIONS = frozenset(
+    "about above across after along around before behind below beneath beyond by down in "
+    "inside near off on out outside over past through under underneath up".split())
+_UNFINISHED_ENDINGS = (
+    (_DETERMINERS - {"this", "that", "these", "those", "his", "her"})
+    | (_PREPOSITIONS - _ADVERBIAL_PREPOSITIONS)
+    | (_COORDINATORS - {"so", "yet"})
+)
 _REPLIES = frozenset("yes no okay ok thanks hello goodbye fine sure right stop cancel".split())
 _SIGN_OFFS = frozenset({"over", "done", "end"})
 _SENTENCE_OPENERS = frozenset({
@@ -43,6 +55,9 @@ _SENTENCE_OPENERS = frozenset({
     "that said", "therefore",
 })
 _QUESTIONS = frozenset("what why how when where who whom whose which".split())
+_INDEFINITE_SUBJECTS = frozenset(
+    "anybody anyone anything everybody everyone everything nobody none nothing "
+    "somebody someone something".split())
 _FINITE_FORMS = frozenset(("VBD", "VBZ", "VBP"))
 _CALENDAR = frozenset(
     "monday tuesday wednesday thursday friday saturday sunday "
@@ -106,8 +121,8 @@ _PERSON_CONTRACTION = re.compile(
     r"(?:i'm|\w+'(?:re|ve|ll|d)|(?:it|that|he|she|there)'s|\w+n't)")
 
 
-def _words(text):
-    return [word.lower().replace("\u2019", "'") for word in _WORD.findall(text)]
+def _words(text, pattern=_WORD):
+    return [word.lower().replace("\u2019", "'") for word in pattern.findall(text)]
 
 
 def _subject(word):
@@ -137,7 +152,7 @@ def _verb(word):
 
 
 def _finite(word):
-    return (word in _AUXILIARIES - {"be", "been", "being"}
+    return (word in _FINITE_AUXILIARIES
             or bool(_verb_forms(word) & _FINITE_FORMS)
             or bool(_PERSON_CONTRACTION.fullmatch(word)))
 
@@ -193,6 +208,122 @@ def _fronted_clause(text):
     if words[:1] == ["then"]:
         words = words[1:]
     return _clause(words) or bool(words and "VB" in _verb_forms(words[0]))
+
+
+def _declarative_clause(words):
+    if _clause(words):
+        return True
+    if not words or words[0] in _AUXILIARIES:
+        return False
+    # A dictionary can list the predicate as both a verb and a noun.
+    # Look for a past-tense form or agreement with a plural subject head.
+    start = 2 if words[0] in _DETERMINERS else 1
+    for index in range(start, len(words)):
+        head, predicate = words[index - 1:index + 1]
+        nouns = _lemmas(head).get("NOUN", ())
+        if head in _FUNCTION_WORDS and head not in _INDEFINITE_SUBJECTS:
+            continue
+        forms = _verb_forms(predicate)
+        if "VBD" in forms and "VB" not in forms and (nouns or not _lemmas(head)):
+            return True
+        # A final ambiguous noun after a plural modifier is still a viable
+        # compound noun phrase ("the settings page").
+        if ("VBP" in forms and any(lemma != head for lemma in nouns)
+                and (index == 1 or index < len(words) - 1 or "NOUN" not in _lemmas(predicate))):
+            return True
+        if predicate in _PREPOSITIONS | _RELATIVES:
+            break
+    return False
+
+
+def _imperative(words):
+    if words[:1] == ["please"]:
+        words = words[1:]
+    if words[:2] == ["do", "not"] or words[:1] == ["don't"]:
+        return True
+    return bool(words and (words[0] in _BARE_AUXILIARIES
+                           or words[0] not in _CLOSED_CLASS and "VB" in _verb_forms(words[0])))
+
+
+def _main_clause(text, words):
+    if words and words[0] in _COORDINATORS:
+        words = words[1:]
+    if not words or words[0] == "like" or words[:2] == ["instead", "of"]:
+        return False
+    first, *rest = words
+    if first in _RELATIVES and (first != "that" or not rest or _subject(rest[0])
+                               or rest[0] in _DETERMINERS or _finite(rest[0])):
+        return False
+    # A participial supplement can contain a finite complement of its own.
+    if "VBG" in _verb_forms(first) and rest and _subject(rest[0]):
+        return False
+    if first not in _SUBORDINATORS | _PREPOSITIONS:
+        return _declarative_clause(words)
+    # A lead-in can contain several comma-delimited modifiers before its
+    # main clause. A finite verb inside the lead-in alone is insufficient.
+    for part in text.split(",")[1:]:
+        tail = _words(part, _CLAUSE_WORD)
+        if not tail or tail[0] in _COORDINATORS | _RELATIVES | _PREPOSITIONS | _SUBORDINATORS:
+            continue
+        if _declarative_clause(tail) or _imperative(tail):
+            return True
+    return False
+
+
+def _question_auxiliary(word):
+    if word.endswith("n't"):
+        word = word[:-3]
+        word = {"ca": "can", "wo": "will", "sha": "shall", "ai": "am"}.get(word, word)
+    return word if word in _FINITE_AUXILIARIES else None
+
+
+def _question_start(words):
+    if words and words[0] in _QUESTIONS:
+        if words[0] in {"who", "what"} and len(words) > 1 and _finite(words[1]):
+            return True
+        # In a question such as "Which tray did she open", the entire
+        # question phrase precedes the auxiliary.
+        auxiliary = next((index for index, word in enumerate(words[1:], 1)
+                          if _question_auxiliary(word)), len(words))
+        words = words[auxiliary:]
+    if len(words) < 2:
+        return False
+    opener = _question_auxiliary(words[0])
+    if not opener:
+        return False
+    subject = words[1]
+    if _subject(subject) or subject in _INDEFINITE_SUBJECTS:
+        return True
+    # A noun subject can be longer than one word. Skip its head before
+    # looking for a predicate, so "Do the inventory" remains an imperative.
+    if subject in _ADVERBS | (_FUNCTION_WORDS - _DETERMINERS):
+        return False
+    start = 3 if subject in _DETERMINERS else 2
+    if opener in {"am", "is", "are", "was", "were"}:
+        return len(words) > start
+    forms = {"VBN"} if opener in {"have", "has", "had"} else {"VB"}
+    for index in range(start, len(words)):
+        head = words[index - 1]
+        if opener in {"do", "have"} and not any(
+                lemma != head for lemma in _lemmas(head).get("NOUN", ())):
+            continue
+        if _verb_forms(words[index]) & forms:
+            return True
+    return False
+
+
+def _open_clause(previous):
+    return (previous[-1] == "because"
+            or previous[-1] in {"if", "whether"} and len(previous) > 1
+            and _CLAUSAL_VERBS.intersection(_lemmas(previous[-2]).get("VERB", ())))
+
+
+def _takes_bare_verb(previous):
+    ending = previous[-1]
+    if ending == "to" or len(previous) > 1 and previous[-2] == "to" and ending in _ADVERBS:
+        return True
+    return (len(previous) > 1 and ending in _OBJECT_PRONOUNS
+            and _OBJECT_INFINITIVE.intersection(_lemmas(previous[-2]).get("VERB", ())))
 
 
 def _ellipsis_continuation(previous, following):
@@ -257,6 +388,28 @@ def _join(left, right, *, ellipsis):
             return None
     if _fronted_clause(right):
         return None
+    open_clause = _open_clause(previous)
+    # A stranded article, preposition, coordinator or auxiliary can make
+    # the next fragment look like a sentence ("the. Store and ..."). Let
+    # the existing pause rules evaluate those continuations. Lexical verbs
+    # in infinitives and presentational "there it is" can finish a clause.
+    unfinished = ending in _UNFINISHED_ENDINGS or (
+        ending in _AUXILIARIES and previous[0] != "there" and previous[-2:-1] != ["to"])
+    if not ellipsis and not unfinished:
+        right_clause = _words(right, _CLAUSE_WORD)
+        if _question_start(right_clause):
+            return None
+        left_clause = _words(left, _CLAUSE_WORD)
+        if first not in _COORDINATORS and (_main_clause(left, left_clause)
+                                          or _imperative(left_clause)):
+            if _main_clause(right, right_clause) and not open_clause:
+                return None
+            # A lowercase bare verb can be a dictated continuation. Look
+            # for a determiner after the verb or an explicit request marker.
+            imperative_cue = (right[0].isupper() or first in {"please", "don't"}
+                              or len(right_clause) > 1 and right_clause[1] in _DETERMINERS)
+            if imperative_cue and _imperative(right_clause) and not _takes_bare_verb(previous):
+                return None
     # A fronted dependent clause can attach to its main clause. Once it has
     # a main clause, only an open complement or a participial aside fits.
     if _subordinate(previous) and _clause(following):
@@ -284,10 +437,7 @@ def _join(left, right, *, ellipsis):
             return " "
         # A bare terminal 'while', 'once' etc. can finish a clause. Only
         # a complement-selecting verb can license a new subject here.
-        open_clause = (ending == "because" and complete
-                       or ending in {"if", "whether"} and len(previous) > 1
-                       and _CLAUSAL_VERBS.intersection(_lemmas(previous[-2]).get("VERB", ())))
-        if not open_clause:
+        if not open_clause or ending == "because" and not complete:
             return None
     # A repeated predicate after a comma is a continuation of the same list.
     last_item = left.rpartition(",")
