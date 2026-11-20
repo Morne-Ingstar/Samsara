@@ -1,0 +1,7 @@
+computer.onnx and hey_computer.onnx
+Samsara contributors, 2026.
+
+Use CC BY 4.0 attribution terms for these classifier assets:
+https://creativecommons.org/licenses/by/4.0/
+Retain COMPUTER_ATTRIBUTION.md and the source-data/voice notices named there.
+The application source licence and third-party component licences remain separate.

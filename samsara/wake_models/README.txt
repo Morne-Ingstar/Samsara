@@ -21,3 +21,21 @@ without an available model may use recognizer-based detection.
 
 App-target profiles remain separate: hey_claude.onnx and
 activate_hermes.onnx are optional models for their respective target apps.
+
+Computer wake candidates (1274, 2026-11-19)
+==========================================
+computer.onnx: "computer" -> Samsara; OFF by default.
+Screening threshold 0.2: 272/308 synthetic clips;
+2 episodes / 1.767639 h saved dictation;
+9 episodes / 5.403467 h LibriSpeech test-clean.
+hey_computer.onnx: "hey computer" -> Samsara; OFF by default.
+Screening threshold 0.2: 273/308 synthetic clips;
+0 episodes / 1.767639 h saved dictation;
+2 episodes / 5.403467 h LibriSpeech test-clean.
+Bare computer is also an ordinary dictated word. Leave it OFF for ambient
+listening pending a separately implemented/tested pause-and-command gate.
+Thresholds are descriptive choices on these corpora, not owner-microphone
+acceptance. Dictionary > Wake Words lists both phrases; adding either
+starts disabled. Preserve Jarvis and test with Check wake words before
+considering enablement. No pause gate is implemented by this task.
+See COMPUTER_METRICS.json, COMPUTER_ATTRIBUTION.md and COMPUTER_LICENSE.txt.

@@ -35,6 +35,9 @@ PHRASE_TO_MODEL = {
     'hey mycroft': 'hey_mycroft', 'hey rhasspy': 'hey_rhasspy',
 }
 
+# 1274: opt-in classifier candidates; owner microphone acceptance is separate.
+COMPUTER_WAKE_THRESHOLDS = {'computer': 0.2, 'hey computer': 0.2}
+
 
 def resolve_wake_model(phrase, model=None, models_dirs=None):
     """Resolve a model ID or user-dropped ONNX without creating directories."""
@@ -84,6 +87,12 @@ def normalize_wake_phrases(wake):
                                  for row in entries):
         # 1042a measured 1.67 false episodes/hour at .2: owner opt-in only.
         entries = [*entries, dict(phrase='hey ava', role='ava', enabled=False, threshold=.2)]
+    if migrate_roles:
+        present = {str(row.get('phrase') or '').strip().lower()
+                   for row in entries if isinstance(row, dict)}
+        entries = [*entries, *(dict(phrase=phrase, role='samsara', enabled=False, threshold=threshold)
+                              for phrase, threshold in COMPUTER_WAKE_THRESHOLDS.items()
+                              if phrase not in present)]
     normalized, seen, fallback = [], set(), False
     for entry in entries:
         if not isinstance(entry, dict):

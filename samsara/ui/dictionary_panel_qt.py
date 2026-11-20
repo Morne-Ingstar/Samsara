@@ -756,7 +756,7 @@ class DictionaryPanelQt(QWidget):
         self._wake_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._wake_table.verticalHeader().hide()
         self._wake_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
-        for column, width in enumerate((40, 110, 160, 80, 105)):
+        for column, width in enumerate((40, 140, 130, 80, 105)):
             self._wake_table.setColumnWidth(column, width)
         self._wake_table.setMinimumHeight(240)
         listeners = QWidget(page)
@@ -767,7 +767,7 @@ class DictionaryPanelQt(QWidget):
         row = QHBoxLayout()
         self._wake_phrase_input = QComboBox()
         self._wake_phrase_input.setEditable(True)
-        self._wake_phrase_input.addItems(['hey jarvis', 'alexa', 'hey mycroft', 'hey Samsara', 'hey Ava'])
+        self._wake_phrase_input.addItems(['hey jarvis', 'alexa', 'hey mycroft', 'hey Samsara', 'hey Ava', 'computer', 'hey computer'])
         self._wake_phrase_input.setAccessibleName('New wake phrase')
         self._wake_phrase_input.lineEdit().setAccessibleName('New wake phrase')
         self._wake_phrase_input.setMaximumWidth(190)
@@ -907,7 +907,7 @@ class DictionaryPanelQt(QWidget):
         self._wake_save()
 
     def _wake_add(self, checked=False, model=''):
-        from samsara.wake_profiles import resolve_wake_model
+        from samsara.wake_profiles import COMPUTER_WAKE_THRESHOLDS, resolve_wake_model
         phrase = self._wake_phrase_input.currentText().strip().lower()
         if not phrase or any(r['phrase'] == phrase for r in self._wake_entries):
             self._wake_status.setText('Choose a new phrase to add.')
@@ -916,7 +916,8 @@ class DictionaryPanelQt(QWidget):
         conflict = not resolved and any(r['enabled'] and not resolve_wake_model(r['phrase'], r.get('model'))
                                         for r in self._wake_entries)
         self._wake_entries.append(dict(phrase=phrase, model=model or resolved or '',
-                                       enabled=not conflict, threshold=.2,
+                                       enabled=not conflict and phrase not in COMPUTER_WAKE_THRESHOLDS,
+                                       threshold=COMPUTER_WAKE_THRESHOLDS.get(phrase, .2),
                                        role='ava' if phrase == 'hey ava' else 'samsara'))
         self._wake_render()
         self._wake_save()

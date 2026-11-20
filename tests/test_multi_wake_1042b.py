@@ -111,7 +111,7 @@ def test_migrate_legacy_custom_phrase_and_threshold_idempotently(tmp_path, monke
     monkeypatch.setattr(profiles, 'WAKE_MODELS_DIR', tmp_path / 'no_bundle')
     cfg = {'wake_word_config': {'phrase': 'My Custom Phrase', 'oww_threshold': .43}}
     assert normalize_wake_phrase(cfg)
-    row, ava = cfg['wake_word_config']['phrases']
+    row, ava, *_ = cfg['wake_word_config']['phrases']  # 1274 adds disabled computer candidates.
     assert row == dict(phrase='my custom phrase', model='', enabled=True, threshold=.43, role='samsara')
     assert ava == dict(phrase='hey ava', model='', enabled=False, threshold=.2, role='ava')
     assert cfg['wake_word_config']['phrase'] == 'jarvis'
@@ -128,11 +128,15 @@ def test_seed_does_not_mask_saved_legacy_values(tmp_path, monkeypatch):
     profiles.normalize_wake_phrases(seed['wake_word_config'])
     assert seed['wake_word_config']['phrases'] == [
         dict(phrase='alexa', model='alexa', enabled=True, threshold=.37, role='samsara'),
-        dict(phrase='hey ava', model='', enabled=False, threshold=.2, role='ava')]
+        dict(phrase='hey ava', model='', enabled=False, threshold=.2, role='ava'),
+        # 1274: new candidates migrate disabled without masking the legacy threshold.
+        dict(phrase='computer', model='', enabled=False, threshold=profiles.COMPUTER_WAKE_THRESHOLDS['computer'], role='samsara'),
+        dict(phrase='hey computer', model='', enabled=False, threshold=profiles.COMPUTER_WAKE_THRESHOLDS['hey computer'], role='samsara')]
     assert SETTINGS_SCHEMA['wake_word_config.phrases']['item_type'] == 'dict'
 
 
-def test_cap_preserves_disabled_row_and_fast_models():
+def test_cap_preserves_disabled_row_and_fast_models(tmp_path, monkeypatch):
+    monkeypatch.setattr(profiles, 'WAKE_MODELS_DIR', tmp_path / 'no_bundle')  # 1274 bundles computer.
     wake = {'phrases': entries('computer', 'my custom phrase', 'alexa')}
     profiles.normalize_wake_phrases(wake)
     assert [r['enabled'] for r in wake['phrases']] == [True, False, True]
@@ -223,7 +227,7 @@ def test_match_each_phrase_and_longer_alias():
 
 def test_mixed_fast_slow_admits_one_decode(fake_model):
     from samsara.audio_engine.wake_consumer import WakeConsumer
-    detector = WakeWordDetector(entries('hey jarvis', 'computer'))
+    detector = WakeWordDetector(entries('hey jarvis', 'my custom phrase'))  # 1274 bundles computer.
     app = SimpleNamespace(app_state='asleep', wake_word_triggered=False, _wake_detector=detector,
                           _wake_profile_detectors={}, _oww_primary_hit=False, _oww_profile_hits=set(),
                           _oww_wake_detected=False, _wake_rearm_needs_onset=False, config={},
@@ -252,6 +256,8 @@ def test_no_enabled_primary_phrase_drops_before_decode(fake_model):
 
 
 def test_ui_cap_add_remove_save_and_threshold(qapp, monkeypatch):
+    from pathlib import Path
+    monkeypatch.setattr(profiles, 'WAKE_MODELS_DIR', Path('absent-test-bundle'))  # 1274 bundles computer.
     from PySide6.QtGui import QAccessible
     from samsara.ui import dictionary_panel_qt as ui
     store = SimpleNamespace(custom_vocab=[], corrections_dict={}, get_builtin_words=lambda: [])
@@ -330,11 +336,12 @@ def test_roles_migrate_once_preserve_explicit_choices_and_removal():
     wake = {'phrase': 'jarvis', 'oww_threshold': .38}
     assert profiles.normalize_wake_phrases(wake)
     assert [(r['phrase'], r['role'], r['enabled']) for r in wake['phrases']] == [
-        ('jarvis', 'samsara', True), ('hey ava', 'ava', False)]
+        ('jarvis', 'samsara', True), ('hey ava', 'ava', False),
+        ('computer', 'samsara', False), ('hey computer', 'samsara', False)]  # 1274 opt-in defaults.
     wake['phrases'][0]['role'] = 'ava'
     wake['phrases'][1]['role'] = 'samsara'
     assert not profiles.normalize_wake_phrases(wake)
-    wake['phrases'].pop()
+    wake['phrases'].pop(1)  # 1274: Ava is no longer the last default row.
     assert not profiles.normalize_wake_phrases(wake)  # Removed Ava never reappears.
     assert wake['phrases'][0]['role'] == 'ava'
     wake['phrases'][0]['role'] = 'invalid'
