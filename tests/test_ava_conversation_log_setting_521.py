@@ -143,8 +143,10 @@ def test_advanced_row_search_and_save_preserve_ava_siblings(qapp, monkeypatch, m
         row = window._rows_by_widget["ava_conversation_log_enabled"]
         assert not switch.isChecked()
         assert isinstance(switch._calm_switch, SwitchSkin)
-        assert type(switch._calm_switch) is type(window._widgets["sc_enabled"]._calm_switch)
-        assert switch.size() == window._widgets["sc_enabled"].size()
+        # 1076: Automatic corrections is built on Dictation. Compare with Ava's Editing switch.
+        editing_switch = window._widgets["ava_edit_enabled"]
+        assert type(switch._calm_switch) is type(editing_switch._calm_switch)
+        assert switch.size() == editing_switch.size()
         assert row.disclosure is window._pages["Ava"].advanced
         def geometry(key):
             shared_row = window._rows_by_widget[key]

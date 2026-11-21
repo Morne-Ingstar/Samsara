@@ -96,12 +96,6 @@ ADVANCED = [
         "command_mode.suppress_button"
     ],
     [
-        "Scroll the app you're using, not the one under the mouse",
-        "Move the pointer into the active app before voice scrolling when needed.",
-        "scroll_target_foreground",
-        "scroll.target_foreground"
-    ],
-    [
         "Complete alarm",
         "Mark the active alarm as completed.",
         "alarms_complete_key",

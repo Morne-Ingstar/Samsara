@@ -860,6 +860,8 @@ SETTINGS_SCHEMA = {
         "options": ["float16", "int8", "float32"],
         "default": "float16",
         "tab": "advanced",
+        "settings_ui": False,
+        "ui_less_reason": "Config-only diagnostic precision. The recognizer chooses the actual precision.",
     },
     # Queue 124: `balanced` was the shipped default and it silently LOST
     # long-form speech -- on five minutes of continuous speech it returned

@@ -134,7 +134,6 @@ class PageAssembly:
             for key, row_key in [('cloud_test_status', 'cloud_api_key'), ('cloud_info_label', 'cloud_provider')]:
                 row = self._rows_by_widget[row_key]
                 row.grid.addWidget(_detach_from_layout(self._widgets[key]), row.grid.rowCount(), 0, 1, 3)
-            page.smart_corrections.layout().insertWidget(1, _detach_from_layout(self._widgets['sc_status_label']))
             self._sync_openrouter_picker()
         if name == 'Dictation':
             self._rows_by_widget['adv_device'].grid.addWidget(_detach_from_layout(self._widgets['cuda_status']), 2, 0, 1, 3)
@@ -374,11 +373,6 @@ class PageAssembly:
         return button
 
     def _prepare_actions(self, destination):
-        if destination == 'Dictation':
-            precision = QLabel(self._widgets['adv_compute_type'].currentText())
-            precision.setAccessibleName('Stored diagnostic precision')
-            precision.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByKeyboard | Qt.TextInteractionFlag.TextSelectableByMouse)
-            self._widgets['computePrecisionStatus'] = precision
         if destination == 'General':
             self._widgets['floatingWindowActions'] = self._choice_button('Recover window', [
                 ('Reset both floating windows', 'reset_floating_window_positions'),
@@ -455,6 +449,11 @@ class PageAssembly:
             return
         w = self._widgets
         cloud = 'cloud_enabled' in w and w['cloud_enabled'].isChecked()
+        route = w.get('providerRoute')
+        corrections_cloud = (
+            route.currentData() if route is not None
+            else (self.app.config.get('ava') or {}).get('provider_policy')
+        ) == 'cloud'
         editing = 'ava_edit_enabled' in w and w['ava_edit_enabled'].isChecked()
         speech = 'tts_enabled' in w and w['tts_enabled'].isChecked()
         for key, row in self._rows_by_widget.items():
@@ -465,12 +464,12 @@ class PageAssembly:
                 visible = cloud
             if key == 'cloud_web_search':
                 visible = cloud and w['cloud_web_search'].isEnabled()
-            if key in ('ava_cmd_model', 'ava_cmd_keep_warm', 'sc_model'):
+            if key in ('ava_cmd_model', 'ava_cmd_keep_warm'):
                 visible = not cloud
             if key.startswith('ava_edit_') and key != 'ava_edit_enabled':
                 visible = editing and (key != 'ava_edit_model' or not cloud)
-            if key.startswith('sc_mode_') or key == 'sc_repair_disfluencies':
-                visible = editing and w['sc_enabled'].isChecked()
+            if key.startswith('sc_mode_') or key in ('sc_model', 'sc_repair_disfluencies'):
+                visible = w['sc_enabled'].isChecked() and (key != 'sc_model' or not corrections_cloud)
             if key in ('tts_engine', 'tts_voice_combo', 'tts_speed', 'tts_volume_slider'):
                 visible = speech
             if key == 'wake_word_phrase':
@@ -487,6 +486,9 @@ class PageAssembly:
                 visible = w['cmd_tab_button'].combo in ('mouse4', 'mouse5')
             row.setProperty('conditionVisible', visible)
             row.setVisible(visible)
+        if 'sc_prerequisite' in w:
+            from .dictation_page import refresh_corrections_prerequisite
+            refresh_corrections_prerequisite(self)
 
     @assembling
     def _connect_conditions(self):
@@ -496,9 +498,15 @@ class PageAssembly:
             if key in self._widgets and key not in self._condition_connections:
                 self._widgets[key].toggled.connect(lambda _value: self._refresh_conditions())
                 self._condition_connections.add(key)
-        for key in ('cloud_provider', 'adv_threshold_mode', 'adv_ducking_recording_mode'):
+        for key in ('adv_threshold_mode', 'adv_ducking_recording_mode'):
             if key in self._widgets and key not in self._condition_connections:
                 self._widgets[key].currentIndexChanged.connect(lambda _value: self._refresh_conditions())
+                self._condition_connections.add(key)
+        # Refresh after Ava's provider handler has applied consent and loaded its fields.
+        for key, signal in (('cloud_provider', 'currentTextChanged'), ('cloud_api_key', 'textChanged'),
+                            ('ava_consent_button', 'clicked')):
+            if key in self._widgets and key not in self._condition_connections:
+                getattr(self._widgets[key], signal).connect(lambda _value: self._refresh_conditions())
                 self._condition_connections.add(key)
         if 'cmd_tab_button' in self._widgets and 'cmd_tab_button' not in self._condition_connections:
             self._widgets['cmd_tab_button'].bindingChanged.connect(lambda _value: self._refresh_conditions())

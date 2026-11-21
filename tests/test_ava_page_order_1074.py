@@ -62,16 +62,15 @@ def test_cloud_rows_are_main_only_in_cloud(windows, route):
 def test_advanced_order_includes_group_before_log_and_consent(windows):
     win = windows()
     page = win._pages['Ava']
+    # 1076: the corrections group moves to Dictation. Log and consent still come last.
     assert [row[0] for row in ava_page.ADVANCED] == [
         'Keep model warm', 'Warm at startup', 'Web search', 'Cloud timeout',
         'Ava personality', 'Remembered turns', 'Editing timeout', 'Local editing model',
-        'Automatic corrections', 'Correction model', 'Correct hold dictation',
-        'Correct wake dictation', 'Correct streaming', 'Repair disfluencies',
         'Keep a conversation log', 'Ava consent']
     actual = [page.advanced.rows.itemAt(i).widget() for i in range(page.advanced.rows.count())]
     # Hairline separators are layout siblings, not preference rows.
-    actual = [widget for widget in actual if hasattr(widget, 'title') or widget is page.smart_corrections]
-    assert actual[-3:] == [page.smart_corrections,
+    actual = [widget for widget in actual if hasattr(widget, 'title')]
+    assert actual[-2:] == [
         win._rows_by_widget['ava_conversation_log_enabled'], win._rows_by_widget['ava:Read this again']]
 
 

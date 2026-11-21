@@ -115,42 +115,6 @@ ADVANCED = [
         "ava_edit.model"
     ],
     [
-        "Automatic corrections",
-        "Enable the separate automatic cleanup pass.",
-        "sc_enabled",
-        "smart_corrections.enabled"
-    ],
-    [
-        "Correction model",
-        "Use this local model for automatic corrections.",
-        "sc_model",
-        "smart_corrections.ollama_model"
-    ],
-    [
-        "Correct hold dictation",
-        "Apply automatic corrections to held dictation.",
-        "sc_mode_hotkey",
-        "smart_corrections.modes.hotkey"
-    ],
-    [
-        "Correct wake dictation",
-        "Apply automatic corrections to wake dictation.",
-        "sc_mode_wake",
-        "smart_corrections.modes.wake"
-    ],
-    [
-        "Correct streaming",
-        "Apply automatic corrections to streaming dictation.",
-        "sc_mode_streaming",
-        "smart_corrections.modes.streaming"
-    ],
-    [
-        "Repair disfluencies",
-        "Remove filler words and spoken self-corrections.",
-        "sc_repair_disfluencies",
-        "smart_corrections.repair_disfluencies"
-    ],
-    [
         "Keep a conversation log",
         "Saves each request to Ava, her reply and the context she used in a file on this PC, for troubleshooting. Off by default.",
         "ava_conversation_log_enabled",
@@ -257,22 +221,6 @@ def build(owner):
     page = owner.make_page(TITLE, SUBTITLE, BASE, ADVANCED)
     owner._widgets["ava_mode_key_off_note"].setVisible(not owner._widgets["ava_enabled"].isChecked())
     refresh_guide_line = _add_setup_guide(owner, page)
-    from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
-    # A plain group, with no nested outline or second disclosure.
-    group = page.smart_corrections = QWidget()
-    rows = QVBoxLayout(group)
-    rows.setContentsMargins(0, 0, 0, 0)
-    rows.setSpacing(0)
-    heading = QLabel("Smart Corrections")  # PLACEHOLDER COPY (472)
-    heading.setProperty("role", "settingsGroup")
-    rows.addWidget(heading)
-    for key, row in owner._rows_by_widget.items():
-        if key.startswith("sc_") and row.widget_keys[0] == key:
-            page.advanced.rows.removeWidget(row)
-            rows.addWidget(row)
-    # 1074: the Smart Corrections group precedes the final log and consent rows.
-    log_row = owner._rows_by_widget["ava_conversation_log_enabled"]
-    page.advanced.rows.insertWidget(page.advanced.rows.indexOf(log_row), group)
     owner._widgets["ava_route_status"].setMinimumWidth(260)
     # Keep shared condition/search refreshes intact; refine Ava's model row.
     refresh = owner._refresh_conditions

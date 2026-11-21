@@ -174,15 +174,15 @@ def test_setting_is_compact_beside_mouse_suppression_and_round_trips(qapp, store
         assert checkbox.isChecked() is (True if stored is None else stored)
         assert SETTINGS_SCHEMA['scroll.target_foreground']['default'] is True
         row = window._rows_by_widget['scroll_target_foreground']
-        assert row.page_name == 'Shortcuts'
+        assert row.page_name == 'Dictation'  # 1076: voice scrolling is a session control.
         assert row.title == "Scroll the app you're using, not the one under the mouse"
         assert checkbox.maximumWidth() <= 64
         checkbox.setChecked(not checkbox.isChecked())
         updates = window._collect_destination_updates({})
         assert updates['scroll'] == {'slow_clicks': 7, 'target_foreground': checkbox.isChecked()}
-        from samsara.ui.settings import shortcuts_page
-        controls = [spec[2] for spec in shortcuts_page.ADVANCED]
-        assert controls.index('scroll_target_foreground') == controls.index('cmd_tab_suppress') + 1
+        from samsara.ui.settings import dictation_page
+        controls = [spec[2] for spec in dictation_page.ADVANCED]
+        assert controls.index('scroll_target_foreground') == controls.index('adv_intent_command_prefix') + 1
     finally:
         window.close()
         window.deleteLater()

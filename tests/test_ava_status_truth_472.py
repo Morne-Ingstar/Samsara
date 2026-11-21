@@ -233,12 +233,15 @@ def test_ava_rows_grouping_and_search(qapp, route):
         ava_editor = window._rows_by_widget['ava_key_picker']
         assert ava_editor.page_name == 'Ava'
         assert ava_editor.isAncestorOf(window._widgets['ava_mode_key_off_note'])
-        assert page.smart_corrections.isAncestorOf(window._widgets['sc_status_label'])
+        # 1076: Automatic corrections and its runtime prerequisite are on Dictation.
+        dictation = window._pages['Dictation']
         for name, row in window._rows_by_widget.items():
             if name.startswith('sc_'):
-                assert page.smart_corrections.isAncestorOf(row)
-        assert window._widgets['sc_status_label'].text().startswith('Smart Corrections:')
-        assert 'Cloud AI enabled' not in window._widgets['sc_status_label'].text()
+                assert dictation.isAncestorOf(row)
+        status = window._widgets['sc_prerequisite']
+        assert dictation.isAncestorOf(status)
+        state = ai_preferences.runtime_state(config, 'editing')
+        assert status.text() == state.reason
         # 1075: both pages match, so search retains the current matching page.
         shortcuts = window._pages['Shortcuts']
         window._stack.setCurrentWidget(shortcuts)

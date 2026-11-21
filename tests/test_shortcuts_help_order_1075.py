@@ -51,7 +51,7 @@ def test_shortcuts_and_help_order(window):
     assert [rows.itemAt(index).widget().title for index in range(rows.count())
             if isinstance(rows.itemAt(index).widget(), SettingRow)] == [
         'Continuous toggle', 'Continuous commit', 'Correction report shortcut',
-        'Mouse suppression', "Scroll the app you're using, not the one under the mouse",
+        'Mouse suppression',  # 1076: voice scrolling moved to Dictation.
         'Complete alarm', 'Dismiss alarm',
     ]
     assert not page.advanced.toggle.isChecked()

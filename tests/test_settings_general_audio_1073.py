@@ -36,8 +36,9 @@ def test_main_and_advanced_order_and_single_picker(window):
     assert [r[2].split(',')[0] for r in general_page.BASE] == [
         'mic_combo', 'lang_combo', 'listening_display', 'adv_indicator_pos',
         'ui_scale_combo', 'theme_combo', 'hints_enabled', 'notifications_level', 'launch_at_login']
+    # 1076: Idle preview moves to Dictation.
     assert [r[0] for r in general_page.ADVANCED] == [
-        'Start hidden', 'Floating windows', 'Show recent words on Home', 'Idle preview']
+        'Start hidden', 'Floating windows', 'Show recent words on Home']
     keys = [r[2] for r in audio_page.BASE]
     assert keys[keys.index('tts_engine'):] == [
         'tts_engine', 'tts_voice_combo,tts:Test Voice', 'tts_speed', 'tts_volume_slider',

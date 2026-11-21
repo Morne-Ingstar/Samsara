@@ -454,12 +454,23 @@ class _SettingsWindow(
         return updates
 
     def _edited_wake_profiles(self):
-        profiles = copy.deepcopy(self.app.config.get('wake_profiles', []))
-        for profile, controls in zip(profiles, self._widgets['wake_profile_controls']):
-            profile['phrase'] = controls['phrase'].text().strip()
-            profile['target_process'] = controls['target_process'].text().strip()
-            profile['send_word'] = controls['send_word'].text().strip()
-            profile['enabled'] = controls['enabled'].isChecked()
+        original = {
+            profile.get('id'): profile
+            for profile in self.app.config.get('wake_profiles', [])
+            if isinstance(profile, dict)
+        }
+        profiles = []
+        for controls in self._widgets['wake_profile_controls']:
+            profile_id = controls['id']
+            profile = {} if controls['new'] else copy.deepcopy(original.get(profile_id, {}))
+            profile.update(
+                id=profile_id,
+                phrase=controls['phrase'].text().strip(),
+                target_process=controls['target_process'].text().strip(),
+                send_word=controls['send_word'].text().strip(),
+                enabled=controls['enabled'].isChecked(),
+            )
+            profiles.append(profile)
         return profiles
 
     def _apply_and_close(self):

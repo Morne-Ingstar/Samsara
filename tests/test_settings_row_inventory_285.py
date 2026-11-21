@@ -93,7 +93,6 @@ AUDITED_KEYS = set([
     "command_packs.utilities",
     "command_packs.window-cube-numbers",
     "command_packs.window-management",
-    "compute_type",
     "continuous_commit_hotkey",
     "continuous_commit_trigger",
     "continuous_hotkey",
@@ -171,7 +170,7 @@ def window(qapp, monkeypatch, qt_widget_scope):
 
 
 def test_every_audited_key_has_one_reachable_editor(window):
-    assert len(AUDITED_KEYS) == 137  # 1074: Demo pacing leaves Settings.
+    assert len(AUDITED_KEYS) == 136  # 1076: Precision metadata leaves Settings.
     bindings = window.config_row_inventory()
     # 827c: the connection switch has one reachable home on Integrations.
     assert [(page, widget) for key, page, widget in bindings
@@ -215,11 +214,12 @@ def test_six_pages_keep_approved_base_budgets(window):
     assert settings_qt._TAB_NAMES == ['General', 'Dictation', 'Audio', 'Ava', 'Shortcuts', 'Help']
     # 1073: Indicator position and Speech volume join their main sections.
     # 1179: 1161 added exactly one Keep this dictation shortcut.
-    for name, count in {'General': 9, 'Dictation': 12, 'Audio': 12, 'Shortcuts': 12}.items():
+    # 1076: Dictation promotes formatting, corrections and Performance; Whole commands moves to Advanced.
+    for name, count in {'General': 9, 'Dictation': 16, 'Audio': 12, 'Shortcuts': 12}.items():
         assert len(window._pages[name].base_rows) == count
-    # 1073: Indicator position leaves Advanced; Idle preview stays for 1076.
+    # 1076: Idle preview moves from General to Dictation.
     assert sum(row.page_name == 'General' and row.disclosure is window._pages['General'].advanced
-               for row in window._destination_rows) == 4
+               for row in window._destination_rows) == 3
     # 1124: 1015 moved Ava's guide from a ninth row into the page header.
     # 1074: cloud credential/model join the eight main rows; guide is in the header.
     assert [len(window._pages[name].base_rows) for name in ('Ava', 'Help')] == [10, 6]
@@ -336,10 +336,9 @@ def test_help_keeps_accessible_text_and_large_target(window):
 
 
 def test_precision_metadata_is_read_only(window):
-    from PySide6.QtWidgets import QLabel
-    status = window._widgets['computePrecisionStatus']
-    assert isinstance(status, QLabel)
-    assert window._pages['Dictation'].isAncestorOf(status)
+    # 1076: precision stays config-only, with no Settings row or visible editor.
+    assert not any(key == 'compute_type' for key, _, _ in window.config_row_inventory())
+    assert 'computePrecisionStatus' not in window._widgets
     assert not window._pages['Dictation'].isAncestorOf(window._widgets['adv_compute_type'])
 
 

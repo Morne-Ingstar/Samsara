@@ -377,7 +377,7 @@ def test_schema_default_and_general_settings_roundtrip(qapp, monkeypatch):
         page = win._pages["General"]
         row = win._rows_by_widget["home_recent_words"]
         assert len(general_page.BASE) == 9  # 1230: 1020 notifications and 1069 review preference.
-        assert len(general_page.ADVANCED) == 4  # 1230: Interface size is a base preference (1040).
+        assert len(general_page.ADVANCED) == 3  # 1076: Idle preview moved to Dictation.
         assert row.disclosure is page.advanced
         page.advanced.toggle.setChecked(False)
         assert not control.isVisibleTo(page)

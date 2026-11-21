@@ -125,10 +125,11 @@ def test_restart_is_above_exit_and_uses_existing_guard(qapp, code_changed):
 
 
 # Independent pre-move inventory; includes already-retired echo metadata.
-# 525: exclude the retired capture editor; all other pre-move keys stay pinned.
+# 525: exclude the retired capture editor.
+# 1076: Idle preview moves to Dictation and compute_type becomes config-only.
 KEYS_BEFORE = {
     'General': (
-        'command_mode.preview_idle_delay_s command_mode.preview_idle_opacity hints_enabled language launch_at_login '
+        'hints_enabled language launch_at_login '
         'listening_indicator_position microphone microphone_name start_hidden '
         'ui.listening_display ui.theme ui_scale '
     ),
@@ -143,7 +144,8 @@ KEYS_BEFORE = {
         'accessibility.speech_pause_s add_trailing_space auto_capitalize auto_paste cal_multiplier '
         'cleanup_mode command_mode.abort_phrases command_mode.command_matching_enabled '
         'command_mode.dictation_literal_commands_only command_mode.enabled command_mode.enter_debounce_ms command_mode.inactivity_timeout_s '
-        'command_mode.miss_limit command_mode.stop_phrases command_mode.utterance_silence_s compute_type continuous_commit_trigger '
+        'command_mode.miss_limit command_mode.preview_idle_delay_s command_mode.preview_idle_opacity '
+        'command_mode.stop_phrases command_mode.utterance_silence_s continuous_commit_trigger '
         'device format_numbers intent.command_prefix model_size '
         'performance_mode threshold_mode wake_word_config.audio.speech_threshold '
         'wake_word_config.oww_threshold wake_word_config.phrase wake_word_enabled '

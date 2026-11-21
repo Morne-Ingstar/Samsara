@@ -215,13 +215,17 @@ def group_page(page, starts):
                 if hasattr(layout.itemAt(index).widget(), 'widget_keys')]
         current = None
         for row in rows:
-            heading = starts.get(row.widget_keys[0])
+            key = row.widget_keys[0]
+            heading = starts.get(key)
             if heading:
                 # Advanced may continue the last basic group. Keep its heading
                 # at the first member, while retaining later, distinct sections.
                 if not groups or groups[-1][0] != heading:
                     groups.append((heading, [], layout))
                 current = groups[-1][1]
+            elif key in starts:
+                # This section already has its own heading.
+                current = None
             if current is not None:
                 current.append(row)
     for title, members, layout in groups:
