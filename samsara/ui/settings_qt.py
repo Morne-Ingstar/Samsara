@@ -313,6 +313,13 @@ class _SettingsWindow(
         if query and any(term in query for term in ('connect an ai app', 'agent')):
             self._select_tool('Integrations')
             return
+        if query and max(name_matches.values(), default=0) < 3:
+            from .settings.commands_qt import matching_pack
+            pack_id = matching_pack(query)
+            if pack_id:
+                self._select_tool('Command library')
+                tools_page.land_on_packs(self, pack_id)
+                return
         if query and matched:
             # A setting's name outranks an incidental mention in help, e.g.
             # "Stage timing" before "staged thought" when searching "stage".

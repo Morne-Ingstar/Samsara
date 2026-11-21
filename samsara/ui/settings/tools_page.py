@@ -1,6 +1,6 @@
 """Record managers and integrations opened independently of Settings."""
 from PySide6.QtWidgets import QLabel, QPushButton, QWidget, QHBoxLayout
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from .presentation import Page, SettingRow
 from .calm_controls import switch
 from .calm_layout import RowLayout
@@ -22,11 +22,26 @@ def open_packs(controller):
     from samsara.ui import qt_runtime
     def show():
         controller._show_tool('Command library')
-        owner = controller._window
-        page = owner._tool_pages['Command library']
-        packs = owner._widgets['_pack_scroll']
-        page.ensureWidgetVisible(packs)
+        land_on_packs(controller._window)
     qt_runtime.post(show)
+
+
+def land_on_packs(owner, pack_id=None):
+    page = owner._tool_pages['Command library']
+    packs = owner._widgets['_pack_scroll']
+
+    def land():
+        if owner._stack.currentWidget() is not page:
+            return
+        page.widget().layout().activate()
+        if pack_id is None:
+            packs.setFocus(Qt.FocusReason.OtherFocusReason)
+        else:
+            packs.show_control(owner._widgets['_pack_checkboxes'][pack_id])
+        page.ensureWidgetVisible(packs, 0, 12)
+
+    # Tool selection resets the page scroll after its first layout pass.
+    QTimer.singleShot(0, owner._visit_callback(land, packs))
 
 
 def build(owner, name=None):
@@ -71,15 +86,7 @@ def build(owner, name=None):
         heading = QLabel('Commands')
         heading.setProperty('role', 'title')
         commands.widget().layout().insertWidget(0, heading)
-        for label in commands.findChildren(QLabel):
-            if label.text() == 'Command Packs':
-                label.setText('Command packs')
         tools['Command library'] = commands
-        owner._widgets['_pack_restart_lbl'].setText('Apply to use these commands immediately.')
-        # Ava's effective master is the single editor for the AI pack.
-        ai_pack = owner._widgets['_pack_checkboxes'].get('ai')
-        if ai_pack is not None:
-            ai_pack.parentWidget().hide()
     if name is None or name == 'Alarms':
         alarms = owner.make_page('Alarms', 'Record changes apply immediately; preferences use Apply.', [
             ['Alarm reminders', 'Enable alarm reminders.', 'alarms_enabled', 'alarms.enabled'],

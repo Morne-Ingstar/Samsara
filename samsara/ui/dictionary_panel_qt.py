@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 from samsara.runtime import thread_registry
 from samsara.ui import theme
 from samsara.ui.hub_window_fit import FitContent
+from samsara.ui.widgets.checkbox_list import CheckBoxList
 
 logger = logging.getLogger(__name__)
 
@@ -353,8 +354,6 @@ class DictionaryPanelQt(QWidget):
         self._voice_expander.setText(("▾" if expanded else "▸") + " How to add words by voice")
         self._voice_expander.toggled.connect(expand_voice)
 
-        self._build_builtin_words(lay)
-
         # Input row
         add_row = QHBoxLayout()
         self._vocab_input = _VocabularyInput(self._app)
@@ -385,8 +384,10 @@ class DictionaryPanelQt(QWidget):
         rem_btn = QPushButton("Remove Selected")
         rem_btn.clicked.connect(self._vocab_remove)
         imp_btn = QPushButton("Import")
+        imp_btn.setToolTip("Import words")  # PLACEHOLDER COPY (1077)
         imp_btn.clicked.connect(self._vocab_import)
         exp_btn = QPushButton("Export")
+        exp_btn.setToolTip("Export words")  # PLACEHOLDER COPY (1077)
         exp_btn.clicked.connect(self._vocab_export)
         btn_row.addWidget(rem_btn)
         btn_row.addWidget(imp_btn)
@@ -421,6 +422,7 @@ class DictionaryPanelQt(QWidget):
                 w.setText(msg) or w.setStyleSheet(f"color:{col};font-size:{theme.TYPE_MIN}px;")
         )
 
+        self._build_builtin_words(lay)
         return page
 
     @staticmethod
@@ -459,21 +461,16 @@ class DictionaryPanelQt(QWidget):
         master_row.addStretch()
         layout.addLayout(master_row)
 
-        self._builtin_scroll = QScrollArea()
-        self._builtin_scroll.setWidgetResizable(True)
-        self._builtin_scroll.setMaximumHeight(220)
-        self._builtin_scroll.setMinimumHeight(132)
-        self._builtin_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        content = QWidget()
-        rows = QVBoxLayout(content)
-        rows.setContentsMargins(8, 4, 8, 4)
-        rows.setSpacing(2)
+        self._builtin_scroll = CheckBoxList("Built-in words", 220, theme.HUB_INPUT_WIDTH)
         self._builtin_switches = {}
         service = self._vt
         entries = service.get_builtin_words() if callable(getattr(service, "get_builtin_words", None)) else []
         for entry in entries:
             word = entry["word"]
-            row = QHBoxLayout()
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 8, 0)
+            row_layout.setSpacing(6)
             control = switch(QCheckBox())
             control.setAccessibleName(f"Use built-in word {word}")
             control.setChecked(entry["enabled"])
@@ -481,16 +478,14 @@ class DictionaryPanelQt(QWidget):
             text = QLabel(word)
             text.setBuddy(control)
             text.setToolTip(entry["why"])
-            row.addWidget(control)
-            row.addWidget(text)
-            row.addStretch()
-            rows.addLayout(row)
+            row_layout.addWidget(control)
+            row_layout.addWidget(text)
+            row_layout.addStretch()
+            self._builtin_scroll.add_row(row, control)
             self._builtin_switches[word] = control
-        rows.addStretch()
-        self._builtin_scroll.setWidget(content)
         self._builtin_scroll.setVisible(False)
         self._builtin_scroll.setEnabled(self._builtin_enabled.isChecked())
-        layout.addWidget(self._builtin_scroll)
+        layout.addWidget(self._builtin_scroll, alignment=Qt.AlignmentFlag.AlignLeft)
         self._builtin_expander.toggled.connect(self._builtin_expand)
         self._builtin_enabled.toggled.connect(lambda enabled: self._builtin_save(None, enabled))
         self._sigs.builtin_saved.connect(self._builtin_save_finished)
@@ -503,7 +498,8 @@ class DictionaryPanelQt(QWidget):
     def _builtin_save(self, word, enabled):
         # Serialize preference writes and keep all disk work off the Qt thread.
         self._builtin_enabled.setEnabled(False)
-        self._builtin_scroll.setEnabled(False)
+        # Keep the list focused while disabling edits during the write.
+        self._builtin_scroll.content.setEnabled(False)
         self._vocab_status.setText("Saving...")
 
         def save():
@@ -539,6 +535,7 @@ class DictionaryPanelQt(QWidget):
             control.blockSignals(False)
         self._builtin_enabled.setEnabled(callable(getattr(self._app, "update_config_and_save", None)))
         self._builtin_scroll.setEnabled(self._builtin_enabled.isChecked())
+        self._builtin_scroll.content.setEnabled(True)
         self._vocab_status.setText("" if saved else "Could not save built-in words. Try again.")
 
     def _vocab_add(self):

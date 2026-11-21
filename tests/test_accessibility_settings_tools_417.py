@@ -96,7 +96,8 @@ def test_audit_pack_name_role_and_checked_state(tools_window, qapp, row, pack):
     label = next(label for label in checkbox.parentWidget().findChildren(QLabel)
                  if label.text().startswith(PACKS[pack]["label"]))
     interface = QAccessible.queryAccessibleInterface(checkbox)
-    assert interface.text(QAccessible.Text.Name) == label.text()
+    # 1077: the accessible pack name excludes the command count.
+    assert interface.text(QAccessible.Text.Name) == PACKS[pack]["label"]
     assert label.text() and label.text() != checkbox.metaObject().className()
     assert interface.role() == QAccessible.Role.CheckBox
     assert interface.state().checkable

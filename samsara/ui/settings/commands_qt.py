@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 
 from samsara.runtime import thread_registry
 from samsara.ui import qt_runtime, theme
+from samsara.ui.widgets.checkbox_list import CheckBoxList
 
 # Paths below stay relative to settings_qt.py, where this code was written.
 from samsara.ui.settings_qt import __file__ as _SETTINGS_QT_FILE
@@ -38,6 +39,22 @@ from samsara.ui.settings_qt import _CONTENT_MAX_WIDTH, _collect_command_rows, lo
 
 from samsara.ui.settings.presentation import CleanComboBox as QComboBox, TOOLS_TABLE_MAX_WIDTH, DataTable, table_empty_state, data_heading, style_data_list
 
+
+_LEADING_PACKS = ('accessibility', 'text-editing', 'window-management')
+_INTEGRATION_PACKS = {'ai', 'agents', 'hermes'}
+
+
+def matching_pack(query):
+    from samsara.command_packs import PACKS
+
+    for pack_id, meta in PACKS.items():
+        if pack_id in _INTEGRATION_PACKS:
+            continue
+        if query in (pack_id, f'command_packs.{pack_id}', meta['label'].casefold()):
+            return pack_id
+    return None
+
+
 class CommandsPage:
     """Methods of the Commands settings page (moved from _SettingsWindow)."""
 
@@ -45,6 +62,7 @@ class CommandsPage:
         import json
         from pathlib import Path
         from samsara.command_packs import PACKS
+        from .calm_controls import switch
 
         page = QScrollArea()
         page.setObjectName("commandsPageScroll")
@@ -63,8 +81,123 @@ class CommandsPage:
 
         cfg = self.app.config
 
+        # ---- Section: Voice Commands ---------------------------------------
+        cmd_header = QHBoxLayout()
+        commands_title = data_heading(self._tool_section_title("Voice Commands"))
+        cmd_header.addWidget(commands_title)
+        cmd_header.setSpacing(8)
+        quick_reference_button = QPushButton("Command list...")
+        quick_reference_button.setObjectName("commandListButton")
+        quick_reference_button.setMinimumHeight(44)
+        quick_reference_button.clicked.connect(
+            lambda: getattr(self.app, "open_quick_reference", lambda: None)()
+        )
+        self._widgets["commandListButton"] = quick_reference_button
+        cmd_header.addWidget(quick_reference_button)
+        search_box = QLineEdit()
+        search_box.setAccessibleName("Search commands")
+        search_box.setPlaceholderText("Search commands...")
+        search_box.setMinimumWidth(140)
+        search_box.setMaximumWidth(280)
+        search_box.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        self._widgets['cmd_search'] = search_box
+        cmd_header.addWidget(search_box)
+        cmd_header.addStretch()
+        layout.addSpacing(24)
+        layout.addLayout(cmd_header)
+        layout.addSpacing(8)
+
+        # Table
+        table = DataTable(0, 4)
+        table.setAccessibleName(commands_title.text())
+        table.setHorizontalHeaderLabels(['Voice Phrase', 'Type', 'Action', 'Description'])
+        table.columns((176, 80, 128, 224), flexible=3)
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        table.setTabKeyNavigation(False)
+        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self._widgets['cmd_table'] = table
+        self._populate_commands_table(table, "")
+        search_box.textChanged.connect(lambda txt: self._filter_commands(table, txt))
+        table_row = QHBoxLayout()
+        table_row.setContentsMargins(0, 0, 0, 0)
+        table_row.addWidget(table, 1)
+        table_row.addStretch(0)
+        layout.addLayout(table_row)
+
+        # Button row
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+
+        add_btn = QPushButton("Add Command")
+        add_btn.setObjectName("addCommandButton")
+        add_btn.clicked.connect(lambda: self._open_command_dialog(None, table))
+        btn_row.addWidget(add_btn)
+
+        edit_btn = QPushButton("Edit")
+        edit_btn.setObjectName("editCommandButton")
+        edit_btn.setStyleSheet(
+            f"QPushButton {{ background-color: transparent; color: {theme.ICON_IDLE}; "
+            f"border: 1px solid {theme.wash(0.14)}; border-radius: 6px; "
+            "padding: 8px 16px; }"
+            f"QPushButton:hover {{ background-color: {theme.wash(0.05)}; color: {theme.TEXT_PRIMARY}; }}"
+        )
+        edit_btn.clicked.connect(lambda: self._edit_selected_command(table))
+        btn_row.addWidget(edit_btn)
+
+        del_btn = QPushButton("Delete")
+        del_btn.setObjectName("deleteCommandButton")
+        del_btn.setStyleSheet(
+            f"QPushButton {{ background-color: {theme.tint(theme.RECORDING, 0.15)}; color: {theme.ERROR}; "
+            f"border: 1px solid {theme.tint(theme.RECORDING, 0.3)}; border-radius: 6px; padding: 8px 16px; }}"
+            f"QPushButton:hover {{ background-color: {theme.tint(theme.RECORDING, 0.25)}; }}"
+        )
+        del_btn.clicked.connect(lambda: self._delete_selected_command(table))
+        btn_row.addWidget(del_btn)
+
+        test_btn = QPushButton("Test")
+        test_btn.setObjectName("testCommandButton")
+        test_btn.setStyleSheet(
+            f"QPushButton {{ background-color: transparent; color: {theme.ICON_IDLE}; "
+            f"border: 1px solid {theme.wash(0.14)}; border-radius: 6px; "
+            "padding: 8px 12px; }"
+            f"QPushButton:hover {{ background-color: {theme.wash(0.05)}; color: {theme.TEXT_PRIMARY}; }}"
+        )
+        test_btn.clicked.connect(lambda: self._test_selected_command(table))
+        btn_row.addWidget(test_btn)
+
+        reload_btn = QPushButton("Reload")
+        reload_btn.setObjectName("reloadCommandsButton")
+        reload_btn.setStyleSheet(
+            f"QPushButton {{ background-color: transparent; color: {theme.ICON_IDLE}; "
+            f"border: 1px solid {theme.wash(0.14)}; border-radius: 6px; "
+            "padding: 8px 12px; }"
+            f"QPushButton:hover {{ background-color: {theme.wash(0.05)}; color: {theme.TEXT_PRIMARY}; }}"
+        )
+        reload_btn.clicked.connect(lambda: self._reload_commands(table))
+        btn_row.addWidget(reload_btn)
+        btn_row.addStretch()
+
+        layout.addSpacing(12)
+        layout.addLayout(btn_row)
+        layout.addSpacing(8)
+        instant_note = QLabel("Changes to voice commands apply immediately.")  # PLACEHOLDER COPY (1077)
+        instant_note.setWordWrap(True)
+        instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
+        layout.addWidget(instant_note)
+        footer = QLabel("Say these phrases while recording to trigger actions.")
+        # Wrapping keeps the footer from widening the scroll content.
+        footer.setWordWrap(True)
+        footer.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
+        layout.addWidget(footer)
+
+        layout.addSpacing(24)
+
         # ---- Section: Command Packs ----------------------------------------
-        layout.addWidget(data_heading(self._tool_section_title("Command Packs")))
+        layout.addWidget(data_heading(self._tool_section_title("Command packs")))
 
         desc1 = QLabel(
             "Enable the packs you use. Disabling unused packs improves recognition accuracy."
@@ -75,14 +208,12 @@ class CommandsPage:
         layout.addWidget(desc1)
         layout.addSpacing(16)
 
-        pack_container = QWidget()
+        packs = CheckBoxList("Command packs", 384, TOOLS_TABLE_MAX_WIDTH)
+        packs.setObjectName("commandPacksList")
+        pack_container = packs.content
         pack_container.setObjectName("commandPacksContent")
-        pack_container.setMaximumWidth(640)
-        pack_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-
-        pack_vlayout = QVBoxLayout(pack_container)
-        pack_vlayout.setContentsMargins(16, 8, 16, 8)
-        pack_vlayout.setSpacing(0)
+        hidden_packs = QWidget(outer)
+        hidden_packs.hide()
 
         current_packs = cfg.get('command_packs', {}) or {}
         pack_checkboxes: dict[str, QCheckBox] = {}
@@ -116,36 +247,37 @@ class CommandsPage:
         restart_lbl.setVisible(False)
         self._widgets['_pack_restart_lbl'] = restart_lbl
 
-        for pack_id, meta in PACKS.items():
+        order = (*_LEADING_PACKS,
+                 *(key for key in PACKS if key not in (*_LEADING_PACKS, 'experimental')),
+                 'experimental')
+        for pack_id in order:
             if pack_id == 'hermes':
                 continue  # Dedicated, consent-gated section below; never a second switch.
-            always_on     = meta.get('always_on', False)
-            default_on    = meta.get('default_enabled', False)
-            enabled       = bool(current_packs.get(pack_id, default_on)) or always_on
-            count         = pack_counts.get(pack_id, 0)
-            count_str     = f"  ({count})" if count else ""
+            meta = PACKS[pack_id]
+            always_on = meta.get('always_on', False)
+            default_on = meta.get('default_enabled', False)
+            enabled = bool(current_packs.get(pack_id, default_on)) or always_on
+            count = pack_counts.get(pack_id, 0)
+            count_str = f"  ({count})" if count else ""
 
-            row_w = QWidget()
-            row_w.setProperty('dataListRow', True)
-            row_w.setMinimumHeight(72)
-            row_h = QHBoxLayout(row_w)
-            row_h.setContentsMargins(12, 12, 12, 12)
-            row_h.setSpacing(8)
-
-            cb = QCheckBox()
+            cb = QCheckBox(hidden_packs) if pack_id in _INTEGRATION_PACKS else QCheckBox()
+            cb.setAccessibleName(meta['label'])
             cb.setChecked(enabled)
             cb.setEnabled(not always_on)
-            # Pack labels live beside the indicator, so its own natural
-            # width is only the 18px glyph. Reserve the shared square hit
-            # target rather than relying on the label column as a proxy.
-            cb.setMinimumWidth(theme.HIT_TARGET_MIN)
-            cb.setMinimumHeight(theme.HIT_TARGET_MIN)
             if pack_id != 'agents':
                 cb.toggled.connect(lambda _, lbl=restart_lbl: lbl.setVisible(True))
             pack_checkboxes[pack_id] = cb
-            if always_on:
-                cb.hide()  # The adjacent manifest label is a capability badge, not a preference.
+            if pack_id in _INTEGRATION_PACKS:
+                continue
 
+            row_w = QWidget()
+            row_w.setProperty('dataListRow', True)
+            row_w.setMinimumHeight(64)
+            row_h = QHBoxLayout(row_w)
+            row_h.setContentsMargins(0, 7, 12, 7)
+            row_h.setSpacing(8)
+            if not always_on:
+                switch(cb)
             text_col = QVBoxLayout()
             text_col.setContentsMargins(0, 0, 0, 0)
             text_col.setSpacing(4)
@@ -155,7 +287,6 @@ class CommandsPage:
                 + ("  •  always on" if always_on else "")
                 + count_str
             )
-            cb.setAccessibleName(name_lbl.text())
             name_lbl.setStyleSheet(
                 f"color: {theme.ICON_IDLE if always_on else theme.TEXT_PRIMARY}; "
                 f"font-size: {theme.TYPE_BODY}px; font-weight: {'normal' if always_on else '600'};"
@@ -180,17 +311,20 @@ class CommandsPage:
             row_h.addLayout(text_col, stretch=1)
             row_h.addWidget(cb, alignment=Qt.AlignmentFlag.AlignVCenter)
 
-            pack_vlayout.addWidget(row_w)
+            if always_on:
+                cb.hide()  # The adjacent manifest label is a capability badge, not a preference.
+            packs.add_row(row_w, None if always_on else cb, name_lbl)
 
         style_data_list(pack_container)
         self._widgets['_pack_checkboxes'] = pack_checkboxes
-        self._widgets['_pack_scroll'] = pack_container
+        self._widgets['_pack_scroll'] = packs
         pack_row = QHBoxLayout()
         pack_row.setContentsMargins(0, 0, 0, 0)
-        pack_row.addWidget(pack_container, 1)
+        pack_row.addWidget(packs, 1)
         pack_row.addStretch(0)
         layout.addLayout(pack_row)
         layout.addWidget(restart_lbl)
+        layout.addSpacing(8)
         from .hermes_section import add_section
         add_section(self, layout)
 
@@ -266,122 +400,7 @@ class CommandsPage:
 
         layout = command_layout
 
-        # ---- Section: Voice Commands ---------------------------------------
-        cmd_header = QHBoxLayout()
-        commands_title = data_heading(self._tool_section_title("Voice Commands"))
-        cmd_header.addWidget(commands_title)
-        cmd_header.setSpacing(8)
-        quick_reference_button = QPushButton("Command list...")
-        quick_reference_button.setObjectName("commandListButton")
-        quick_reference_button.setMinimumHeight(44)
-        quick_reference_button.clicked.connect(
-            lambda: getattr(self.app, "open_quick_reference", lambda: None)()
-        )
-        self._widgets["commandListButton"] = quick_reference_button
-        cmd_header.addWidget(quick_reference_button)
-        search_box = QLineEdit()
-        search_box.setAccessibleName("Search commands")
-        search_box.setPlaceholderText("Search commands...")
-        search_box.setMinimumWidth(140)
-        search_box.setMaximumWidth(280)
-        search_box.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
-        )
-        self._widgets['cmd_search'] = search_box
-        cmd_header.addWidget(search_box)
-        cmd_header.addStretch()
-        layout.addSpacing(24)
-        layout.addLayout(cmd_header)
-        layout.addSpacing(8)
-
-        instant_note = QLabel("Changes to commands below apply immediately.")
-        # Word-wrap so this sentence cannot force a horizontal scrollbar on the
-        # Commands page. An unwrapped QLabel reports its FULL single-line width
-        # as minimumSizeHint, which under a wider font stack than Segoe UI
-        # (528px here vs a 530px viewport) drags the whole page wider. Wrapping
-        # does not change how it renders where it already fits on one line.
-        instant_note.setWordWrap(True)
-        instant_note.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
-        layout.addWidget(instant_note)
-        layout.addSpacing(16)
-
-        # Table
-        table = DataTable(0, 4)
-        table.setAccessibleName(commands_title.text())
-        table.setHorizontalHeaderLabels(['Voice Phrase', 'Type', 'Action', 'Description'])
-        table.columns((176, 80, 128, 224), flexible=3)
-        table.verticalHeader().setVisible(False)
-        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
-        self._widgets['cmd_table'] = table
-        self._populate_commands_table(table, "")
-        search_box.textChanged.connect(lambda txt: self._filter_commands(table, txt))
-        table_row = QHBoxLayout()
-        table_row.setContentsMargins(0, 0, 0, 0)
-        table_row.addWidget(table, 1)
-        table_row.addStretch(0)
-        layout.addLayout(table_row)
-
-        # Button row
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(8)
-
-        add_btn = QPushButton("Add Command")
-        add_btn.setObjectName("addCommandButton")
-        add_btn.clicked.connect(lambda: self._open_command_dialog(None, table))
-        btn_row.addWidget(add_btn)
-
-        edit_btn = QPushButton("Edit")
-        edit_btn.setObjectName("editCommandButton")
-        edit_btn.setStyleSheet(
-            f"QPushButton {{ background-color: transparent; color: {theme.ICON_IDLE}; "
-            f"border: 1px solid {theme.wash(0.14)}; border-radius: 6px; "
-            "padding: 8px 16px; }"
-            f"QPushButton:hover {{ background-color: {theme.wash(0.05)}; color: {theme.TEXT_PRIMARY}; }}"
-        )
-        edit_btn.clicked.connect(lambda: self._edit_selected_command(table))
-        btn_row.addWidget(edit_btn)
-
-        del_btn = QPushButton("Delete")
-        del_btn.setObjectName("deleteCommandButton")
-        del_btn.setStyleSheet(
-            f"QPushButton {{ background-color: {theme.tint(theme.RECORDING, 0.15)}; color: {theme.ERROR}; "
-            f"border: 1px solid {theme.tint(theme.RECORDING, 0.3)}; border-radius: 6px; padding: 8px 16px; }}"
-            f"QPushButton:hover {{ background-color: {theme.tint(theme.RECORDING, 0.25)}; }}"
-        )
-        del_btn.clicked.connect(lambda: self._delete_selected_command(table))
-        btn_row.addWidget(del_btn)
-
-        test_btn = QPushButton("Test")
-        test_btn.setObjectName("testCommandButton")
-        test_btn.setStyleSheet(
-            f"QPushButton {{ background-color: transparent; color: {theme.ICON_IDLE}; "
-            f"border: 1px solid {theme.wash(0.14)}; border-radius: 6px; "
-            "padding: 8px 12px; }"
-            f"QPushButton:hover {{ background-color: {theme.wash(0.05)}; color: {theme.TEXT_PRIMARY}; }}"
-        )
-        test_btn.clicked.connect(lambda: self._test_selected_command(table))
-        btn_row.addWidget(test_btn)
-
-        reload_btn = QPushButton("Reload")
-        reload_btn.setObjectName("reloadCommandsButton")
-        reload_btn.setStyleSheet(
-            f"QPushButton {{ background-color: transparent; color: {theme.ICON_IDLE}; "
-            f"border: 1px solid {theme.wash(0.14)}; border-radius: 6px; "
-            "padding: 8px 12px; }"
-            f"QPushButton:hover {{ background-color: {theme.wash(0.05)}; color: {theme.TEXT_PRIMARY}; }}"
-        )
-        reload_btn.clicked.connect(lambda: self._reload_commands(table))
-        btn_row.addWidget(reload_btn)
-        btn_row.addStretch()
-
-        layout.addSpacing(12)
-        layout.addLayout(btn_row)
-        layout.addSpacing(24)
-
-        # Keep pack selection adjacent to the command list; profile management
-        # follows the list and its Add / Edit / Delete controls.
+        # ---- Section: Command Profiles ------------------------------------
         profiles_title = self._tool_section_title("Command Profiles")
         profiles_title.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(profiles_title)
@@ -406,14 +425,6 @@ class CommandsPage:
         layout.addWidget(profile_entry)
         self._widgets['_command_profiles_button'] = profile_button
         self._widgets['_command_profiles_entry'] = profile_entry
-
-        footer = QLabel("Say these phrases while recording to trigger actions.")
-        # Same reason as instant_note above: unwrapped, this label's 636px
-        # single-line minimum is the widest thing on the page and is what the
-        # horizontal scrollbar was tracking.
-        footer.setWordWrap(True)
-        footer.setStyleSheet(f"color: {theme.ICON_IDLE}; font-size: {theme.TYPE_BODY}px;")
-        layout.addWidget(footer)
 
         def _save(acc):
             updates = {}

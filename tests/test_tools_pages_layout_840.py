@@ -109,8 +109,9 @@ def test_empty_messages_follow_data_transitions_without_fake_records(tools, qapp
 def test_packs_use_page_scroll_and_spotify_button_uses_existing_picker(tools, qapp, monkeypatch, hermes_installed):
     page = reveal(tools, 'Command library', qapp)
     assert isinstance(page, QScrollArea)
-    assert not page.findChildren(QScrollArea)
     packs = tools._widgets['_pack_scroll']
+    # 1077: the page hosts one bounded scroll area for the pack rows.
+    assert page.findChildren(QScrollArea) == [packs]
     assert packs.maximumWidth() == 640
     assert packs.width() == 640
     # Check the actual wrapped labels; an unconstrained sizeHint can describe
@@ -118,7 +119,7 @@ def test_packs_use_page_scroll_and_spotify_button_uses_existing_picker(tools, qa
     for label in packs.findChildren(QLabel):
         if label.objectName().startswith('commandPackDescription_') and label.isVisibleTo(packs):
             assert label.height() >= label.heightForWidth(label.width())
-            assert label.parentWidget().geometry().bottom() <= packs.height()
+            assert label.parentWidget().geometry().bottom() <= packs.widget().height()  # 1077
     # 840: Hermes shares the save registry but has a separate consent form.
     checkboxes = tools._widgets['_pack_checkboxes']
     assert ('hermes' in checkboxes) == hermes_installed
@@ -127,10 +128,14 @@ def test_packs_use_page_scroll_and_spotify_button_uses_existing_picker(tools, qa
         if pack_id == 'hermes':
             assert not packs.isAncestorOf(cb)
             assert row.layout().contentsMargins().top() == 0
+        elif pack_id in ('ai', 'agents'):
+            # 1077: the integration controls have no rows in the visible list.
+            assert not packs.isAncestorOf(cb)
+            assert not cb.isVisible()
         else:
             assert packs.isAncestorOf(cb), pack_id
             assert row.property('dataListRow'), pack_id
-            assert row.layout().contentsMargins().top() == 12, pack_id
+            assert row.layout().contentsMargins().top() == 7, pack_id  # 1077: compact rows.
     reveal(tools, 'Music', qapp)
     calls = []
     monkeypatch.setattr(tools, '_choose_spotify_export_path', lambda: 'fixture.zip')
@@ -279,12 +284,12 @@ def test_commands_empty_search_and_pack_surface(tools, qapp, monkeypatch):
     monkeypatch.setattr(commands, '_collect_command_rows', lambda _: [])
     tools._filter_commands(table, '')
     assert table._empty_state_label.text() == 'No commands loaded.'
-    packs = tools._widgets['_pack_scroll']
+    packs = tools._widgets['_pack_scroll'].widget()  # 1077: the painted list is in the viewport.
     assert packs.property('settingsDataList')
     assert _pixel(packs, 12, 12) == theme.DATA_SURFACE
     rows = [packs.layout().itemAt(i).widget() for i in range(packs.layout().count())]
-    rows = [row for row in rows if not row.isHidden()]
-    assert all(row.height() >= 72 for row in rows)
+    rows = [row for row in rows if row is not None and not row.isHidden()]
+    assert all(row.height() >= 64 for row in rows)  # 1077: compact two-line rows.
     assert not packs.findChildren(QWidget, 'settingsRowHairline')
     for i, row in enumerate(rows[:2]):
         assert _pixel(row, 2, 2) == (theme.DATA_ROW_ALT if i % 2 else theme.DATA_SURFACE)

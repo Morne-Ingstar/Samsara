@@ -41,7 +41,8 @@ class SwitchSkin(QObject):
         if kind == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
             if widget.isEnabled():
                 self.pressed = True
-                widget.setFocus(Qt.FocusReason.MouseFocusReason)
+                if widget.focusPolicy() & Qt.FocusPolicy.ClickFocus:
+                    widget.setFocus(Qt.FocusReason.MouseFocusReason)
                 widget.setDown(True)
             return True
         if kind == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
