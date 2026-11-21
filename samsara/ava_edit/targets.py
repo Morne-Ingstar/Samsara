@@ -19,6 +19,7 @@ class SelectionCapture:
     span: tuple[int, int] | None = None
     draft_range: tuple[int, int] | None = None
     clipboard_process: int | None = None
+    clipboard_issue: object = None
 
 
 @dataclass(frozen=True, repr=False)
@@ -131,7 +132,8 @@ def snapshot(app, *, selection_needed=True, explicit_selection=False, clock=time
                                             manager, chunk=item, chunk_identity=identity)
     captured = selection.capture_result(app) if selection_needed else SelectionCapture()
     if explicit_selection and captured.state in {'unsupported', 'failed'}:
-        captured = selection.capture_clipboard_result(captured.target)
+        from samsara.teach_patterns import capture_edit_selection
+        captured = capture_edit_selection(captured.target)
     result = RequestSnapshot(uuid4().hex, created_at, generation,
         epoch, manager, getattr(manager, 'mode', None), scope,
         captured, draft, latest, committed, clock)

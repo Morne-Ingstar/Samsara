@@ -152,10 +152,9 @@ def test_incomplete_snapshot_never_copies_or_restores_partial_data(rig, monkeypa
     saved.fake_text = rig.text
     saved.source_seq = rig.seq
     monkeypatch.setattr(cb, "save_clipboard", lambda: saved)
-    # 1287: partial picture loss permits a sequence-proven copy and text restore.
-    assert tp.grab_selection_block() == SOURCE
-    assert rig.keys == [("ctrl", "c")]
-    assert rig.restored == [saved] and rig.text == "original clipboard"
+    assert tp.grab_selection_block() is None
+    assert not rig.keys and not rig.restored
+    assert rig.text == "original clipboard"
 
 
 def test_genuinely_empty_original_is_restored_by_real_empty_restore_branch(rig, monkeypatch):

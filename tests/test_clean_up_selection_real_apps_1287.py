@@ -25,6 +25,8 @@ def _focus_api(monkeypatch, label, rig):
         GetClassNameW=class_name, GetWindowThreadProcessId=window_pid))
     monkeypatch.setattr(injection_safety, "window_integrity",
                         lambda _hwnd: SimpleNamespace(confirmed_ok=True))
+    monkeypatch.setattr(tp, "_selection_clipboard_inventory",
+                        lambda _cb: (rig.seq, 201, frozenset()))
     monkeypatch.setattr(selection, "_native_selection", _native_selection)
 
 
@@ -83,25 +85,19 @@ def test_keyboard_waits_for_release_but_stops_at_deadline(rig, monkeypatch):
     assert rig.keys == [("ctrl", "c")]
 
 
-def test_partial_image_restores_text_but_unknown_snapshot_keeps_clipboard(rig, monkeypatch, caplog):
+def test_incomplete_snapshot_keeps_clipboard_without_consent(rig, monkeypatch, caplog):
     saved = cb.ClipboardSnapshot({cb.CF_UNICODETEXT: b"known text"})
     saved.lost[cb.CF_DIB] = "delayed image unavailable"
     saved.fake_text = rig.text
     saved.source_seq = rig.seq
 
-    def partial_restore(snapshot):
-        rig.text = snapshot.fake_text
-        snapshot.restore_status = "put_back"
-        return False
-
     monkeypatch.setattr(cb, "save_clipboard", lambda: saved)
-    monkeypatch.setattr(cb, "restore_clipboard", partial_restore)
-    assert tp.grab_selection_block_result().state == "selected"
+    assert tp.grab_selection_block_result().state == "failed"
     assert rig.text == "original clipboard"
-    assert "image can only be restored in part" in caplog.text
+    assert "clipboard backup was incomplete" in caplog.text
     saved.lost[0] = "clipboard owner timed out"
     assert tp.grab_selection_block() is None
-    assert rig.keys == [("ctrl", "c")]
+    assert not rig.keys and not rig.restored
 
 
 def test_richedit_reads_delayed_unicode_after_image_backup(app, rig, monkeypatch):

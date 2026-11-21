@@ -62,6 +62,9 @@ def propose_and_stage(app, request):
     if getattr(app, '_ava_question', None) is not None or policy.pending_operation() is not None:
         captured.release()
         return False
+    if captured.selection.clipboard_issue is not None:
+        from samsara.teach_patterns import handle_selection_clipboard_issue
+        return handle_selection_clipboard_issue(app, request)
     bound, reason = targets.bind(request)
     if (bound is None or not targets.request_valid(app, captured)
             or not targets.source_valid(app, bound)):

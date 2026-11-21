@@ -79,6 +79,8 @@ import re
 import threading
 import time
 import unicodedata
+from contextvars import ContextVar
+from dataclasses import dataclass, replace
 
 from samsara.correction_capture import _MAX_PHRASE_WORDS, _is_case_only, _is_punctuation_only
 from samsara.letter_spelling import parse_letters
@@ -509,6 +511,155 @@ def grab_selection_block_result(timeout_s: float = _SELECTION_POLL_TIMEOUT_S, *,
 _COPY_MODIFIERS = (0x10, 0x11, 0x12, 0x5B, 0x5C)  # Shift, Ctrl, Alt, Win
 _COPY_MODIFIER_WAIT_S = 0.6
 _selection_logger = logging.getLogger(__name__)
+_edit_clipboard_capture = ContextVar("edit_clipboard_capture", default=None)
+
+@dataclass(frozen=True)
+class _ClipboardIssue:
+    message: str
+    label: str
+    receipt: tuple | None = None
+    process: int | None = None
+
+    def show(self, app):
+        from samsara.ava_edit import session
+        session._chip(app, "edit_refused", {"reason": self.label})
+        session._say(app, self.message)
+
+
+# Stand-in copy (1316). The outcome chip only displays short refusal labels.
+_RESTORE_FAILED = _ClipboardIssue(
+    "Cleanup stopped. The clipboard couldn't be fully restored.", "Clipboard restore failed")
+_CLIPBOARD_CHANGED = _ClipboardIssue(
+    "The clipboard or selection changed. Ask to clean up again.", "Clipboard or focus changed")
+_CLIPBOARD_UNCHECKED = _ClipboardIssue(
+    "Cleanup stopped. The clipboard couldn't be checked.", "Clipboard check failed")
+
+
+@dataclass
+class _EditClipboardCapture:
+    approved: tuple | None = None
+    guard: object = None
+    issue: _ClipboardIssue | None = None
+
+
+def capture_edit_selection(target, *, approved=None, guard=None):
+    """Carry the clipboard result through the existing foreground adapter."""
+    from samsara.ava_edit import selection
+
+    capture = _EditClipboardCapture(approved, guard)
+    process = selection._window_process(target[0]) if target and target[0] else None
+    token = _edit_clipboard_capture.set(capture)
+    try:
+        result = selection.capture_clipboard_result(target)
+    finally:
+        _edit_clipboard_capture.reset(token)
+    if capture.issue is not None:
+        result = replace(result, clipboard_issue=replace(capture.issue, process=process))
+    return result
+
+
+class _SelectionClipboardReply:
+    def __init__(self, app, request, issue):
+        self.app, self.request, self.issue = app, request, issue
+
+    def eligible(self):
+        from samsara.ava_edit import targets
+        return targets.request_valid(self.app, self.request.snapshot)
+
+    def expired(self):
+        self.request.snapshot.release()
+
+    def answer(self, text):
+        from samsara.ava_edit import intent, session
+
+        if intent._normalize(text) in {"anyway", "clean up anyway"}:
+            session.thread_registry.spawn("selection-clipboard-retry", self.retry, daemon=True)
+        else:
+            self.expired()
+            session._chip(self.app, "edit_refused", {"reason": "Cleanup cancelled."})
+
+    def retry(self):
+        from samsara import execution_policy
+        from samsara.ava_edit import actions, selection, session
+
+        captured = self.request.snapshot
+        target = captured.selection.target
+
+        def current():
+            return (self.eligible() and getattr(self.app, "_ava_question", None) is None
+                    and execution_policy.pending_operation() is None and session.pending() is None
+                    and selection._foreground_matches(target, self.issue.process)
+                    and (not target[2] or selection._target_matches(target)))
+
+        if current():
+            result = capture_edit_selection(target, approved=self.issue.receipt, guard=current)
+            if result.state == "selected" and current():
+                captured.selection = result
+                actions.propose_and_stage(self.app, self.request)
+                return
+            if result.clipboard_issue is not None:
+                self.expired()
+                result.clipboard_issue.show(self.app)
+                return
+        self.expired()
+        _CLIPBOARD_CHANGED.show(self.app)
+
+
+def handle_selection_clipboard_issue(app, request):
+    from samsara import ava_pending
+
+    captured = request.snapshot
+    issue = captured.selection.clipboard_issue
+    runner = _SelectionClipboardReply(app, request, issue)
+    if not runner.eligible():
+        captured.release()
+        return False
+    if issue.receipt is not None and issue.process is not None:
+        options = ("Clean up anyway", "Cancel")
+        outcome = ava_pending.ask(app, runner, "selection_clipboard", issue.message,
+                                 options, label=f'{issue.message} Say "clean up anyway" or "cancel".')
+        if outcome.state == "queued":
+            return True
+    captured.release()
+    issue.show(app)
+    return False
+
+
+def _selection_clipboard_inventory(cb):
+    """Read the advertised formats and their identity without fetching data."""
+    try:
+        if not cb._open_clipboard_with_retry():
+            return None
+        try:
+            formats = set()
+            fmt = 0
+            for _ in range(cb._MAX_SNAPSHOT_FORMATS + 1):
+                fmt = cb._user32.EnumClipboardFormats(fmt)
+                if not fmt:
+                    if cb._kernel32.GetLastError():
+                        return None
+                    return (cb.get_clipboard_sequence_number(), cb._user32.GetClipboardOwner(),
+                            frozenset(formats))
+                if fmt in formats:
+                    return None
+                formats.add(fmt)
+        finally:
+            cb._user32.CloseClipboard()
+    except (AttributeError, OSError):
+        _selection_logger.debug("[AVA-EDIT] Clipboard format inventory unavailable")
+    return None
+
+
+def _unrestorable_formats(cb, snapshot, formats):
+    saved = {fmt for fmt, raw in snapshot.items()
+             if cb.is_snapshot_eligible_format(fmt) and cb.is_nonempty_payload(raw)}
+    # Windows supplies these compatibility formats from the saved source.
+    # Keep a separate DIBV5/PNG requirement to preserve their extra picture data.
+    regenerated = {fmt for fmt in (cb.CF_TEXT, cb.CF_OEMTEXT, cb.CF_LOCALE,
+                                  cb.CF_UNICODETEXT, cb.CF_BITMAP, cb.CF_PALETTE)
+                   if cb._SYNTHESIZED_FROM[fmt] & saved}
+    missing = set(formats) - saved - regenerated
+    return missing | set(getattr(snapshot, "lost", ())) | set(getattr(snapshot, "omitted", ()))
 
 
 def _copy_modifiers_down():
@@ -543,15 +694,39 @@ def _capture_selection_locked(clipboard_module, pyautogui, timeout_s,
                               transform, require_sequence, before_copy=None):
     from samsara.clipboard_recovery import lost_is_image_only
 
+    capture = _edit_clipboard_capture.get()
+    approved = capture.approved if capture is not None else None
+    if approved is not None and _selection_clipboard_inventory(clipboard_module) != approved:
+        capture.issue = _CLIPBOARD_CHANGED
+        return None
     pre_snapshot = clipboard_module.save_clipboard()
-    complete = getattr(pre_snapshot, "complete", True)
-    if not complete and not lost_is_image_only(pre_snapshot):
-        # A wholly unreadable clipboard may contain text. Keep it untouched.
-        _selection_logger.warning("[AVA-EDIT] Selection copy skipped: clipboard text preservation is unknown")
-        _selection_logger.debug("[AVA-EDIT] Selection copy refused: clipboard backup did not prove text preservation")
+    source_seq = getattr(pre_snapshot, 'source_seq', None)
+    incomplete = (not getattr(pre_snapshot, "complete", True)
+                  or bool(getattr(pre_snapshot, "omitted", ())))
+    if capture is not None:
+        inventory = _selection_clipboard_inventory(clipboard_module)
+        if inventory is None or not inventory[0]:
+            capture.issue = _CLIPBOARD_UNCHECKED
+            return None
+        if ((source_seq is not None and inventory[0] != source_seq)
+                or (approved is not None and inventory != approved)):
+            capture.issue = _CLIPBOARD_CHANGED
+            return None
+        missing = _unrestorable_formats(clipboard_module, pre_snapshot, inventory[2])
+        if missing and not approved:
+            unsaved = clipboard_module.ClipboardSnapshot()
+            unsaved.lost = dict.fromkeys(missing)
+            message = ("Cleaning up could remove the picture you copied."
+                       if lost_is_image_only(unsaved)
+                       else "Cleaning up could replace what you copied.")
+            capture.issue = _ClipboardIssue(message, "Clipboard at risk", inventory)
+            return None
+        incomplete = bool(missing)
+        source_seq = inventory[0]
+    elif incomplete:
+        _selection_logger.warning("[AVA-EDIT] Selection copy skipped: clipboard backup was incomplete")
         return None
 
-    source_seq = getattr(pre_snapshot, 'source_seq', None)
     # Windows can advertise delayed-rendered text before advancing its sequence.
     # A format that was absent immediately before Ctrl+C is safe to probe.
     text_available = getattr(clipboard_module._user32, 'IsClipboardFormatAvailable', None)
@@ -573,8 +748,11 @@ def _capture_selection_locked(clipboard_module, pyautogui, timeout_s,
     if _copy_modifiers_down():
         _selection_logger.debug("[AVA-EDIT] Selection copy refused: modifier held before Ctrl+C")
         return None
-    if not complete:
-        _selection_logger.warning("[AVA-EDIT] Selection copy: clipboard image can only be restored in part")
+    if capture is not None and capture.guard is not None and not capture.guard():
+        return None
+    if capture is not None and clipboard_module.get_clipboard_sequence_number() != seq_before:
+        capture.issue = _CLIPBOARD_CHANGED
+        return None
 
     copy_seq = None
     raw = None
@@ -611,9 +789,16 @@ def _capture_selection_locked(clipboard_module, pyautogui, timeout_s,
                 restored = clipboard_module.restore_clipboard(pre_snapshot)
             except Exception:
                 restored = False
-            if not restored:
+            status = getattr(pre_snapshot, 'restore_status', None)
+            if approved is not None and incomplete and status == 'put_back':
+                _selection_logger.warning("[AVA-EDIT] Selection copy used consent for unsaved clipboard formats")
+                restored = True
+            if not restored or status == 'kept_newer':
                 _selection_logger.warning("[AVA-EDIT] Selection copy did not fully restore the clipboard")
-    if not restored and getattr(pre_snapshot, 'restore_status', None) not in {'put_back', 'kept_newer'}:
+                restored = False
+                if capture is not None:
+                    capture.issue = _RESTORE_FAILED
+    if not restored:
         _selection_logger.debug("[AVA-EDIT] Selection copy refused: clipboard could not be restored")
         return None
     if copy_seq is None and seq_before:
