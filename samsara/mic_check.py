@@ -1,11 +1,12 @@
 """A short, explicit quiet/phrase microphone check. No Qt or device on import.
 
-Levels describe the captured signal, not recognition accuracy. PCM and heard
-words stay in memory; the last diagnostics result contains only measurements.
+PCM and heard words stay in memory. The last diagnostics result contains
+only measurements.
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from dataclasses import dataclass
 import json
 import math
 from pathlib import Path
@@ -16,8 +17,11 @@ import numpy as np
 
 SAMPLE_RATE = 16000  # Both mic_score sources supply model-rate PCM.
 FRAME_S = .1
-QUIET_S = 1.2
+QUIET_S = 5
 PHRASE_S = 8
+REPEAT_PAUSE_S = 2
+REPEAT_S = 7
+CHECK_TIMEOUT_MS = 28_000
 STALL_S = 2
 CLIP_SAMPLE = .98
 CLIP_FRACTION = .001
@@ -33,14 +37,22 @@ NOISE_LOW_DBFS = -50
 NOISE_HIGH_DBFS = -35
 MIN_SPEECH_FRAMES = 3
 SENTENCE = "The quick brown fox jumps over the lazy dog."
-# PLACEHOLDER COPY (1120)
+REPEAT_SENTENCE = "Please pack my box with five dozen red mugs."
+ROWS = ("Level", "Background", "Clarity", "First word")
 VERDICTS = {
-    "too_loud": "Too loud — your input is clipping. Lower the microphone input level in Windows sound settings.",
-    "too_quiet": "Too quiet — your voice is faint. Move the microphone closer to your mouth.",
-    "noisy": "Noisy — background sound is close to your voice. Move away from the noise and check again.",
-    "good": "Good — your level is clear of clipping and background noise. Keep this microphone position.",
-    "no_speech": "No clear speech measured. Say the sentence after the quiet step and check again.",
+    "too_loud": "Lower the microphone input volume in Windows.",
+    "too_quiet": "Move the microphone closer to your mouth.",
+    "noisy": "Move away from the background noise and check again.",
+    "good": "Your voice came through at a usable level.",
+    "no_speech": "Wait for the cue to read the sentence, then check again.",
 }
+
+
+@dataclass(frozen=True)
+class Finding:
+    verdict: str
+    sentence: str
+    tone: str = "success"
 
 
 def dbfs(rms):
@@ -88,35 +100,151 @@ def noise_label(noise_dbfs):
 
 
 def evaluate(audio, quiet):
-    """Explicit quiet reference plus upper-quartile phrase frames exclude pauses.
+    """Measure the signal before sending the take to the recognizer.
 
-    A single spike is never repeated clipping. Three speech-bearing frames
-    are required for a reassuring result; constant room noise is inconclusive.
+    Use the median quiet level for finding speech and an upper percentile for
+    reporting noticeable noise. A brief lull should not hide a noisy room.
     """
+    from samsara import mic_lab_dsp as dsp
+
     audio, quiet = pcm_float(audio), pcm_float(quiet)
     phrase, background = measure(audio), measure(quiet)
     frames = LiveLevels().feed(audio)
-    levels = [f["rms"] for f in frames]
-    active = [rms for rms in levels if rms > max(background["rms"] * 1.8, 1e-5)]
-    speech_rms = float(np.percentile(active, 75)) if active else phrase["rms"]
-    noise_db = background["rms_dbfs"]
+    quiet_levels = [f["rms"] for f in LiveLevels().feed(quiet)] or [background["rms"]]
+    floor, upper = np.percentile(quiet_levels, [50, 90])
+    active = [i for i, frame in enumerate(frames) if frame["rms"] > max(floor * 1.8, 1e-5)]
+    speech_rms = float(np.percentile([frames[i]["rms"] for i in active], 75)) if active else phrase["rms"]
+    noise_db = dbfs(upper)
     snr = dbfs(speech_rms) - noise_db
     full_frames = sum(f["peak"] >= FULL_SCALE for f in frames)
-    speech_frames = len(active)
-    if phrase["clipped_fraction"] > CLIP_FRACTION or full_frames >= REPEATED_FULL_SCALE_FRAMES:
-        verdict = "too_loud"
-    elif speech_frames < MIN_SPEECH_FRAMES:
-        verdict = "no_speech"
+    clipping = dsp.clipping(audio, SAMPLE_RATE)
+    # A very faint smooth waveform can fall within the plateau tolerance at
+    # each peak. In that range the level check should report faintness.
+    flattened_peaks = (phrase["peak"] >= QUIET_RMS
+                       and clipping.value["flat_top_runs"] > dsp.THRESHOLDS["clip"][6])
+    level = "good"
+    if phrase["clipped_fraction"] > CLIP_FRACTION or full_frames >= REPEATED_FULL_SCALE_FRAMES or flattened_peaks:
+        level = "too_loud"
+    elif len(active) < MIN_SPEECH_FRAMES:
+        level = "no_speech"
     elif speech_rms < QUIET_RMS:
-        verdict = "too_quiet"
-    elif snr < NOISY_SNR_DB:
-        verdict = "noisy"
-    else:
-        verdict = "good"
+        level = "too_quiet"
+
+    quiet_floor = dsp.noise_floor(quiet, SAMPLE_RATE)
+    quiet_muted = any(quiet_floor.details.get("gated", ())) and dbfs(floor) < dsp.THRESHOLDS["noise_dbfs"][0]
+    # With a muted reference, look for the same near-silence between active
+    # frames. Otherwise a pause alone does not establish automatic muting.
+    muted_pause = False
+    if quiet_muted and len(active) >= MIN_SPEECH_FRAMES:
+        muted_pause = any(f["rms_dbfs"] < dsp.THRESHOLDS["noise_dbfs"][0]
+                          for f in frames[active[0] + 1:active[-1]])
+    gaps = dsp.dropouts(audio, SAMPLE_RATE).value
+    # Ordinary pauses can go to zero on a gated input. Only attribute
+    # speech-flanked zeros to missing audio when the quiet reference rules that out.
+    dropout = bool(gaps and not quiet_muted and (
+        gaps["zero_runs"] >= 2 or gaps["longest_s"] >= dsp.THRESHOLDS["dropout"][1]))
+    possible_dropout = bool(gaps and gaps["zero_runs"] and not quiet_muted and not dropout)
+    # A digital zero run at the cue is evidence of a gap only when the quiet
+    # reference had signal. A person's reaction time does not zero the stream.
+    nonzero = np.flatnonzero(audio)
+    start_gap_ms = float(nonzero[0]) * 1000 / SAMPLE_RATE if nonzero.size and not quiet_muted else 0.
+    bandwidth = dsp.upper_band_ratio(audio, SAMPLE_RATE) if len(active) >= MIN_SPEECH_FRAMES else None
+    verdict = "noisy" if level == "good" and not quiet_muted and snr < NOISY_SNR_DB else level
     return dict(verdict=verdict, message=VERDICTS[verdict], speech_rms=speech_rms,
                 speech_dbfs=dbfs(speech_rms), noise_dbfs=noise_db, snr_db=snr,
                 noise_level=noise_label(noise_db), full_scale_frames=full_frames,
+                level=level, muted_quiet=quiet_muted, gated=muted_pause, dropout=dropout,
+                possible_dropout=possible_dropout, start_gap_ms=start_gap_ms,
+                upper_band_db=bandwidth.value if bandwidth else None,
+                narrowband=bool(bandwidth and bandwidth.verdict == "Bad"),
                 duration_s=len(audio) / SAMPLE_RATE, **phrase)
+
+
+def first_word_missing(target, heard):
+    from samsara.mic_score import normalize
+
+    expected, actual = normalize(target), normalize(heard or "")
+    return actual[:1] == expected[1:2] and expected[0] not in actual[:2]
+
+
+def checklist(result, heard, *, hands_free=False, repeat_heard=None, repeat_result=None):
+    """Combine independent signal checks with the words the decoder returned."""
+    from samsara.mic_lab_battery import word_score
+    from samsara.mic_score import normalize
+
+    level_key = result["level"]
+    level = Finding(
+        {"good": "Good", "too_loud": "Too loud", "too_quiet": "Too quiet", "no_speech": "No speech"}[level_key],
+        VERDICTS[level_key], "success" if level_key == "good" else "error" if level_key == "too_loud" else "warning",
+    )
+
+    if result["gated"]:
+        background = Finding("Cuts to silence", "Turn off automatic muting in your microphone software, if available.", "warning")
+    elif result["muted_quiet"]:
+        background = Finding("Unclear", "The quiet sample was silent, so background sound could not be measured.", "neutral")
+    elif result["noise_level"] == "low":
+        background = Finding("Quiet", "Little background sound came through.")
+    elif level_key == "no_speech":
+        background = Finding("Noise heard", "Background sound came through during the quiet step.", "neutral")
+    elif result["snr_db"] < NOISY_SNR_DB:
+        background = Finding("Too noisy", VERDICTS["noisy"], "warning")
+    else:
+        background = Finding("Voice stood out", "Your voice was well above the background sound.")
+
+    unavailable = Finding("Unavailable", "Samsara could not check the words in this recording.", "neutral")
+    clarity, first_word = unavailable, unavailable
+    show_transcript = False
+    if heard is not None:
+        actual = normalize(heard)
+        expected = normalize(SENTENCE)
+        score = word_score(SENTENCE, heard)
+        show_transcript = bool(actual and score["raw_errors"])
+        if not actual:
+            clarity = Finding("No words heard", "Read the sentence after the cue and check again.", "warning")
+            first_word = Finding("Not checked", "Samsara heard no words to compare.", "neutral")
+        elif score["first_word"]:
+            first_word = Finding("Heard", "The first word came through.")
+        elif first_word_missing(SENTENCE, heard):
+            if first_word_missing(REPEAT_SENTENCE, repeat_heard):
+                first_word = Finding("Missing twice", "Try a different microphone.", "warning")
+            elif result["start_gap_ms"] >= 150:
+                first_word = Finding("Missing", "The recording started with a gap, and Samsara missed the first word.", "warning")
+            else:
+                first_word = Finding("Missing", "Samsara missed the first word.", "warning")
+        else:
+            first_word = Finding("Different word", "Samsara heard a different first word.", "warning")
+        if actual:
+            only_first_missing = actual == expected[1:]
+            if only_first_missing:
+                clarity = Finding("Rest matched", "Samsara heard the rest of the sentence as written.")
+            elif score["raw_errors"] == 0:
+                clarity = Finding("Sentence matched", "Samsara heard the sentence as written.")
+            else:
+                verdict = "One word misheard" if score["raw_errors"] == 1 else "Words differed"
+                clarity = Finding(verdict, "Play back the recording to check it.", "warning")
+
+    repeated_gap = repeat_result and (repeat_result["dropout"] or repeat_result["possible_dropout"])
+    if result["dropout"] or (result["possible_dropout"] and repeated_gap):
+        clarity = Finding("Gaps in sound", "Reconnect the microphone and check again.", "error")
+    elif result["narrowband"] and level_key == "good":
+        sentence = ("Bluetooth hands-free limited sound quality." if hands_free
+                    else "Try a different microphone if this recording sounds muffled.")
+        clarity = Finding("Muffled", sentence, "warning")
+    elif result["possible_dropout"] and repeat_result is None and clarity.tone == "success":
+        clarity = Finding("Unclear", "A short gap in the recording could not be checked again.", "neutral")
+    return (level, background, clarity, first_word), show_transcript
+
+
+def inspect_microphone(name):
+    """Read the matching Windows endpoint without changing its settings."""
+    from samsara.mic_lab_endpoint import bluetooth_hands_free, inspect_endpoint, Observation
+
+    observed = inspect_endpoint(name=name) if name != "System default microphone" else Observation()
+    if not observed.known:
+        return None, bluetooth_hands_free(name).value is True
+    volume = observed.value.get("volume_scalar")
+    return (float(volume) if isinstance(volume, (float, int)) and 0 <= volume <= 1 else None,
+            observed.value["bluetooth_hands_free"].value is True)
 
 
 def save_result(result, microphone, path=None):
@@ -146,15 +274,16 @@ def selected_device(app):
     return {"id": device_id, "name": name or (config.get("microphone_name") if device_id is not None else None) or "System default microphone"}
 
 
-def capture(source, cancel, emit, *, clock=time.monotonic, sleep=time.sleep):
+def capture(source, cancel, emit, *, clock=time.monotonic, sleep=time.sleep, repeat=False):
     """Bound capture to sample counts; stall/cancel never become a good verdict."""
     quiet, speech = [], []
     quiet_count = speech_count = 0
-    quiet_needed, phrase_needed = round(QUIET_S * SAMPLE_RATE), round(PHRASE_S * SAMPLE_RATE)
+    quiet_s, phrase_s = (REPEAT_PAUSE_S, REPEAT_S) if repeat else (QUIET_S, PHRASE_S)
+    quiet_needed, phrase_needed = round(quiet_s * SAMPLE_RATE), round(phrase_s * SAMPLE_RATE)
     meter = LiveLevels()
     source.pull()  # Discard any buffered/pre-trigger speech.
     last_audio = clock()
-    emit("quiet", None)
+    emit("repeat_pause" if repeat else "quiet", None)
     while speech_count < phrase_needed:
         if cancel.is_set():
             raise InterruptedError
@@ -173,8 +302,9 @@ def capture(source, cancel, emit, *, clock=time.monotonic, sleep=time.sleep):
             quiet_count += take
             block = block[take:]
             if quiet_count == quiet_needed:
-                emit("noise", measure(np.concatenate(quiet))["rms_dbfs"])
-                emit("speak", None)
+                if not repeat:
+                    emit("noise", measure(np.concatenate(quiet))["rms_dbfs"])
+                emit("repeat_speak" if repeat else "speak", None)
         if block.size:
             take = min(len(block), phrase_needed - speech_count)
             speech.append(block[:take])

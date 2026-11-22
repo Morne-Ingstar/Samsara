@@ -115,7 +115,7 @@ def test_capture_separates_quiet_and_phrase_across_source_blocks():
     assert len(audio) == round(check.PHRASE_S * check.SAMPLE_RATE)
     assert check.evaluate(audio, quiet)['verdict'] == 'good'
     assert [k for k, _ in events if k != 'level'] == ['quiet', 'noise', 'speak']
-    assert sum(k == 'level' for k, _ in events) == 92
+    assert sum(k == 'level' for k, _ in events) == round((check.QUIET_S + check.PHRASE_S) / check.FRAME_S)
 
 
 def test_capture_stall_and_cancel():
@@ -143,8 +143,8 @@ def test_window_runs_updates_meter_and_releases_source(qapp, monkeypatch, app, q
         window.start_button.click()
         qapp.processEvents()
         assert not window.busy and app._mic_score_active is False
-        assert 'Good' in window.verdict.text()
-        assert check.SENTENCE in window.heard.text()
+        assert window.rows[0][1].text() == 'Good'
+        assert window.heard.isHidden()
         assert window.noise.text() == 'Background noise: low'
         assert window.bar.level_dbfs == pytest.approx(-21.43, abs=.1)
         assert window.start_button.text() == 'Check again'
@@ -181,10 +181,13 @@ def test_window_failures_cleanup(qapp, monkeypatch, app, qt_widget_scope, fault)
         window.start_check()
         assert not window.busy and not app._mic_score_active
         if fault in ('decode', 'save'):
-            assert 'Good' in window.verdict.text()
-            assert ('unavailable' in window.heard.text()) if fault == 'decode' else ('could not be saved' in window.instruction.text())
+            assert window.rows[0][1].text() == 'Good'
+            if fault == 'decode':
+                assert window.rows[3][1].text() == 'Unavailable'
+            else:
+                assert 'could not be saved' in window.instruction.text()
         else:
-            assert 'No result' in window.verdict.text()
+            assert window.results.isHidden()
             save.assert_not_called()
         if fault != 'open':
             source.close.assert_called_once()
@@ -214,14 +217,15 @@ def test_comparison_cannot_overlap_quick_check(qapp, app, qt_widget_scope):
 
 
 def test_changed_device_clears_previous_result(qapp, app, qt_widget_scope):
-    from samsara.ui.mic_check_qt import MicCheckWindow
+    from samsara.ui.mic_check_qt import CheckTake, MicCheckWindow
     window = MicCheckWindow(app)
     with qt_widget_scope(window):
-        window.on_progress('result', (check.evaluate(tone(.1), tone(.0001)), check.SENTENCE, True))
+        audio = tone(.1)
+        window.on_progress('result', CheckTake(check.evaluate(audio, tone(.0001)), audio, check.SENTENCE, True))
         app.config.update(microphone=5, microphone_name='Another microphone')
         window.refresh_device()
-        assert 'Microphone changed' in window.verdict.text()
-        assert window.heard.text() == 'Samsara heard: not checked yet'
+        assert 'Microphone changed' in window.instruction.text()
+        assert window.take is None and not window.heard.text()
 
 
 def test_voice_aliases_and_reviewed_examples_open_check(monkeypatch, app):
