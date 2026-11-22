@@ -23,12 +23,16 @@ def _configured(policy='local'):
 
 
 @pytest.fixture
-def window(qapp, monkeypatch):
+def window(qapp, monkeypatch, request):
     monkeypatch.setattr('samsara.runtime.thread_registry.spawn', lambda *a, **kw: None)
     monkeypatch.setattr('samsara.cuda_detect.request_cuda_status', lambda cb: None)
     monkeypatch.setattr(settings_qt.window_activation, 'confirm_foreground', lambda *a: None)
     monkeypatch.setattr(ava_readiness, 'readiness_for', lambda app: SimpleNamespace(ready=False))
-    win = settings_qt._SettingsWindow(_App())
+    app = _App()
+    policy = getattr(request, 'param', 'off')
+    if policy != 'off':
+        app.config = _configured(policy)
+    win = settings_qt._SettingsWindow(app)
     yield win
     win.hide()
     win.deleteLater()
@@ -42,7 +46,7 @@ def _open_ava(window, qapp):
 
 
 @pytest.mark.parametrize('policy', ['off', 'local', 'cloud', 'missing-consent', 'missing-key'])
-def test_single_guide_uses_header_right_iff_provider_configuration_is_incomplete(window, qapp, policy):
+def test_single_guide_stays_in_header_for_each_provider_configuration(window, qapp, policy):
     config = {} if policy == 'off' else _configured('cloud' if policy == 'missing-key' else
                                                    policy if policy in ('local', 'cloud') else 'local')
     if policy == 'missing-consent':
@@ -62,7 +66,7 @@ def test_single_guide_uses_header_right_iff_provider_configuration_is_incomplete
     assert route.isVisible()
     assert button.isVisible()
     from PySide6.QtWidgets import QLabel, QPushButton
-    assert [b for b in page.findChildren(QPushButton) if b.text() == 'Ava guide'] == [
+    assert [b for b in page.findChildren(QPushButton) if b.text() == 'Open Ava guide'] == [
         button]
     assert page.base.itemAt(0).widget() is route is page.base_rows[0]
     assert not window._widgets['ava_conversation_log_enabled'].isVisible()
@@ -75,8 +79,8 @@ def test_single_guide_uses_header_right_iff_provider_configuration_is_incomplete
     route_top = route.mapTo(page.container, route.rect().topLeft()).y()
     assert header_bottom < route_top
     if pending:
-        assert button.x() >= header.width() / 2
-        assert 32 <= button.height() <= 48
+        assert button.x() == page.subtitle.x()
+        assert 36 <= button.height() <= 48
         assert button.width() < 200
     else:
         from samsara.ui.settings.ava_page import SUBTITLE

@@ -525,8 +525,8 @@ class SettingRow(QFrame):
 
 
 class GuideHeader(QWidget):
-    """A title with one compact guide action at its right (1015)."""
-    def __init__(self, heading, text, callback, note=None, parent=None):
+    """A page or section title with one guide action."""
+    def __init__(self, heading, text, callback, note=None, parent=None, *, action_below=False):
         super().__init__(parent)
         column = QVBoxLayout(self)
         column.setContentsMargins(0, 0, 0, 0)
@@ -536,14 +536,17 @@ class GuideHeader(QWidget):
         title_row.addWidget(heading, 1)
         self.button = QPushButton(text)
         self.button.setAccessibleName(text)
-        self.button.setProperty("settingsToolAction", True)
+        self.button.setProperty("settingsToolAction", not action_below)
         self.button.setFixedHeight(theme.HIT_TARGET_MIN)
         self.button.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         self.button.clicked.connect(callback)
-        title_row.addWidget(self.button, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        if not action_below:
+            title_row.addWidget(self.button, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         column.addLayout(title_row)
         if note is not None:
             column.addWidget(note)
+        if action_below:
+            column.addWidget(self.button, 0, Qt.AlignmentFlag.AlignLeft)
 
 
 class Page(QScrollArea):
@@ -584,12 +587,12 @@ class Page(QScrollArea):
         self.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
         self.base_rows = []
 
-    def add_guide(self, text, callback):
+    def add_guide(self, text, callback, *, action_below=False):
         """Give guide-bearing pages the same single header action slot."""
         self.column.removeWidget(self.heading)
         self.column.removeWidget(self.subtitle)
         self.guide_header = GuideHeader(
-            self.heading, text, callback, self.subtitle, self.container)
+            self.heading, text, callback, self.subtitle, self.container, action_below=action_below)
         self.column.insertWidget(0, self.guide_header)
         return self.guide_header.button
 

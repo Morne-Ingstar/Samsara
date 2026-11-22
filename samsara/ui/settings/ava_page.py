@@ -140,10 +140,15 @@ def _conversation_log_control(owner):
 
 def _add_setup_guide(owner, page):
     import weakref
+    from samsara.ui import theme
+
     # PLACEHOLDER COPY (1015): the same guide remains available after setup.
     button = page.add_guide(
-        "Ava guide", lambda: getattr(owner.app, "open_ava_guide", lambda: None)()
+        "Ava guide", lambda: getattr(owner.app, "open_ava_guide", lambda: None)(),
+        action_below=True,
     )
+    button.setText("Open Ava guide")
+    theme.make_primary(button)
     line = page.subtitle
     page.ava_header = page.guide_header
     owner._widgets["ava_setup_guide_line"] = line

@@ -28,7 +28,6 @@ def window(qapp, monkeypatch):
 
 @pytest.mark.parametrize('size', [(1366, 768), (1920, 1080)])
 @pytest.mark.parametrize('name,label,key', [
-    ('Ava', 'Ava guide', 'ava_setup_guide_button'),
     ('Dictation', 'Microphone setup', 'dictation_mic_setup_guide_button'),
     ('Audio', 'Microphone setup', 'audio_mic_setup_guide_button'),
 ])
