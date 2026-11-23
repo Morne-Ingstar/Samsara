@@ -293,7 +293,7 @@ class PageAssembly:
                 if left and left.widget():
                     left.widget().hide()
         _detach_from_layout(widget)
-        if key in ('adv_ducking_level', 'adv_hands_free_ducking_level', 'adv_hands_free_idle_level'):
+        if key in ('adv_ducking_level', 'adv_hands_free_ducking_level'):
             widget = PercentSpinBox.adapt(widget, self)
             self._widgets[key] = widget
             self._placed_controls.add(id(widget))

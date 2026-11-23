@@ -127,6 +127,7 @@ def test_restart_is_above_exit_and_uses_existing_guard(qapp, code_changed):
 # Independent pre-move inventory; includes already-retired echo metadata.
 # 525: exclude the retired capture editor.
 # 1076: Idle preview moves to Dictation and compute_type becomes config-only.
+# 1324: Wake word idle volume becomes config-only.
 KEYS_BEFORE = {
     'General': (
         'hints_enabled language launch_at_login '
@@ -135,7 +136,7 @@ KEYS_BEFORE = {
     ),
     'Audio': (
         'accessibility.ava_captions accessibility.ava_mute_audio audio_coordinator.duck_factor audio_feedback command_mode.exit_earcon '
-        'command_mode.tts_char_limit ducking.hands_free_enabled ducking.hands_free_idle_level ducking.hands_free_level ducking.level '
+        'command_mode.tts_char_limit ducking.hands_free_enabled ducking.hands_free_level ducking.level '
         'ducking.recording_mode echo_cancellation.enabled echo_cancellation.latency_ms output_device output_device_hostapi '
         'output_device_name sound_theme sound_volume tts.enabled tts.engine '
         'tts.feedback_level tts.speed tts.voice_id tts.volume '

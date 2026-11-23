@@ -100,7 +100,6 @@ AUDITED_KEYS = set([
     "device",
     "dictate_commit_hotkey",
     "ducking.hands_free_enabled",
-    "ducking.hands_free_idle_level",
     "ducking.hands_free_level",
     "ducking.level",
     "ducking.recording_mode",
@@ -170,7 +169,7 @@ def window(qapp, monkeypatch, qt_widget_scope):
 
 
 def test_every_audited_key_has_one_reachable_editor(window):
-    assert len(AUDITED_KEYS) == 136  # 1076: Precision metadata leaves Settings.
+    assert len(AUDITED_KEYS) == 135  # 1324: Wake word idle volume leaves Settings.
     bindings = window.config_row_inventory()
     # 827c: the connection switch has one reachable home on Integrations.
     assert [(page, widget) for key, page, widget in bindings

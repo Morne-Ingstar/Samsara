@@ -211,9 +211,10 @@ def test_input_ink_is_centred_and_inside_content(settings_inputs, qapp, kind):
 
 def test_number_column_fits_legal_values_and_shares_right_edge(settings_inputs, qapp):
     window = settings_inputs
-    keys = tuple(key for key in ('adv_ducking_level', 'adv_hands_free_ducking_level', 'adv_hands_free_idle_level', 'adv_aec_latency')
+    # 1324: the idle level is no longer a visible input.
+    keys = tuple(key for key in ('adv_ducking_level', 'adv_hands_free_ducking_level', 'adv_aec_latency')
                  if key in window._rows_by_widget)
-    assert len(keys) >= 3
+    assert len(keys) >= 2
     window.show_tab('Audio'); window._pages['Audio'].advanced.reveal()
     for _ in range(12): qapp.processEvents()
     right_edges = []

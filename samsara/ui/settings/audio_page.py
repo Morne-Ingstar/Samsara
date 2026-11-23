@@ -103,8 +103,8 @@ ADVANCED = [
         "ducking.level"
     ],
     [
-        "Wake word and hands-free audio",
-        "Reduce other apps while listening for the wake word or capturing hands-free speech.",
+        "Hands-free playback reduction",
+        "Reduce other apps while capturing hands-free speech.",
         "adv_hands_free_ducking_enabled",
         "ducking.hands_free_enabled"
     ],
@@ -113,12 +113,6 @@ ADVANCED = [
         "Remaining other-app volume while capturing speech.",
         "adv_hands_free_ducking_level",
         "ducking.hands_free_level"
-    ],
-    [
-        "Wake word idle volume",
-        "Remaining other-app volume while listening for the wake word.",
-        "adv_hands_free_idle_level",
-        "ducking.hands_free_idle_level"
     ],
     [
         "Echo cancellation",

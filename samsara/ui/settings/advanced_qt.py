@@ -319,9 +319,9 @@ class AdvancedPage:
         layout.addSpacing(12)
 
         # PLACEHOLDER COPY (1127): name the feature that owns this listening state.
-        hands_free_ducking_cb = _add_checkbox_row(
+        _add_checkbox_row(
             'adv_hands_free_ducking_enabled',
-            "Reduce other apps during wake word and hands-free listening",
+            "Reduce other apps while capturing hands-free speech",
             bool(ducking_cfg.get('hands_free_enabled', True)),
         )
 
@@ -339,20 +339,6 @@ class AdvancedPage:
             hands_free_capture_spin,
         ))
 
-        hands_free_idle_spin = QDoubleSpinBox()
-        hands_free_idle_spin.setRange(0.0, 1.0)
-        hands_free_idle_spin.setSingleStep(0.05)
-        hands_free_idle_spin.setDecimals(2)
-        hands_free_idle_spin.setValue(
-            float(ducking_cfg.get('hands_free_idle_level', 0.8))
-        )
-        self._widgets['adv_hands_free_idle_level'] = hands_free_idle_spin
-        layout.addLayout(self._setting_row(
-            "Other apps' volume while wake word is on",
-            "Other apps stay at this volume while the wake word is on. "
-            "1 = no reduction.",
-            hands_free_idle_spin,
-        ))
         layout.addSpacing(20)
 
         # ---- Section: Listening Indicator ----------------------------------
@@ -607,9 +593,6 @@ class AdvancedPage:
                     ].isChecked(),
                     'hands_free_level': self._widgets[
                         'adv_hands_free_ducking_level'
-                    ].value(),
-                    'hands_free_idle_level': self._widgets[
-                        'adv_hands_free_idle_level'
                     ].value(),
                 })
                 updates['ducking'] = ducking_out

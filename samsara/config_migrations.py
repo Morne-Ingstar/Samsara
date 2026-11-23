@@ -41,6 +41,8 @@ def migrate_loaded_config(self, default_config):
         self._migrate_ai_command_mode_config()
         self._migrate_retired_ava_command_session_config()
         self._migrate_recording_media_mode()
+        if migrate_idle_duck_level(self.config):
+            self.save_config()
         from samsara.config_schema import migrate_removed_settings
         if migrate_removed_settings(self.config):
             self.save_config()
@@ -51,6 +53,18 @@ def migrate_loaded_config(self, default_config):
         self._config_migration_batch = False
         self._config_migration_pending = False
         self._config_migration_save = False
+
+
+def migrate_idle_duck_level(config):
+    ducking = config.get('ducking')
+    # A partial ducking block bypasses the top-level default merge. Fill in
+    # the level here so the runtime's legacy fallback cannot restore the duck.
+    if isinstance(ducking, dict) and (
+        'hands_free_idle_level' not in ducking or ducking['hands_free_idle_level'] == 0.8
+    ):
+        ducking['hands_free_idle_level'] = 1.0
+        return True
+    return False
 
 
 def _migrate_wake_word_config(self, default_config):

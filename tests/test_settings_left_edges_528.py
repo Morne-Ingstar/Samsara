@@ -3,11 +3,9 @@ from PySide6.QtCore import QPoint
 from tests.test_settings_calm_layout_459 import settings, settle, reveal
 
 
-# Runtime ducking ignores these stored levels while hands-free audio is off.
-# They retain the existing visual nesting below that switch.
+# 1324: only the capture level remains visible under the hands-free switch.
 DEPENDENTS = {
     'adv_hands_free_ducking_level': 'adv_hands_free_ducking_enabled',
-    'adv_hands_free_idle_level': 'adv_hands_free_ducking_enabled',
 }
 
 

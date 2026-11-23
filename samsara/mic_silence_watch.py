@@ -8,6 +8,8 @@ import math
 import threading
 import time
 
+from samsara.wake_noise_notice import WakeNoiseNotice
+
 
 DEAD_RMS = .00015
 LISTEN_SECONDS = 10.
@@ -56,6 +58,7 @@ class SilenceWatch:
         self.engine = self.reader = None
         self.was_excluded = False
         self.excluded_until = float('-inf')
+        self.wake_noise_notice = WakeNoiseNotice(app)
 
     def reset_run(self):
         self.dead_seconds = 0.
@@ -123,6 +126,7 @@ class SilenceWatch:
         engine, reader = self.engine, self.reader
         self.engine = self.reader = None
         self.reset_run()
+        self.wake_noise_notice.begin_poll(0., active=False)
         if engine is not None and reader is not None:
             engine.unregister_consumer(reader)
 
@@ -149,6 +153,8 @@ class SilenceWatch:
                        or getattr(self.app, '_hotkey_recording', False))
         listening = bool(getattr(self.app, 'continuous_active', False)
                          or getattr(self.app, 'wake_word_active', False)) and not holding
+        check_noise = self.wake_noise_notice.begin_poll(
+            now, active=getattr(self.app, 'wake_word_active', False))
         before = self.reader.overrun_count
         # Bounded work, even if a synthetic writer produces frames without pause.
         for _ in range(1000 // FRAME_MS * 2):
@@ -161,12 +167,13 @@ class SilenceWatch:
             rms = float(np.sqrt(np.mean(pcm * pcm)))
             discontinuity = self.reader.overrun_count != before
             before = self.reader.overrun_count
-            self.level(rms, frame.t_capture, frame.seq,
-                       (id(engine), getattr(engine, 'capture_name', None), frame.device_epoch),
-                       listening=listening,
-                       skip=(skip or discontinuity or frame.t_capture <= self.excluded_until
-                             or now - frame.t_capture > 1. or frame.t_capture > now
-                             or holding))
+            identity = (id(engine), getattr(engine, 'capture_name', None), frame.device_epoch)
+            ineligible = (skip or discontinuity or frame.t_capture <= self.excluded_until
+                          or now - frame.t_capture > 1. or frame.t_capture > now or holding)
+            self.level(rms, frame.t_capture, frame.seq, identity, listening=listening, skip=ineligible)
+            if check_noise:
+                self.wake_noise_notice.observe(
+                    rms, frame.t_capture, frame.seq, identity, skip=ineligible)
 
 
 def watch_for(app):

@@ -957,8 +957,8 @@ SETTINGS_SCHEMA = {
         "tab": "advanced",
         "depends_on": "ducking.enabled",
     },
-    # Hands-free uses a separate two-stage duck: a deep reduction while it
-    # captures speech and a mild, persistent reduction while it listens.
+    # Hands-free uses a separate reduction while it captures speech. Older
+    # profiles may also retain a custom persistent reduction while listening.
     # They deliberately do not depend on ducking.enabled, which controls the
     # ordinary hold-to-dictate path rather than hands-free listening.
     "ducking.hands_free_enabled": {
@@ -980,8 +980,10 @@ SETTINGS_SCHEMA = {
         "min": 0.0,
         "max": 1.0,
         "step": 0.05,
-        "default": 0.8,
+        "default": 1.0,
         "tab": "advanced",
+        "settings_ui": False,
+        "ui_less_reason": "Retains custom idle volume saved by earlier versions.",
         "depends_on": "ducking.hands_free_enabled",
     },
     "listening_indicator_enabled": {"type": "bool", "default": False, "tab": "advanced", "settings_ui": False,

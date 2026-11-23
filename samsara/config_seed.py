@@ -200,33 +200,15 @@ def build_default_config(*, home, macro_defaults, notification_defaults):
         #   hands_free_level: applied only DURING a capture window
         #     (speech onset through transcription complete/discard +
         #     a short debounced tail) -- the deep duck.
-        #   hands_free_idle_level: applied for the WHOLE DURATION the
-        #     wake-word toggle is on -- a PERSISTENT MILD DUCK, not an
-        #     opt-in extra (2026-07-24 amendment; default 0.8, set to
-        #     1.0 to disable). WHY this exists even though it's not
-        #     tied to active capture: the echo canceller does not
-        #     converge reliably (see samsara/echo_cancel.py), so the
-        #     1500ms rolling pre-buffer (samsara.constants.
-        #     PREBUFFER_SECONDS, captured BEFORE a capture-duck can
-        #     possibly engage -- ducking starts only once speech onset
-        #     is already detected) and the wake-word detector itself
-        #     both hear media at whatever level was playing BEFORE
-        #     onset. This idle duck is what actually gives the wake
-        #     word and pre-buffer their SNR; lowering it trades idle
-        #     media volume for wake-word/onset recognition accuracy
-        #     until AEC is fixed. Composes via the engine's documented
-        #     RELATIVE/MIN-style layering: a capture duck started
-        #     while an idle duck is active restores back to
-        #     idle_level (not full) when the capture window closes;
-        #     only the idle duck's own stop (wake-word toggle OFF)
-        #     restores to true full volume.
+        #   hands_free_idle_level: 1.0 disables the persistent idle duck.
+        #     Keep the key for custom values saved by earlier versions.
         "ducking": {
             "enabled": False,
             "recording_mode": "duck",
             "level": 0.2,
             "hands_free_enabled": True,
             "hands_free_level": 0.15,
-            "hands_free_idle_level": 0.8,
+            "hands_free_idle_level": 1.0,
         },
         # Voice memo capture (2026-07-24): "voice memo" arms a one-shot
         # divert of the NEXT hold-to-dictate recording -- instead of

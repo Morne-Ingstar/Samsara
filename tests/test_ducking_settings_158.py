@@ -10,7 +10,7 @@ import pytest
 _KEYS = {
     'ducking.hands_free_enabled': True,
     'ducking.hands_free_level': 0.15,
-    'ducking.hands_free_idle_level': 0.8,
+    'ducking.hands_free_idle_level': 1.0,  # 1324: config-only compatibility key.
 }
 
 
@@ -62,16 +62,15 @@ def test_schema_defaults_reach_advanced_controls_and_saved_ducking(_advanced_sav
     try:
         assert window._widgets['adv_hands_free_ducking_enabled'].isChecked() is True
         assert window._widgets['adv_hands_free_ducking_level'].value() == pytest.approx(0.15)
-        assert window._widgets['adv_hands_free_idle_level'].value() == pytest.approx(0.8)
+        assert 'adv_hands_free_idle_level' not in window._widgets
 
         window._widgets['adv_hands_free_ducking_enabled'].setChecked(False)
         window._widgets['adv_hands_free_ducking_level'].setValue(0.25)
-        window._widgets['adv_hands_free_idle_level'].setValue(0.65)
         saved = save({})['ducking']
 
         assert saved['hands_free_enabled'] is False
         assert saved['hands_free_level'] == pytest.approx(0.25)
-        assert saved['hands_free_idle_level'] == pytest.approx(0.65)
+        assert 'hands_free_idle_level' not in saved
     finally:
         window.deleteLater()
 
@@ -91,7 +90,7 @@ def test_existing_hands_free_values_round_trip_without_dropping_siblings(_advanc
     try:
         assert window._widgets['adv_hands_free_ducking_enabled'].isChecked() is False
         assert window._widgets['adv_hands_free_ducking_level'].value() == pytest.approx(0.35)
-        assert window._widgets['adv_hands_free_idle_level'].value() == pytest.approx(0.7)
+        assert 'adv_hands_free_idle_level' not in window._widgets  # 1324
 
         saved = save({})['ducking']
         assert saved == original['ducking']

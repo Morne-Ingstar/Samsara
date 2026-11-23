@@ -165,6 +165,11 @@ def test_segment_arrows_and_cancelled_consent_follow_canonical_combo(settings, q
     ('adv_hands_free_idle_level', 'hands_free_idle_level')))
 def test_percent_edit_keeps_fractional_storage_bounds_and_step(settings, qapp, key, config_key):
     reveal(settings, 'Audio', qapp)
+    if config_key == 'hands_free_idle_level':
+        # 1324: keep this test's node and verify the retired control's value survives.
+        assert key not in settings._widgets
+        assert settings._collect_destination_updates({})['ducking'][config_key] == .80
+        return
     control = settings._widgets[key]
     assert isinstance(control, PercentSpinBox)
     assert control.singleStep() == .05 and control.minimum() == 0 and control.maximum() == 1
