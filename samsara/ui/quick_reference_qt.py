@@ -312,14 +312,18 @@ def _resolve_session_phrases(app) -> dict:
 
 
 _MODE_DESCRIPTIONS = {
-    SessionMode.COMMAND: "Legacy command-only lane retained for compatibility.",
+    # PLACEHOLDER COPY (1331)
+    SessionMode.COMMAND: 'In Command mode, you can say a command such as “open files” to run it. '
+        'During a hands-free session, say “command mode” to switch to it.',
     # PLACEHOLDER COPY (1137)
     SessionMode.DICTATE: 'HANDS FREE: ordinary speech is buffered dictation; exact navigation commands execute immediately. '
         '{commit_help} {submit_help} '
         'For selection edits, switch to Ava or command mode, then ask for the change. '
         'In hands-free dictation, ordinary speech stays in your draft. '
         'Draft cleanup and apply or discard for a waiting edit still work.',
-    SessionMode.AVA: 'Everything you say goes to the local AI agent as natural language. Say "submit that" / "the text" to attach anything you just dictated.',
+    # PLACEHOLDER COPY (1331)
+    SessionMode.AVA: 'In Ava mode, you can ask Samsara’s assistant questions in your own words. '
+        'During a hands-free session, say “Ava mode”, then ask a question.',
 }
 
 

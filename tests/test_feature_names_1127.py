@@ -49,7 +49,8 @@ def test_hands_free_definition_never_requires_holding_a_key():
     text = help_terms.explanation('hands-free').body
     assert 'without holding a key' in text
     assert 'Hold keeps it open' not in text
-    assert 'Hold to talk records only while you hold' in text
+    # 1331: the short definition points readers to the hands-free shortcut.
+    assert 'Session button in Settings > Dictation' in text
 
 
 def test_hold_and_wake_names_in_tray():

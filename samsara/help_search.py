@@ -131,11 +131,6 @@ def answer_request(app, request, intent):
         reply = short_summary(explanation(best.entry.id, getattr(app, 'config', {})).body)
     else:
         reply = best.entry.summary
-    # No help-choice state exists. Open the best and explicitly name the other,
-    # as the brief permits; never offer a numbered command that cannot be used.
-    if len(hits) > 1 and best.score - hits[1].score <= 2 and hits[1].entry.title != best.entry.title:
-        # PLACEHOLDER COPY (1135)
-        reply += ' Showing ' + best.entry.title + '. Another match is ' + hits[1].entry.title + '.'
     open_help_entry(app, best.entry)
     speak_if_available(app, reply)
     return True

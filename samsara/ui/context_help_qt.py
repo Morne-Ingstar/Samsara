@@ -362,6 +362,18 @@ def open_help(app):
     return True
 
 
+def open_unanswered_help(app, allowed_packs, message):
+    """Show the existing searchable reference with a notice above its rows."""
+    from samsara.ui import qt_runtime
+
+    def show():
+        reference = getattr(app, "cheat_sheet", None)
+        if reference is not None:
+            reference.show_scoped(allowed_packs, query="", live_text=message)
+
+    qt_runtime.post(show)
+
+
 def open_help_entry(app, entry):
     """Open an offline search answer through the existing host/controller.
 

@@ -193,7 +193,8 @@ def route_request(executor, text, app, *, command_mode, route, generation, captu
 # PLACEHOLDER COPY (943). All new responses are spoken only. Existing target
 # windows show their existing titles and content; no new visible surface.
 CONFUSION_REPLY = "Start here: these are the things you can say."
-UNKNOWN_REPLY = "Try saying 'help' followed by what you want to do."
+# PLACEHOLDER COPY (1331): shown above the command list and read aloud.
+UNKNOWN_REPLY = "No answer found. Search commands here."
 
 
 def _scoped_answer(app, query, allowed_packs, live_text):
@@ -230,13 +231,21 @@ def handle_request(app, remainder="", *, allowed_packs=(), live_text="", **kwarg
     from samsara.help_search import answer_request
     if answer_request(app, request, intent):
         return True
-    if intent.target in {"reference", "confusion", "unknown"}:
+    if intent.target == "unknown":
+        from samsara.ui.context_help_qt import open_unanswered_help
+        open_unanswered_help(app, allowed_packs, UNKNOWN_REPLY)
+        speak_if_available(app, UNKNOWN_REPLY)
+    elif intent.target in {"reference", "confusion"}:
         what_can_i_say(app, _help_intents_skip=True)
-        if intent.target != "reference":
-            speak_if_available(app, CONFUSION_REPLY if intent.target == "confusion" else UNKNOWN_REPLY)
+        if intent.target == "confusion":
+            speak_if_available(app, CONFUSION_REPLY)
     else:
         from samsara.samsara_navigation import PLACES, open_place
         place = TARGETS[intent.target].place
         open_place(app, place)
-        speak_if_available(app, "Opening " + PLACES[place].label + ".")
+        if intent.target == "microphone":
+            from samsara.help_terms import MICROPHONE_HELP
+            speak_if_available(app, MICROPHONE_HELP)
+        else:
+            speak_if_available(app, "Opening " + PLACES[place].label + ".")
     return True

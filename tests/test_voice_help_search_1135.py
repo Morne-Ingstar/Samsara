@@ -14,25 +14,41 @@ from tests._theme_stub_app import StubApp
 from tests.test_help_intents_943 import loaded_registry, executor, rig
 
 
+# 1331: expected spoken text reflects the plain wording.
 CASES = [
     ('What is a wake word?', ('term', 'wake-word'),
-     'A phrase that tells Samsara to listen for a command without holding a key.'),
+     'Say “jarvis” to make Samsara listen for one command.'),
     ('What is a hands-free session?', ('term', 'hands-free'),
-     'An open session for dictation and commands without holding a key.'),
+     'Hands-free lets you speak commands or turn speech into text without holding a key.'),
     ('How do I choose my interface size and theme?', ('page', 'General'),
-     'Choose your microphone, listening display, interface size and theme.'),
+     'In General, you can change the size of text and buttons and how Samsara looks.'),
     ('Where do I choose sounds and spoken feedback?', ('page', 'Audio'),
-     'Choose sounds and spoken feedback.'),
+     'In Audio, you can choose which sounds and spoken replies you hear.'),
     ('What does command mode do?', ('quick_reference', 'command'),
-     'Legacy command-only lane retained for compatibility.'),
+     'In Command mode, you can say a command such as “open files” to run it.'),
     ('What does Ava mode do?', ('quick_reference', 'ava'),
-     'Everything you say goes to the local AI agent as natural language.'),
+     'In Ava mode, you can ask Samsara’s assistant questions in your own words.'),
     ('Where can I search for an action and see its wording?', ('term', 'command-reference'),
-     'The list of commands you can use in Samsara.'),
-    ('How do I change my mic?', None, 'Opening General.'),
+     'Command Reference shows what to say to use a voice command.'),
+    ('How do I change my mic?', None, 'Choose the microphone Samsara listens to.'),
     ('What is dictation and audio settings?', ('page', 'Dictation'),
-     'Choose how dictation and hands-free sessions work. Showing Dictation help. Another match is Audio help.'),
+     'Dictation turns what you say into text.'),
     ('How do I fly a purple kite?', None, hi.UNKNOWN_REPLY),
+]
+
+
+# Preserve the IDs collected before the 1331 wording change.
+CASE_IDS = [
+    'What is a wake word?-expected0-A phrase that tells Samsara to listen for a command without holding a key.',
+    'What is a hands-free session?-expected1-An open session for dictation and commands without holding a key.',
+    'How do I choose my interface size and theme?-expected2-Choose your microphone, listening display, interface size and theme.',
+    'Where do I choose sounds and spoken feedback?-expected3-Choose sounds and spoken feedback.',
+    'What does command mode do?-expected4-Legacy command-only lane retained for compatibility.',
+    'What does Ava mode do?-expected5-Everything you say goes to the local AI agent as natural language.',
+    'Where can I search for an action and see its wording?-expected6-The list of commands you can use in Samsara.',
+    'How do I change my mic?-None-Opening General.',
+    'What is dictation and audio settings?-expected8-Choose how dictation and hands-free sessions work. Showing Dictation help. Another match is Audio help.',
+    "How do I fly a purple kite?-None-Try saying 'help' followed by what you want to do.",
 ]
 
 
@@ -41,7 +57,7 @@ def test_acceptance_phrases_frozen_before_tuning():
     assert [q for q, _, _ in CASES if hi.normalize(q) in hi.PHRASES] == ['How do I change my mic?']
 
 
-@pytest.mark.parametrize('question,expected,spoken', CASES)
+@pytest.mark.parametrize('question,expected,spoken', CASES, ids=CASE_IDS)
 def test_ten_command_questions_find_exact_answer_and_say_exact_text(rig, monkeypatch, question, expected, spoken):
     command_executor, app, places = rig
     cards = []
@@ -59,7 +75,7 @@ def test_ten_command_questions_find_exact_answer_and_say_exact_text(rig, monkeyp
         assert not places and not app.cheat_sheet.show_scoped.called
 
 
-@pytest.mark.parametrize('question,expected,spoken', CASES)
+@pytest.mark.parametrize('question,expected,spoken', CASES, ids=CASE_IDS)
 def test_ten_questions_remain_literal_in_dictation(rig, monkeypatch, question, expected, spoken):
     command_executor, app, places = rig
     opener = Mock()
@@ -129,7 +145,7 @@ def test_spoken_wake_summary_uses_same_current_facts_as_explanation(rig, monkeyp
     app.config = {'command_mode': {'mode': 'toggle'}, 'wake_word_config': {'opens_session': True}}
     assert command_executor.process_text('what is the wake word', force_commands=True).succeeded
     assert app.audio_coordinator.speak.call_args.args[0] == (
-        'A phrase that tells Samsara to start a hands-free session without holding a key.')
+        'Say “jarvis” to make Samsara start listening without a key.')
 
 
 def settle(qapp):

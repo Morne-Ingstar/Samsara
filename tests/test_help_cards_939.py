@@ -67,13 +67,16 @@ def test_malformed_packaged_guide_is_hidden(monkeypatch):
     assert help_terms.explanation('ava').guide is None
 
 
-@pytest.mark.parametrize('mode,opens,expected', [('toggle', True, 'start a hands-free session'),
-    ('hold', True, 'listen for a command'), ('toggle', False, 'listen for a command')])
+@pytest.mark.parametrize('mode,opens,expected', [('toggle', True, 'start listening without a key'),
+    ('hold', True, 'listen for one command'), ('toggle', False, 'listen for one command')],
+    ids=['toggle-True-start a hands-free session', 'hold-True-listen for a command',
+         'toggle-False-listen for a command'])
 def test_wake_uses_current_config_without_mutation(mode, opens, expected):
     config = {'command_mode': {'mode': mode}, 'wake_word_config': {'phrase': 'Jarvis', 'opens_session': opens}}
     saved = deepcopy(config)
     text = help_terms.explanation('wake-word', config).body
-    assert expected in text and 'calibration' in text and 'Jarvis' in text
+    # 1331: the explanation now points to the named setup control.
+    assert expected in text and 'Wake word setup' in text and 'Jarvis' in text
     assert config == saved
 
 

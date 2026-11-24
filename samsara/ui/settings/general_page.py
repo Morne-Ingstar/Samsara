@@ -1,4 +1,5 @@
 """General Settings destination (285; placeholder copy)."""
+from samsara.help_terms import MICROPHONE_HELP
 from samsara.listening_display import LABEL, QUESTION
 
 TITLE = "General"
@@ -6,7 +7,7 @@ SUBTITLE = "Make Samsara comfortable for everyday use."
 BASE = [
     [
         "Microphone",
-        "Choose where Samsara listens.",
+        MICROPHONE_HELP,
         "mic_combo,microphoneRefreshButton",
         "microphone,microphone_name"
     ],
