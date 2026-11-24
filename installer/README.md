@@ -96,7 +96,6 @@ scaling the pages, the component list and the buttons scale with the text
 
 ## Windows SmartScreen
 
-An unsigned installer that then downloads and runs more code is the worst
-SmartScreen case: every first user sees "Windows protected your PC".
+If you have SmartScreen turned on and see 'Windows protected your PC', choose More info, then Run anyway.
 `Docs/INSTALL.md` tells users what the warning means and
-how to verify the download by SHA-256 instead.
+how to verify the download by SHA-256.

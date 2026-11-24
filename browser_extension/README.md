@@ -15,7 +15,7 @@ click, focus, or selection request. It makes no other network requests.
 
 1. Start Samsara once. Its log prints the exact **Authenticated extension
    ready at ...** directory. Normally this is
-   `C:\Users\<you>\.samsara\browser_bridge\extension`.
+   `%USERPROFILE%\.samsara\browser_bridge\extension`.
 2. Open `brave://extensions`.
 3. Enable **Developer mode** (top-right toggle).
 4. Click **Load unpacked** and select the authenticated extension directory

@@ -1,11 +1,7 @@
 # The five-minute take
 
-SAMSARA_VISION.md section 7: the product is shipped when one five-minute
-take works end to end with no hands. This page is that take as a checklist
-a human can follow, plus the rehearsal that checks it against the app itself.
-
-The current rehearsal table lives in `perf_artifacts/demo_rehearsal.md`.
-Re-generate it after every change; it is the gap between today and the demo.
+This page gives a checklist for a five-minute hands-free demo and a rehearsal
+that checks it against the app.
 
 ## The take (fixed script -- do not paraphrase it away)
 

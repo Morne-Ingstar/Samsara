@@ -13,6 +13,8 @@ The layout below supersedes the historical 0.40.3 asset list in this document.
 Tag-triggered CI must not replace local assets. The deliberate CI upload path
 must follow this two-place allowlist before being used for 0.40.4+.
 
+Use the local release plan for publication. Keep CI builds as workflow artifacts until the manual CI upload follows the same asset layout.
+
 1. Create `addons` once, explicitly excluding it from Latest:
    `gh release create addons --title "Samsara add-ons" --notes "Optional component downloads." --latest=false`.
    Keep existing version releases untouched. Copy previously verified packs

@@ -17,10 +17,13 @@ Samsara is free. No word limits, subscriptions, or paid feature tiers—and no e
 *Interface and features can differ between builds;
 see the release notes for the build you choose.*
 
+[Watch the Samsara introduction on YouTube.](https://www.youtube.com/watch?v=T3ZJQyImoZ4)
+
 ## Get started
 
-You need **Windows 10 or 11 and a microphone**. The packaged app includes
-Python; you do not need to install it. A CPU is enough to get started.
+You need **Windows 10 or 11 and a microphone**. A Linux version is in development. A Mac version is planned.
+The packaged app includes Python; you do not need to install it.
+A CPU is enough to get started.
 Compatible NVIDIA GPUs can use the optional [CUDA add-on](https://morneis.com/samsara/docs/cuda/).
 
 1. Open the [Samsara install guide](Docs/INSTALL.md).
@@ -89,14 +92,15 @@ devices, and more. They are not required for dictation.
 
 ## Privacy and practical limits
 
-**Core transcription runs on your computer.** You can dictate without a cloud
-AI account. Local Ava needs Ollama and a downloaded model; Windows speech
+Samsara, as a stand-alone program, runs entirely offline after its initial model download; only optional integrations require an internet connection.
+Local Ava needs Ollama and a downloaded model; Windows speech
 voices can read replies locally.
 
 Online choices include cloud AI and web search, Edge text-to-speech, configured Smart Actions endpoints, and network-backed integrations; these send information used by those features.
 Ava Off stops Ava's model requests; separate commands can still send your words to installed, signed-in GPT/Claude tools or the Claude desktop app. Browser searches, selected Edge speech and configured Todoist can also send the words used by those features.
 Model downloads and update checks also use the internet. Automatic update checks are off by default.
 
+Samsara is not a meeting recorder—it never captures system or call audio to record the people you talk to.
 History and logs can contain your words. Beta/development builds also have a
 local intent-observation log, off for fresh profiles; legacy profiles with an explicit log directory can keep it on. When enabled, it records dictated text and
 the focused app's process name. See [privacy, local storage, and log controls](PRIVACY.md).

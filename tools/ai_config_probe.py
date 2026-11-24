@@ -2,7 +2,7 @@
 ai_config_probe.py -- empirical gate probe for AI Config Assistant (Phase 1 spike)
 
 Answers four design questions with real runtime data. Run from the
-Samsara-dev project root:
+repository root:
     python tools/ai_config_probe.py
 
 Results printed to stdout; use findings to populate

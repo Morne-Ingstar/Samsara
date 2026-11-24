@@ -1,4 +1,4 @@
-# Mouse grid — the universal last resort (queue 71)
+# Mouse grid — the universal last resort
 
 Say **"grid"**. Nine numbered cells cover the screen. Say a number and that cell
 becomes the new grid. Two or three numbers put the pointer on anything.
@@ -20,14 +20,14 @@ hide grid                 close it
 
 | Method | Needs | Reaches |
 |---|---|---|
-| `show numbers` (queue 72) | UI Automation elements | apps that expose a control tree |
-| `click <text>` (queue 70) | readable text on screen | anything with words, via on-device OCR |
+| `show numbers` | UI Automation elements | apps that expose a control tree |
+| `click <text>` | readable text on screen | anything with words, via on-device OCR |
 | **mouse grid** | **nothing at all** | **everything else** |
 
 Icon-only buttons have no text and often no UIA element. Canvases, games, video
-players and custom-drawn UIs expose neither. Queue 72 measured Obsidian at 6
-role-bearing controls out of 892 nodes and Warp at 7 nodes (the window frame);
-queue 70 measured OCR misreading 10–22% of small words. The grid does not care:
+players and custom-drawn UIs expose neither. Measurements found 6
+role-bearing controls out of 892 nodes in Obsidian and 7 nodes in Warp (the
+window frame). OCR misread 10–22% of small words. The grid does not care:
 it divides pixels.
 
 ## Why not just use Windows Voice Access's `show grid`
@@ -65,8 +65,7 @@ command mode and the command hotkey.
 **Limit, hands-free:** in the hands-free dictation lane only whole-utterance
 commands and a curated list of prefixes (`click `, `focus `, `switch to `, …)
 are candidates, so the one-breath chain needs `"grid "` added to
-`_HANDS_FREE_COMMIT_PREFIXES` in `dictation.py`. That file is dispatch policy
-and outside queue 71's fence. Until then, hands-free use is `"grid"`, then bare
+`_HANDS_FREE_COMMIT_PREFIXES` in `dictation.py`. Until then, hands-free use is `"grid"`, then bare
 numbers, then `"click"` — each of which is already a whole utterance.
 
 ## The pointer moves at every step
@@ -85,8 +84,7 @@ Two consequences:
 Bare `one`…`nine` are live registry phrases and a documented source of false
 execution ("To, um…" → `window_cube.two`). The grid does **not** register them.
 
-* Its own phrases (`hide grid`, `grid back`, `move here`) are scoped with queue
-  68's mechanism to the tag **`mouse_grid.visible`**, published by
+* Its own phrases (`hide grid`, `grid back`, `move here`) are scoped to the tag **`mouse_grid.visible`**, published by
   `show_numbers.grid_active()`. While the grid is hidden they are not
   candidates at all.
 * Refinement numbers reuse the path the numbered overlay already uses: a sole
@@ -97,8 +95,7 @@ execution ("To, um…" → `window_cube.two`). The grid does **not** register th
 ## Coordinates
 
 Cells are computed in **physical pixels** — the coordinate system `SetCursorPos`
-and UI Automation use — and converted to Qt logical DIPs only for drawing, with
-queue 56's `phys_to_logical`. The pointer is placed inside an explicit
+and UI Automation use — and converted to Qt logical DIPs only for drawing, with `phys_to_logical`. The pointer is placed inside an explicit
 per-monitor-V2 thread context, so it is correct even though the process itself is
-only system-DPI-aware (queue 70: `SetProcessDpiAwarenessContext() failed: Access
+only system-DPI-aware (`SetProcessDpiAwarenessContext() failed: Access
 is denied.`, because `pyautogui` is imported before Qt's request).

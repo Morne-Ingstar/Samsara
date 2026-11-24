@@ -248,7 +248,7 @@ More reliable installed updates, friendlier AI app setup, and more ways to use s
 
 - The installer offers a checked-by-default option to create a Start Menu shortcut.
 - In-app updates work again on installed copies whose install path ends in a backslash. If the update helper does not start, Samsara reports it with a retry; the helper keeps a log, and a stuck "ready" update is noticed.
-- Anyone on beta.6 must install beta.7 once by hand from the [download page](https://github.com/Morne-Ingstar/Samsara/releases/latest), because beta.6's updater has this bug.
+- Anyone on beta.6 must install beta.7 or later once by hand because beta.6’s updater had this bug.
 - Home and Settings > General show Samsara's version.
 
 ### Setup and help

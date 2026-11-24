@@ -56,4 +56,4 @@ not proof of causation. Offline replay is a different execution and cannot prove
 historical delivery loss. Compare the original decoder, stage deltas, request
 and acknowledged delivery under the same ID. Unknown stays unknown. Synthetic
 tests demonstrate these observations and persistence rules; they do not prove
-the owner's fault reproduced, real microphone correctness or frozen-build behavior.
+reproduction of the reported fault, real microphone correctness or frozen-build behavior.

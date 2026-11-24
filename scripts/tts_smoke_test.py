@@ -1,4 +1,4 @@
-"""Smoke test for WinRTEngine. Run from the samsara-dev root:
+"""Smoke test for WinRTEngine. Run from the repository root:
 
     python scripts/tts_smoke_test.py
 

@@ -1,6 +1,6 @@
 # Attribution and redistribution receipt
 
-The delivered custom classifier weights `computer.onnx` and `hey_computer.onnx` were trained on 2026-11-19 by task 1274's local pipeline, adapted from task 1042a. Retain this attribution with redistributed model assets. The app's source-code licence remains separate; the current repository LICENSE is AGPL-3.0.
+The delivered custom classifier weights `computer.onnx` and `hey_computer.onnx` were trained on 2026-11-19. Retain this attribution with redistributed model assets. The app's source-code licence remains separate; the current repository LICENSE is AGPL-3.0.
 
 Use CC BY 4.0 attribution terms for these classifier assets: https://creativecommons.org/licenses/by/4.0/ . No noncommercial/share-alike source set was used to fit them. Measured limitations are in README.txt. This receipt does not relicense any third-party component.
 

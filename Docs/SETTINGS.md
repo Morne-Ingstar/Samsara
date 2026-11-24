@@ -8,7 +8,7 @@ folder. Set it to an absolute folder path or a path relative to that data folder
 to load your own command plugins on the next start. A missing folder is ignored;
 personal plugins remain separate from the commands shipped with Samsara.
 
-Settings has six pages. Names and new explanatory copy are provisional (prompt 285).
+Settings has six pages.
 
 | Page | Everyday rows | Advanced details |
 |---|---:|---|

@@ -6,8 +6,7 @@ Reads ~/.samsara/shadow/intent-*.jsonl (or --dir / explicit files) and prints:
   2. the top 20 utterances the gate would have claimed as commands -- the
      dangerous ones: dictated text that would have executed
   3. the top 20 misses (the gate produced no decision)
-  4. latency percentiles, per tier, for BOTH measurements -- they are not the
-     same thing and the 2026-09-15 Move A tribunal read one as the other:
+  4. latency percentiles, per tier, for both measurements:
        t12_us     tiers 1+2 only. This is what resolve.LATENCY_BUDGET_MS is
                   stated against, and the only number the budget applies to.
        elapsed_us wall clock around the whole shadow decision: the lazy
@@ -15,7 +14,7 @@ Reads ~/.samsara/shadow/intent-*.jsonl (or --dir / explicit files) and prints:
                   worker respawns (it exits after 30 s idle), plus tier 3,
                   plus whatever else that thread waited on. Rows in the tens
                   of milliseconds here are cold workers, not slow resolution.
-  5. execution rules (queue 93): which rule demoted a decision, and the
+  5. execution rules: which rule demoted a decision, and the
      rules_version populations, so one log can hold before and after
   6. false-positive candidates: would-be-command utterances longer than 8 words
 
@@ -23,8 +22,8 @@ Read-only: never modifies or uploads the log.
 
 Usage:
   python tools\\shadow_report.py
-  python tools\\shadow_report.py --dir D:\\elsewhere --days 7
-  python tools\\shadow_report.py C:\\Users\\me\\.samsara\\shadow\\intent-2026-09-14.jsonl
+  python tools\\shadow_report.py --dir "<log directory>" --days 7
+  python tools\\shadow_report.py "<log directory>\\intent-2026-09-14.jsonl"
 """
 from __future__ import annotations
 
@@ -161,12 +160,9 @@ def build_report(entries, bad_lines: int = 0, sources=()) -> str:
         rows.append(f"  blocked {reason:<22} {n:>7}")
     forced = sum(1 for e in entries if e.get("forced"))
     rows.append(f"  spoken with the command prefix: {forced}")
-    # Queue 127: rule 2 says "only an exact match executes", and the belief was
-    # that zero word-penalty meant the user spoke a registered form. It does
-    # not: a hand-written grammar rule and a template with an inserted
-    # determiner both cost nothing. `literal` records the difference on the
-    # row, and this is the line that reads it back. NOTHING GATES ON IT -- it
-    # is here so the size of that gap is a number instead of an assumption.
+    # A hand-written grammar rule and a template with an inserted determiner
+    # can both have zero word penalty. The literal field records whether the
+    # user spoke a registered form and is used for reporting only.
     would_run = [e for e in entries if _category(e["would"]) == "command"]
     with_field = [e for e in would_run if "literal" in e]
     if not with_field:

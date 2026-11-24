@@ -3,7 +3,7 @@
 #   irm https://raw.githubusercontent.com/Morne-Ingstar/Samsara/master/tools/laptop_dev_setup.ps1 | iex
 # Creates %USERPROFILE%\SamsaraDev (code + venv) and a "Samsara Dev" desktop shortcut.
 # Each launch pulls the latest master, updates packages if requirements changed, closes the
-# installed Samsara, and runs from source with its own settings folder (%USERPROFILE%\.samsara-dev),
+# installed Samsara, and runs from source with its own settings folder,
 # so the installed beta's settings are left alone.
 $ErrorActionPreference = "Stop"
 $Root = Join-Path $env:USERPROFILE "SamsaraDev"
