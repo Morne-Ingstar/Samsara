@@ -1,8 +1,8 @@
 """1262 fixed-operation adapter, imported only after installed_probe's guard."""
+import json
 import os
-import time
 
-from receipt_probe import atomic, on_ui, perform as legacy_perform, state
+from receipt_probe import on_ui, perform as legacy_perform, serve as serve_mailbox, state
 import receipt_replay
 import receipt_desktop
 
@@ -28,19 +28,126 @@ def start(app, home):
     thread_registry.spawn('build-receipts-1262', lambda: serve(app, home), daemon=True)
 
 
+class MicCheckReplay:
+    METRICS = ('verdict', 'speech_rms', 'speech_dbfs', 'noise_dbfs', 'snr_db', 'noise_level',
+               'full_scale_frames', 'duration_s', 'rms', 'rms_dbfs', 'peak', 'clipped_fraction')
+
+    def __init__(self, window, replay, home, *, difference):
+        from PySide6.QtCore import Qt
+        from samsara import mic_check
+        self.window, self.replay, self.difference = window, replay, difference
+        self.expected = mic_check.SENTENCE.rsplit(' ', 1)[0] + ' cat.' if difference else mic_check.SENTENCE
+        self.phases = []
+        self.samples = 0
+        self.quiet_dbfs = None
+        self.path = home / 'diagnostics' / 'mic_check.json'
+        try:
+            self.previous_save = self.path.stat().st_mtime_ns
+        except FileNotFoundError:
+            self.previous_save = None
+        self.original_transcriber = window.transcriber
+        window.transcriber = self.transcribe
+        self.connection = window.progress.connect(self.progress, Qt.ConnectionType.DirectConnection)
+        replay.silence()
+
+    def transcribe(self, audio):
+        # Only the decoded wording is controlled. The installed check captures,
+        # measures, saves and renders the recorded stream itself.
+        self.samples = len(audio)
+        return self.expected, None
+
+    def progress(self, kind, value):
+        if kind in ('quiet', 'noise', 'speak', 'repeat_pause', 'repeat_speak', 'decoding', 'result', 'error'):
+            self.phases.append(kind)
+        if kind == 'noise':
+            self.quiet_dbfs = float(value)
+        if kind in ('speak', 'repeat_speak'):
+            # Run on the capture thread at the exact quiet-to-speech boundary.
+            self.replay.queue()
+        elif kind in ('repeat_pause', 'decoding', 'result', 'error'):
+            self.replay.silence()
+
+    def stop(self):
+        self.replay.silence()
+        self.window.progress.disconnect(self.connection)
+        self.window.transcriber = self.original_transcriber
+
+    def observe(self):
+        from samsara import mic_check
+        window = self.window
+        if window.busy:
+            return dict(busy=True)
+        take = window.take
+        if take is None:
+            return dict(busy=False, phases=self.phases)
+        measured = take.measurements
+        metrics = {key: measured[key] for key in self.METRICS}
+        saved = False
+        if take.saved is True:
+            try:
+                recorded = json.loads(self.path.read_text(encoding='utf-8'))
+                saved = (self.path.stat().st_mtime_ns != self.previous_save
+                         and recorded.get('schema') == 1
+                         and set(recorded) == set(metrics) | {'schema', 'microphone_name', 'time'}
+                         and all(recorded[key] == value for key, value in metrics.items()))
+            except (FileNotFoundError, ValueError):
+                pass
+        rows = [label.text() for label, _, _ in window.rows]
+        transcript_visible = window.heard.isVisible() and window.heard_title.isVisible()
+        if self.difference:
+            transcript_ok = transcript_visible and window.heard.text() == f'“{self.expected}”'
+        else:
+            transcript_ok = (not window.heard.isVisible() and not window.heard_title.isVisible()
+                             and not window.heard.text())
+        return dict(busy=False, phases=self.phases, phrase_samples=self.samples, quiet_dbfs=self.quiet_dbfs,
+                    measurements=metrics, checklist_rows=rows, transcript_visible=transcript_visible,
+                    capture_verified=(self.phases[:4] == ['quiet', 'noise', 'speak', 'decoding']
+                                      and self.phases[-1] == 'result' and self.quiet_dbfs is not None
+                                      and self.quiet_dbfs <= -90 and metrics['speech_rms'] > 0
+                                      and self.samples == mic_check.PHRASE_S * mic_check.SAMPLE_RATE
+                                      and metrics['duration_s'] == mic_check.PHRASE_S),
+                    metrics_saved=saved, transcript_visibility_verified=transcript_ok,
+                    checklist_visible=(window.results.isVisible() and rows == list(mic_check.ROWS)
+                                       and not window.capture_panel.isVisible()
+                                       and window.play_button.isVisible() and window.details_button.isVisible()
+                                       and all(widget.isVisible() and widget.text()
+                                               for row in window.rows for widget in row)))
+
+
 def perform(app, home, operation):
     replay = app._receipt_replay
     if operation == 'state':
+        game = getattr(app, '_game_mode', None)
         return dict(**state(app), model_loaded=bool(getattr(app, 'model_loaded', False)),
                     desktop_ready=getattr(app, '_receipt_desktop_ready', False),
-                    capture_ready=bool(getattr(getattr(app, '_ace_engine', None), '_running', False)))
+                    capture_ready=bool(getattr(getattr(app, '_ace_engine', None), '_running', False)),
+                    manual_game_fixture=bool(game and not game.automatic
+                                             and app.config.get('game_mode', {}).get('detect') == 'manual'))
     if operation == 'desktop_state':
         return on_ui(receipt_desktop.observe)
-    if operation == 'mic_start':
-        # Quiet phase + eight-second phrase window, through the installed ACE
-        # stream/ring and the mic check's unmodified source/decoder/UI delivery.
-        replay.queue(delay=1.7)
-        return legacy_perform(app, home, operation)
+    if operation in {'mic_match', 'mic_difference'}:
+        def start_check():
+            window = app._mic_check_window
+            previous = getattr(app, '_receipt_mic_case', None)
+            if previous:
+                previous.stop()
+            app._receipt_mic_case = MicCheckReplay(window, replay, home, difference=operation == 'mic_difference')
+            window.start_button.click()
+            return dict(started=window.busy)
+        return on_ui(start_check)
+    if operation == 'mic_check_state':
+        return on_ui(lambda: app._receipt_mic_case.observe())
+    if operation == 'mic_check_close':
+        def close_check():
+            window = getattr(app, '_mic_check_window', None)
+            if window is not None:
+                window.close()
+            case = getattr(app, '_receipt_mic_case', None)
+            if case is not None:
+                case.stop()
+                app._receipt_mic_case = None
+            return dict(closed=True)
+        return on_ui(close_check)
     if operation in {'pace_set', 'pace_read'}:
         on_ui(app.open_settings)
         def pace():
@@ -117,37 +224,10 @@ def perform(app, home, operation):
         finally:
             coordinator.speak = original
     if operation in {'ticket_lookup', 'ticket', 'game_on', 'game_off', 'confirmation_policy',
-                     'mic', 'mic_state', 'mic_close', 'quit'}:
+                     'mic', 'quit'}:
         return legacy_perform(app, home, operation)
     raise ValueError('UnknownOperation')
 
 
 def serve(app, home):
-    import json
-    channel = home / 'receipt_channel'
-    channel.mkdir(exist_ok=True)
-    deadline = time.monotonic() + 180
-    while time.monotonic() < deadline:
-        if getattr(app, 'command_executor', None) and getattr(app, 'tray_icon', None):
-            break
-        time.sleep(.1)
-    atomic(channel / 'ready.json', dict(pid=os.getpid()))
-    last = None
-    while True:
-        try:
-            data = json.loads((channel / 'request.json').read_text(encoding='utf-8'))
-            if set(data) != {'id', 'operation'} or data['id'] == last:
-                time.sleep(.1)
-                continue
-            last = data['id']
-            try:
-                result = perform(app, home, data['operation'])
-                reply = dict(id=last, ok=True, value=result)
-            except Exception as error:
-                reply = dict(id=last, ok=False, error=type(error).__name__)
-            atomic(channel / 'response.json', reply)
-            if data['operation'] == 'quit':
-                return
-        except (FileNotFoundError, ValueError):
-            pass
-        time.sleep(.1)
+    serve_mailbox(app, home, handler=perform)

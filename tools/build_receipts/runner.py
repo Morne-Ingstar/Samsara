@@ -19,38 +19,95 @@ import re
 
 try:
     from .common import ROOT_ENV, TICKETS, build_identity, receipt, validate_paths, wait_for, write_json
+    from .installed_probe import MAILBOX_ENV, error_details, mailbox_path, publish, reject_links
 except ImportError:
     from common import ROOT_ENV, TICKETS, build_identity, receipt, validate_paths, wait_for, write_json
+    from installed_probe import MAILBOX_ENV, error_details, mailbox_path, publish, reject_links
 
 
 class ProbeError(RuntimeError):
     def __init__(self, code):
-        self.code = code if isinstance(code, str) and re.fullmatch('[A-Za-z]{1,80}', code) else 'Unknown'
+        self.code = code if isinstance(code, str) and re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,79}', code) else 'Unknown'
         super().__init__(self.code)
 
 
+class ReceiptFailure(ProbeError):
+    def __init__(self, phase, operation, action, path, details):
+        super().__init__(details.get('code'))
+        self.diagnostic = dict(phase=phase, operation=operation, action=action, path=path,
+                               code=self.code, winerror=None, errno=None)
+        for key in ('winerror', 'errno'):
+            number = details.get(key)
+            if type(number) is int:
+                self.diagnostic[key] = number
+
+
+class PeerExited(ReceiptFailure):
+    """A published quit may exit before the reply is visible."""
+
+
 class Channel:
-    def __init__(self, home, process):
-        self.directory, self.process = home / 'receipt_channel', process
+    def __init__(self, directory, process):
+        self.directory, self.process = directory, process
 
     def read(self, name):
-        if self.process.poll() is not None:
-            raise RuntimeError('Isolated app exited before the observation')
         try:
             return json.loads((self.directory / name).read_text(encoding='utf-8'))
-        except (FileNotFoundError, ValueError):
+        except FileNotFoundError:
             return None
 
-    def call(self, operation, timeout=40):
-        request_id = uuid.uuid4().hex
-        write_json(self.directory / 'request.json', dict(id=request_id, operation=operation))
+    def wait_reply(self, name, error_name, *, phase, operation, timeout, request=None):
         def response():
-            value = self.read('response.json')
-            return value if value and value.get('id') == request_id else None
-        reply = wait_for(response, timeout=timeout)
-        if not reply.get('ok'):
-            raise ProbeError(reply.get('error', 'Unknown'))
-        return reply['value']
+            for filename in (error_name, name):
+                try:
+                    value = self.read(filename)
+                except (OSError, ValueError) as error:
+                    raise ReceiptFailure(phase, operation, 'read_reply', f'receipt_channel/{filename}',
+                                         error_details(error)) from None
+                if value is None:
+                    continue
+                if not isinstance(value, dict):
+                    raise ReceiptFailure(phase, operation, 'validate_reply', f'receipt_channel/{filename}',
+                                         dict(code='InvalidProbeReply'))
+                if filename == error_name:
+                    if request and value.get('action') == 'read_request':
+                        action, affected = 'read_request', request
+                    else:
+                        action, affected = ('publish_response' if request else 'publish_ready'), name
+                    raise ReceiptFailure(phase, operation, action, f'receipt_channel/{affected}', value)
+                if request is None or value.get('id') == request.removeprefix('request-').removesuffix('.json'):
+                    return value
+            if self.process.poll() is not None:
+                raise PeerExited(phase, operation, 'wait_reply', f'receipt_channel/{name}',
+                                 dict(code='ProbeExited'))
+            return None
+
+        try:
+            return wait_for(response, timeout=timeout)
+        except TimeoutError as error:
+            raise ReceiptFailure(phase, operation, 'wait_reply', f'receipt_channel/{name}',
+                                 error_details(error)) from None
+
+    def call(self, operation, timeout=40, *, phase='transaction'):
+        if operation == 'quit':
+            phase = 'shutdown'
+        request_id = uuid.uuid4().hex
+        request = f'request-{request_id}.json'
+        response = f'response-{request_id}.json'
+        path = f'receipt_channel/{request}'
+        if self.process.poll() is not None:
+            raise ReceiptFailure(phase, operation, 'before_publish', path, dict(code='ProbeExited'))
+        try:
+            publish(self.directory / request, dict(id=request_id, operation=operation))
+        except OSError as error:
+            raise ReceiptFailure(phase, operation, 'publish_request', path, error_details(error)) from None
+        reply = self.wait_reply(response, f'error-{request_id}.json', phase=phase, operation=operation,
+                                timeout=timeout, request=request)
+        if reply.get('ok') is True and isinstance(reply.get('value'), dict):
+            return reply['value']
+        details = reply.get('error')
+        raise ReceiptFailure(phase, operation, 'dispatch', f'receipt_channel/{response}',
+                             details if isinstance(details, dict) else {})
 
 
 class Harness:
@@ -63,13 +120,23 @@ class Harness:
         self.rows, self.process, self.channel, self.scratch_process = [], None, None, None
         self.scratch = None
         self.lifecycle = []
+        self.process_verified = False
+        self.shutdown_verified = False
 
     def launch(self):
-        channel = self.home / 'receipt_channel'
-        # Old responses belong to the first launch; do not consume them after restart.
-        if channel.exists():
-            for name in ('request.json', 'response.json', 'ready.json'):
-                (channel / name).unlink(missing_ok=True)
+        if self.process is not None and not self.shutdown_verified:
+            raise ReceiptFailure('startup', 'launch', 'verify_previous_exit', 'logs/session.running',
+                                 dict(code='PreviousShutdownUnverified'))
+        self.process, self.channel = None, None
+        self.process_verified = self.shutdown_verified = False
+        launch_id = uuid.uuid4().hex
+        channel = mailbox_path(self.home, launch_id)
+        try:
+            reject_links(channel)
+            channel.mkdir(parents=True)
+        except (OSError, ValueError) as error:
+            raise ReceiptFailure('startup', 'launch', 'create_mailbox', 'receipt_channel',
+                                 error_details(error)) from None
         env = dict(os.environ)
         for key in ('SAMSARA_DUCKING_HOST', 'PYTHONPATH', 'PYTHONHOME', 'QT_QPA_PLATFORM',
                     'QT_QPA_FONTDIR', 'SAMSARA_PROFILE', 'SAMSARA_DAILY', 'SAMSARA_RECEIPTS_1262'):
@@ -81,17 +148,42 @@ class Harness:
                    HF_HUB_DISABLE_TELEMETRY='1', TRANSFORMERS_OFFLINE='1')
         env[ROOT_ENV] = str(self.root)
         env = self.launch_environment(env)
-        self.process = subprocess.Popen([str(self.app / 'Samsara.exe')], cwd=str(self.app), env=env,
-                                        **self.launch_options())
-        self.channel = Channel(self.home, self.process)
-        ready = wait_for(lambda: self.channel.read('ready.json'), timeout=180)
-        if ready['pid'] != self.process.pid:
-            raise RuntimeError('Probe belongs to a different process')
+        env[MAILBOX_ENV] = launch_id
+        try:
+            self.process = subprocess.Popen([str(self.app / 'Samsara.exe')], cwd=str(self.app), env=env,
+                                            **self.launch_options())
+        except OSError as error:
+            raise ReceiptFailure('startup', 'launch', 'spawn', 'app/Samsara.exe', error_details(error)) from None
+        self.channel = Channel(channel, self.process)
         import psutil
-        if Path(psutil.Process(self.process.pid).exe()).resolve() != (self.app / 'Samsara.exe').resolve():
-            raise RuntimeError('Unexpected executable identity')
-        wait_for(lambda: self.channel.call('state')['ready'], timeout=60)
+        try:
+            self.process_verified = (Path(psutil.Process(self.process.pid).exe()).resolve()
+                                     == (self.app / 'Samsara.exe').resolve())
+        except (OSError, psutil.Error) as error:
+            raise ReceiptFailure('startup', 'launch', 'verify_executable', 'app/Samsara.exe',
+                                 error_details(error)) from None
+        if not self.process_verified:
+            raise ReceiptFailure('startup', 'launch', 'verify_executable', 'app/Samsara.exe',
+                                 dict(code='UnexpectedExecutable'))
+        ready = self.channel.wait_reply('ready.json', 'startup-error.json', phase='startup',
+                                        operation='ready', timeout=180)
+        if type(ready.get('pid')) is not int or ready['pid'] != self.process.pid:
+            self.process_verified = False
+            raise ReceiptFailure('startup', 'ready', 'verify_pid', 'receipt_channel/ready.json',
+                                 dict(code='UnexpectedProbePid'))
+        self.wait_startup_state(('ready',), timeout=60)
         self.lifecycle.append(dict(event='started', pid=self.process.pid))
+
+    def wait_startup_state(self, keys, *, timeout):
+        try:
+            wait_for(lambda: self.startup_state(keys), timeout=timeout)
+        except TimeoutError as error:
+            raise ReceiptFailure('startup', 'state', 'wait_ready_state', 'receipt_channel',
+                                 error_details(error)) from None
+
+    def startup_state(self, keys):
+        state = self.channel.call('state', phase='startup')
+        return all(state.get(key) is True for key in keys)
 
     def launch_environment(self, env):
         return env
@@ -100,21 +192,34 @@ class Harness:
         return {}
 
     def quit(self):
-        if self.process is None or self.process.poll() is not None:
+        if self.process is None or self.shutdown_verified:
             return
-        # It can exit before the mailbox reply is read: normal, but only accept
-        # a successful exit AND removal of the existing session lifecycle marker.
-        try:
-            self.channel.call('quit', timeout=10)
-        except RuntimeError:
-            if self.process.poll() is None:
-                raise
-        self.process.wait(timeout=45)
         marker = self.home / 'logs' / 'session.running'
-        good = self.process.returncode == 0 and not marker.exists()
-        self.lifecycle.append(dict(event='normal_exit', pid=self.process.pid, verified=good))
-        if not good:
-            raise RuntimeError('Normal shutdown was not verified')
+        try:
+            if not self.process_verified:
+                raise ReceiptFailure('shutdown', 'quit', 'verify_process', 'app/Samsara.exe',
+                                     dict(code='UnverifiedProcess'))
+            try:
+                reply = self.channel.call('quit', timeout=10)
+                if reply.get('quit_requested') is not True:
+                    raise ReceiptFailure('shutdown', 'quit', 'verify_dispatch', 'receipt_channel',
+                                         dict(code='QuitNotDispatched'))
+            except PeerExited:
+                # The copied app can exit normally before the published quit gets a reply.
+                pass
+            try:
+                self.process.wait(timeout=45)
+                good = self.process.returncode == 0 and not marker.exists()
+            except (OSError, subprocess.TimeoutExpired) as error:
+                raise ReceiptFailure('shutdown', 'quit', 'wait_exit', 'logs/session.running',
+                                     error_details(error)) from None
+            if not good:
+                raise ReceiptFailure('shutdown', 'quit', 'verify_exit', 'logs/session.running',
+                                     dict(code='NormalShutdownUnverified'))
+            self.shutdown_verified = True
+        finally:
+            self.lifecycle.append(dict(event='normal_exit', pid=self.process.pid,
+                                       verified=self.shutdown_verified))
 
     def start_scratch(self):
         self.scratch_process = subprocess.Popen([sys.executable, str(Path(__file__).with_name('scratch.py')),
@@ -223,14 +328,16 @@ class Harness:
     def game(self):
         before = self.channel.call('state')
         try:
-            self.channel.call('game_on')
+            entered = self.channel.call('game_on')
             on = wait_for(lambda: (s if (s := self.channel.call('state'))['game_active'] else None), timeout=120)
             cpu = on['device'] == 'cpu' and 'on CPU (game mode)' in on['game_runtime']
         finally:
-            self.channel.call('game_off')
+            exited = self.channel.call('game_off')
         off = wait_for(lambda: (s if not (s := self.channel.call('state'))['game_active'] else None))
         log = (self.home / 'logs' / 'samsara.log').read_text(encoding='utf-8', errors='replace')
-        return dict(cpu_runtime_observed=cpu, original_model_restored=off['model_id'] == before['model_id'],
+        return dict(manual_commands_dispatched=entered['dispatched'] is True and exited['dispatched'] is True,
+                    cpu_runtime_observed=cpu, resident_model_used=on['model_id'] != before['model_id'],
+                    original_model_restored=off['model_id'] == before['model_id'],
                     original_device_restored=off['device'] == before['device'],
                     loaded_cpu_log='[GAME-MODE] CPU model loaded' in log,
                     on_log='[GAME-MODE] On reason=manual' in log,

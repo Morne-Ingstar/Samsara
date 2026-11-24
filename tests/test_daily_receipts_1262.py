@@ -1,8 +1,10 @@
 """1262: offline receipt plumbing; no app, processes, hardware or live files."""
 import importlib.util
 import json
+import logging
 from pathlib import Path
 import sys
+import threading
 from types import SimpleNamespace
 import wave
 
@@ -10,6 +12,7 @@ import numpy as np
 import pytest
 
 from tools.build_receipts import common, daily, desktop, installed_probe, replay_input
+from tools.build_receipts.runner import ReceiptFailure
 
 
 @pytest.fixture
@@ -214,7 +217,9 @@ def test_daily_requires_prepared_scratch_root(tmp_path, monkeypatch):
     assert daily.main(['--scratch-root', str(root), '--corpus', str(tmp_path),
                        '--report-root', str(report_root)]) == 1
     assert not root.exists()
-    assert 'Preflight refused: ValueError' in next(report_root.glob('*/RECEIPTS.md')).read_text(encoding='utf-8')
+    # 1351: The summary records one run failure and links the preflight evidence.
+    summary = next(report_root.glob('*/RECEIPTS.md')).read_text(encoding='utf-8')
+    assert '0 of 9 checks ran' in summary and 'Run failure code: ValueError' in summary
 
 
 def test_once_daily_cache_does_not_launch_or_overwrite(identity, tmp_path, monkeypatch, daily_args):
@@ -249,9 +254,16 @@ def test_preflight_failure_emits_thirteen_fail_rows_without_launch(tmp_path, mon
     assert daily.main(daily_args) == 1
     report = tmp_path / daily.datetime.now().astimezone().date().isoformat()
     rows = json.loads((report / 'receipts.json').read_text())
-    assert len(rows) == 13 and {r['result'] for r in rows} == {'FAIL'}
-    assert 'private details' not in (report / 'RECEIPTS.md').read_text(encoding='utf-8')
-    assert all(Path(row['evidence']).is_file() for row in rows)
+    # 1351: Preserve the existing test ID but require a single incident in place of fabricated rows.
+    assert rows == []
+    summary = (report / 'RECEIPTS.md').read_text(encoding='utf-8')
+    assert summary.count('0 of 9 checks ran') == 1
+    assert not any(line.startswith('- FAIL') for line in summary.splitlines())
+    evidence = next((report / 'artifacts' / 'claude').glob('preflight-*.json')).read_text(encoding='utf-8')
+    assert 'private details' not in evidence + summary
+    diagnostic = json.loads(evidence)
+    assert diagnostic['cleanup'] == 'not_started'
+    assert diagnostic['failures'][0]['operation'] == 'read_build_identity'
 
 
 def test_shared_deadline_bounds_even_a_truthy_probe(monkeypatch):
@@ -303,7 +315,7 @@ def test_help_observer_forwards_and_restores_real_speech_call(probe, tmp_path):
     assert coordinator.speak is original and len(spoken) == 1
 
 
-@pytest.mark.parametrize('crash,quit_error,expected', [(False, False, 0), (True, False, 1), (False, True, 1)])
+@pytest.mark.parametrize('crash,quit_error,expected', [(False, False, 0), (True, False, 1), (False, True, 1), (True, True, 1)])
 def test_fake_daily_run_preserves_old_artifacts_and_finishes_all_rows(identity, tmp_path, monkeypatch,
                                                                     crash, quit_error, expected):
     root = tmp_path / 'scratch'
@@ -330,12 +342,18 @@ def test_fake_daily_run_preserves_old_artifacts_and_finishes_all_rows(identity, 
         def run(self):
             instances.append(self)
             if crash:
-                raise TimeoutError('arbitrary details')
+                raise ReceiptFailure('startup', 'state', 'publish_request', 'receipt_channel/request.json',
+                                     dict(code='PermissionError', winerror=5, errno=13))
             for feature in daily.FEATURES:
-                self.check(feature, 'fake observation', lambda: {'observed': True}, 'Fakes only')
+                if feature in daily.NOT_COVERED:
+                    self.uncovered(feature, daily.NOT_COVERED[feature])
+                else:
+                    self.check(feature, 'fake observation', lambda: {'observed': True}, 'Fakes only')
         def quit(self):
             if quit_error:
-                raise RuntimeError('arbitrary details')
+                raise ReceiptFailure('shutdown', 'quit', 'wait_exit', 'logs/session.running',
+                                     dict(code='TimeoutExpired'))
+            self.shutdown_verified = True
             self.lifecycle.append(dict(event='normal_exit', verified=True))
     monkeypatch.setattr(daily, 'DailyHarness', FakeHarness)
     assert daily.main(['--scratch-root', str(root), '--app', str(app), '--corpus', str(tmp_path),
@@ -343,14 +361,143 @@ def test_fake_daily_run_preserves_old_artifacts_and_finishes_all_rows(identity, 
     assert instances[0].root == root
     assert instances[0].home.parent.parent == root / 'runs'
     assert old.read_text() == 'preserve'
-    assert len(json.loads((report / 'receipts.json').read_text())) == 13
+    rows = json.loads((report / 'receipts.json').read_text())
+    # 1351: Give the supervisor observed rows only and report cleanup independently.
+    assert len(rows) == (0 if crash else 13)
+    if not crash:
+        assert {row['ticket'] for row in rows if row['result'] == 'NOT COVERED'} == daily.NOT_COVERED.keys()
+    if crash or quit_error:
+        summary = (report / 'RECEIPTS.md').read_text(encoding='utf-8')
+        assert summary.count('Run failed:') == 1
+        failure = json.loads((instances[0].artifacts / 'run-failure.json').read_text())
+        assert failure['cleanup'] == ('normal_exit_unverified' if quit_error else 'normal_exit_verified')
+        assert [item['phase'] for item in failure['failures']] == (['startup'] if crash else []) + (['shutdown'] if quit_error else [])
+        assert set(failure['process']) == {'pid', 'account', 'session_id'}
+        assert ('0 of 9 checks ran' if crash else '9 of 9 checks ran') in summary
     config = json.loads((instances[0].home / 'config.json').read_text())
     assert config['ducking']['enabled'] is False
     assert config['command_mode']['enabled'] is False
     assert config['hotkey'] == 'f24'
     assert config['model_size'] == config['game_mode']['cpu_model'] == 'base'
+    assert config['game_mode']['detect'] == 'manual'
     assert (instances[0].home / 'personal_plugins' / 'receipt_daily_probe.py').is_file()
     assert not (report / 'RUNNING.lock').exists()
+
+
+def test_transaction_failure_stops_rows_and_retains_cleanup_error(identity, tmp_path):
+    harness = daily.DailyHarness(tmp_path, tmp_path, tmp_path, identity, tmp_path, tmp_path, (0, 0, 1, 1), root=tmp_path)
+
+    def transaction():
+        try:
+            raise ReceiptFailure('transaction', 'state', 'read_reply', 'receipt_channel/response.json',
+                                 dict(code='PermissionError', winerror=32))
+        finally:
+            raise ReceiptFailure('transaction', 'mic_check_close', 'publish_request', 'receipt_channel/request.json',
+                                 dict(code='PermissionError', winerror=5))
+
+    with pytest.raises(ReceiptFailure) as failure:
+        harness.check('T80', 'fixture', transaction, 'fixture')
+    assert harness.rows == []
+    details = daily.run_diagnostics(failure.value, phase='transaction', operation='run_checks', path=None)
+    assert [(item['operation'], item['winerror']) for item in details] == [('state', 32), ('mic_check_close', 5)]
+
+
+def test_daily_mic_receipt_runs_both_actual_checklist_paths(probe, identity, tmp_path, qapp, qt_widget_scope,
+                                                       monkeypatch):
+    from samsara import mic_check
+    from samsara.ui.mic_check_qt import MicCheckWindow
+
+    take = wav(tmp_path / 'take.wav', frames=3 * mic_check.SAMPLE_RATE)
+    replay = replay_input.Replay(replay_input.read_take(take))
+    app = SimpleNamespace(config={'microphone': 3, 'microphone_name': 'Fixture microphone'},
+                          _receipt_replay=replay, recording=False)
+
+    source = SimpleNamespace(pull=lambda: replay.block(1600, mic_check.SAMPLE_RATE, 1)[:, 0], close=lambda: None)
+    work = []
+    monkeypatch.setattr('samsara.runtime.thread_registry.spawn', lambda _name, fn, **_: work.append(fn))
+    monkeypatch.setattr(probe, 'on_ui', lambda fn: fn())
+    window = MicCheckWindow(app, source_factory=lambda _: source, inspect=lambda _: (.7, False),
+                            save=lambda result, name: mic_check.save_result(result, name, tmp_path / 'diagnostics' / 'mic_check.json'))
+    app._mic_check_window = window
+    harness = daily.DailyHarness(tmp_path, tmp_path, tmp_path / 'report', identity, take, tmp_path, (0, 0, 1, 1),
+                                 root=tmp_path)
+
+    def call(operation):
+        if operation == 'mic':
+            window.show()
+            return {'dispatched': True}
+        result = probe.perform(app, tmp_path, operation)
+        if work:
+            work.pop(0)()
+        return result
+
+    harness.channel = SimpleNamespace(call=call)
+    with qt_widget_scope(window):
+        assert all(value is True for value in harness.mic().values())
+        assert window.transcriber is None and window.take is None
+    evidence = json.loads((harness.artifacts / 'mic-check.json').read_text())
+    assert set(evidence) == {'match', 'difference'}
+    assert not evidence['match']['transcript_visible'] and evidence['difference']['transcript_visible']
+    for result in evidence.values():
+        assert result['phases'] == ['quiet', 'noise', 'speak', 'decoding', 'result']
+        assert result['measurements']['duration_s'] == 8 and result['phrase_samples'] == 128000
+        assert result['checklist_rows'] == list(mic_check.ROWS)
+    assert mic_check.SENTENCE not in json.dumps(evidence)
+    assert 'Fixture microphone' not in json.dumps(evidence)
+
+
+def test_daily_manual_game_probe_restores_original_with_auto_detector_disabled(probe, identity, tmp_path, monkeypatch):
+    from plugins.commands import game_mode as commands
+    from samsara import game_mode
+
+    app = SimpleNamespace(config={'game_mode': {'detect': 'manual', 'cpu_model': 'base'}},
+                          model=object(), model_lock=threading.Lock(), device_type='cpu', compute_type='int8',
+                          _receipt_replay=None)
+    original, resident = app.model, object()
+    model_args, calls = [], []
+
+    def create_model(*args, **kwargs):
+        model_args.append((args, kwargs))
+        return resident
+
+    policy = app._game_mode = game_mode.GameMode(app, create_model,
+        probe=lambda: pytest.fail('automatic detection was invoked'), notify=lambda *_: None)
+    policy.sample = game_mode.Sample(fullscreen=True, gpu_busy=True)
+    assert not policy.wanted and not policy.automatic
+
+    def state(_):
+        return dict(game_active=policy.active, game_runtime=policy.runtime_text(),
+                    device=app.device_type, model_id=id(app.model))
+
+    def execute(text, target, *, force_commands):
+        assert target is app and force_commands
+        calls.append(text)
+        handler = {'game mode on': commands.game_mode_on, 'game mode off': commands.game_mode_off}[text]
+        assert handler(app)
+        if policy.wanted:
+            assert policy.prepare()
+            assert policy.reconcile()
+        return SimpleNamespace(state=SimpleNamespace(value='completed'))
+
+    monkeypatch.setattr(probe, 'state', state)
+    monkeypatch.setattr(installed_probe, 'state', state)
+    app.command_executor = SimpleNamespace(process_text=execute)
+    harness = daily.DailyHarness(tmp_path, tmp_path, tmp_path / 'report', identity, tmp_path, tmp_path, (0, 0, 1, 1),
+                                 root=tmp_path)
+    harness.channel = SimpleNamespace(call=lambda op: probe.perform(app, tmp_path, op))
+    logs = tmp_path / 'logs'
+    logs.mkdir()
+    handler = logging.FileHandler(logs / 'samsara.log', encoding='utf-8')
+    logger = logging.Logger(game_mode.log.name, level=logging.INFO)
+    logger.addHandler(handler)
+    monkeypatch.setattr(game_mode, 'log', logger)
+    try:
+        observations = harness.game()
+        assert {key for key, value in observations.items() if value is not True} == set()
+    finally:
+        handler.close()
+    assert calls == ['game mode on', 'game mode off'] and model_args[0][1]['device'] == 'cpu'
+    assert app.model is original and not policy.active and not policy.automatic
 
 
 def test_qt_guard_prepares_splash_before_show_and_rejects_activation(monkeypatch):

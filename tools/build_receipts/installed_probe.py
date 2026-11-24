@@ -7,6 +7,7 @@ Only fixed operations are accepted, through the disposable profile's mailbox.
 from pathlib import Path
 import json
 import os
+import re
 import stat
 import sys
 import threading
@@ -14,7 +15,9 @@ import time
 
 
 ROOT_ENV = 'SAMSARA_RECEIPT_SCRATCH_ROOT'
+MAILBOX_ENV = 'SAMSARA_RECEIPT_MAILBOX'
 LIVE_PROFILES = {'.samsara', '.samsara-daily', '.samsara-private'}
+TRANSACTION_ID = re.compile(r'[0-9a-f]{32}')
 
 
 def reject_links(path):
@@ -100,10 +103,36 @@ def start_services(app):
     thread_registry.spawn('build-receipts-1241', lambda: serve(app, expected), daemon=True)
 
 
-def atomic(path, data):
+def publish(path, data):
+    """Publish once. Neither endpoint changes a file after it becomes visible."""
     pending = path.with_suffix('.tmp')
-    pending.write_text(json.dumps(data, allow_nan=False), encoding='utf-8')
-    pending.replace(path)
+    with pending.open('x', encoding='utf-8') as stream:
+        json.dump(data, stream, allow_nan=False)
+    if os.name == 'nt':
+        pending.rename(path)  # Windows rename refuses an existing destination.
+    else:
+        os.link(pending, path)
+        pending.unlink()
+
+
+def error_details(error):
+    if isinstance(error, UiFailure):
+        return error.details
+    code = type(error).__name__
+    return dict(code=code if re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,79}', code) else 'Unknown',
+                winerror=getattr(error, 'winerror', None), errno=getattr(error, 'errno', None))
+
+
+def mailbox_path(home, launch_id):
+    if not TRANSACTION_ID.fullmatch(launch_id):
+        raise ValueError('Invalid receipt mailbox identity')
+    return home / 'receipt_channel' / launch_id
+
+
+class UiFailure(RuntimeError):
+    def __init__(self, details):
+        super().__init__(details['code'])
+        self.details = details
 
 
 def on_ui(fn):
@@ -114,14 +143,14 @@ def on_ui(fn):
         try:
             result['value'] = fn()
         except Exception as error:
-            result['error'] = type(error).__name__
+            result['error'] = error_details(error)
         finally:
             event.set()
     qt_runtime.post(run)
     if not event.wait(20):
         raise TimeoutError('UI route did not complete')
     if 'error' in result:
-        raise RuntimeError(result['error'])
+        raise UiFailure(result['error'])
     return result.get('value')
 
 
@@ -299,34 +328,58 @@ def duck_probe(home):
     return readings
 
 
-def serve(app, home):
-    channel = home / 'receipt_channel'
-    channel.mkdir(exist_ok=True)
-    request, response = channel / 'request.json', channel / 'response.json'
-    last = None
+def service_requests(channel, handled, dispatch):
+    for request in sorted(channel.glob('request-*.json')):
+        request_id = request.stem.removeprefix('request-')
+        if request_id in handled or not TRANSACTION_ID.fullmatch(request_id):
+            continue
+        handled.add(request_id)
+        response = channel / f'response-{request_id}.json'
+        action = 'read_request'
+        try:
+            data = json.loads(request.read_text(encoding='utf-8'))
+            if (not isinstance(data, dict) or set(data) != {'id', 'operation'}
+                    or data['id'] != request_id or not isinstance(data['operation'], str)):
+                raise ValueError('Invalid receipt request')
+            try:
+                value = dispatch(data['operation'])
+                reply = dict(id=request_id, ok=True, value=value)
+            except Exception as error:
+                # Exception messages may contain ticket/source/device details.
+                reply = dict(id=request_id, ok=False, error=error_details(error))
+            action = 'publish_response'
+            publish(response, reply)
+        except (OSError, ValueError, TypeError) as error:
+            # Keep serving new requests, including quit. Never redispatch a
+            # request when only its reply failed to publish.
+            publish_error(channel / f'error-{request_id}.json', error, action)
+        else:
+            if reply['ok'] and data['operation'] == 'quit':
+                return True
+    return False
+
+
+def publish_error(path, error, action):
+    try:
+        publish(path, dict(error_details(error), action=action))
+    except OSError:
+        # The runner still bounds the wait if the entire mailbox is inaccessible.
+        pass
+
+
+def serve(app, home, *, handler=perform):
+    channel = mailbox_path(home, os.environ.get(MAILBOX_ENV, ''))
+    reject_links(channel)
     # Plugin services start during executor construction: wait for app assignment.
     deadline = time.monotonic() + 180
     while time.monotonic() < deadline:
         if getattr(app, 'command_executor', None) and getattr(app, 'tray_icon', None):
             break
         time.sleep(.2)
-    atomic(channel / 'ready.json', dict(pid=os.getpid()))
-    while True:
-        try:
-            data = json.loads(request.read_text(encoding='utf-8'))
-            if set(data) != {'id', 'operation'} or data['id'] == last:
-                time.sleep(.1)
-                continue
-            last = data['id']
-            try:
-                value = perform(app, home, data['operation'])
-                reply = dict(id=last, ok=True, value=value)
-            except Exception as error:
-                # Exception messages may contain ticket/source/device details.
-                reply = dict(id=last, ok=False, error=type(error).__name__)
-            atomic(response, reply)
-            if data['operation'] == 'quit':
-                return
-        except (FileNotFoundError, ValueError):
-            pass
+    try:
+        publish(channel / 'ready.json', dict(pid=os.getpid()))
+    except OSError as error:
+        publish_error(channel / 'startup-error.json', error, 'publish_ready')
+    handled = set()
+    while not service_requests(channel, handled, lambda operation: handler(app, home, operation)):
         time.sleep(.1)

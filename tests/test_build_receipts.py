@@ -1,5 +1,6 @@
 """1241: hermetic harness safety/receipt tests; no app, GUI, COM or subprocesses."""
 import json
+import os
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -161,26 +162,31 @@ def test_wait_for_is_bounded_without_real_sleep(monkeypatch):
 
 def test_channel_ignores_response_from_previous_request(tmp_path, monkeypatch):
     channel = runner.Channel(tmp_path, SimpleNamespace(poll=lambda: None))
+    request_id = 'a' * 32
     counter = iter([{'id': 'old', 'ok': True, 'value': 'stale'},
-                    {'id': 'new', 'ok': True, 'value': {'ready': True}}])
-    monkeypatch.setattr(channel, 'read', lambda _: next(counter))
-    monkeypatch.setattr(runner.uuid, 'uuid4', lambda: SimpleNamespace(hex='new'))
+                    {'id': request_id, 'ok': True, 'value': {'ready': True}}])
+    # 1351: Only the matching transaction's response file is polled.
+    monkeypatch.setattr(channel, 'read', lambda name: next(counter) if name == f'response-{request_id}.json' else None)
+    monkeypatch.setattr(runner.uuid, 'uuid4', lambda: SimpleNamespace(hex=request_id))
     monkeypatch.setattr(common.time, 'sleep', lambda _: None)
     assert channel.call('state') == {'ready': True}
-    assert json.loads((channel.directory / 'request.json').read_text())['operation'] == 'state'
+    assert json.loads((channel.directory / f'request-{request_id}.json').read_text())['operation'] == 'state'
 
 
 def test_channel_rejects_exited_process(tmp_path):
     channel = runner.Channel(tmp_path, SimpleNamespace(poll=lambda: 0))
-    with pytest.raises(RuntimeError, match='exited'):
-        channel.read('response.json')
+    # 1351: Refuse the operation before publishing anything for an exited peer.
+    with pytest.raises(runner.ReceiptFailure, match='ProbeExited'):
+        channel.call('state')
+    assert not list(tmp_path.iterdir())
 
 
 def test_channel_does_not_echo_private_error_messages(tmp_path, monkeypatch):
     channel = runner.Channel(tmp_path, SimpleNamespace(poll=lambda: None))
-    monkeypatch.setattr(runner.uuid, 'uuid4', lambda: SimpleNamespace(hex='new'))
-    monkeypatch.setattr(channel, 'read', lambda _: {'id': 'new', 'ok': False,
-                                                 'error': 'arbitrary exception contents'})
+    request_id = 'a' * 32
+    monkeypatch.setattr(runner.uuid, 'uuid4', lambda: SimpleNamespace(hex=request_id))
+    monkeypatch.setattr(channel, 'read', lambda name: {'id': request_id, 'ok': False,
+                        'error': {'code': 'arbitrary exception contents'}} if name.startswith('response-') else None)
     with pytest.raises(runner.ProbeError) as error:
         channel.call('state')
     assert error.value.code == 'Unknown'
@@ -262,12 +268,122 @@ def test_quit_verifies_normal_exit_and_session_marker(identity, tmp_path):
     harness = runner.Harness(tmp_path, tmp_path, tmp_path / 'report', identity, root=tmp_path)
     process = SimpleNamespace(pid=123, returncode=0, poll=lambda: None, wait=lambda **_: None)
     harness.process = process
+    harness.process_verified = True
     harness.channel = SimpleNamespace(call=lambda *_, **__: {'quit_requested': True})
     harness.quit()
     assert harness.lifecycle[-1] == {'event': 'normal_exit', 'pid': 123, 'verified': True}
     marker = tmp_path / 'logs' / 'session.running'
     marker.parent.mkdir()
     marker.touch()
-    with pytest.raises(RuntimeError, match='shutdown'):
+    # 1351: Model a second launched process with an uncleared lifecycle marker.
+    harness.shutdown_verified = False
+    with pytest.raises(RuntimeError, match='NormalShutdownUnverified'):
         harness.quit()
     assert harness.lifecycle[-1]['verified'] is False
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows delete sharing reproduction')
+def test_windows_held_mailbox_files_do_not_block_next_readiness_or_quit(identity, tmp_path, monkeypatch):
+    """Reproduce the fixed-name failure with real handles, then use the real protocol with a fake peer."""
+    for name in ('request.json', 'response.json'):
+        path = tmp_path / name
+        common.write_json(path, {'old': True})
+        with path.open(encoding='utf-8') as reader:
+            with pytest.raises(PermissionError) as failure:
+                common.write_json(path, {'old': False})
+            assert failure.value.winerror in (5, 32)
+            assert json.load(reader) == {'old': True}
+        common.write_json(path, {'old': False})
+
+    harness = runner.Harness(tmp_path, tmp_path, tmp_path / 'report', identity, root=tmp_path)
+    marker = tmp_path / 'logs' / 'session.running'
+    marker.parent.mkdir()
+    requests, mailbox, handled = [], None, set()
+
+    class Process:
+        pid = 123
+        returncode = None
+
+        def poll(self):
+            return self.returncode
+
+        def wait(self, *, timeout):
+            assert self.returncode == 0 and timeout == 45
+
+    def spawn(_argv, *, cwd, env):
+        nonlocal mailbox
+        mailbox = installed_probe.mailbox_path(tmp_path, env[installed_probe.MAILBOX_ENV])
+        installed_probe.publish(mailbox / 'ready.json', {'pid': Process.pid})
+        marker.touch()
+        return Process()
+
+    def dispatch(operation):
+        requests.append(operation)
+        if operation == 'quit':
+            marker.unlink()
+            harness.process.returncode = 0
+            return {'quit_requested': True}
+        return {'ready': True}
+
+    original_wait = runner.wait_for
+
+    def wait(probe, **kwargs):
+        def tick():
+            installed_probe.service_requests(mailbox, handled, dispatch)
+            return probe()
+        return original_wait(tick, **kwargs)
+
+    monkeypatch.setattr(runner.subprocess, 'Popen', spawn)
+    monkeypatch.setitem(sys.modules, 'psutil', SimpleNamespace(Process=lambda _: SimpleNamespace(
+        exe=lambda: str(tmp_path / 'Samsara.exe'))))
+    monkeypatch.setattr(runner, 'wait_for', wait)
+    harness.launch()
+    first = mailbox
+    with next(first.glob('request-*.json')).open() as held_request, next(first.glob('response-*.json')).open() as held_reply:
+        assert harness.channel.call('state') == {'ready': True}
+        harness.quit()
+        assert json.load(held_request)['operation'] == 'state'
+        assert json.load(held_reply)['value'] == {'ready': True}
+        with (first / 'ready.json').open():
+            harness.launch()
+            assert mailbox != first
+            harness.quit()
+    assert harness.shutdown_verified
+    assert requests == ['state', 'state', 'quit', 'state', 'quit']
+    assert len(list(first.glob('request-*.json'))) == len(list(first.glob('response-*.json'))) == 3
+
+
+def test_probe_reply_publication_failure_is_reported_and_next_request_is_served(tmp_path, monkeypatch):
+    process = SimpleNamespace(poll=lambda: None)
+    channel = runner.Channel(tmp_path, process)
+    handled, operations = set(), []
+    publish = installed_probe.publish
+
+    def fail_one_reply(path, data):
+        if path.name.startswith('response-') and len(operations) == 1:
+            error = PermissionError(13, 'private data', 'owner path')
+            error.winerror = 5
+            raise error
+        publish(path, data)
+
+    def dispatch(operation):
+        operations.append(operation)
+        return {'ready': True}
+
+    original_wait = runner.wait_for
+
+    def wait(probe, **kwargs):
+        installed_probe.service_requests(tmp_path, handled, dispatch)
+        return original_wait(probe, **kwargs)
+
+    monkeypatch.setattr(installed_probe, 'publish', fail_one_reply)
+    monkeypatch.setattr(runner, 'wait_for', wait)
+    with pytest.raises(runner.ReceiptFailure) as failure:
+        channel.call('state', phase='startup')
+    diagnostic = failure.value.diagnostic
+    assert diagnostic['phase'] == 'startup' and diagnostic['operation'] == 'state'
+    assert diagnostic['action'] == 'publish_response' and diagnostic['winerror'] == 5
+    assert diagnostic['path'].startswith('receipt_channel/response-')
+    assert 'private data' not in str(diagnostic) and 'owner path' not in str(diagnostic)
+    assert channel.call('state') == {'ready': True}
+    assert operations == ['state', 'state']

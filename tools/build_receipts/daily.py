@@ -13,10 +13,10 @@ import uuid
 
 try:
     from . import common, desktop, replay_input
-    from .runner import Harness, ProbeError
+    from .runner import Harness, ProbeError, ReceiptFailure, error_details
 except ImportError:
     import common, desktop, replay_input
-    from runner import Harness, ProbeError
+    from runner import Harness, ProbeError, ReceiptFailure, error_details
 
 
 FEATURES = {
@@ -78,9 +78,11 @@ def make_row(feature, identity, trigger, evidence, observations=None, *, limitat
                 observations=observations, limitation=limitation, acceptance_eligible=False)
 
 
-def write_summary(report, identity, rows, *, elapsed, lifecycle_ok, error=None):
+def write_summary(report, identity, rows, *, elapsed, lifecycle_ok, error=None, failure_evidence=None):
     common.write_json(report / 'receipts.json', rows)
-    passed = len(rows) == len(FEATURES) and all(r['result'] != 'FAIL' for r in rows) and lifecycle_ok and not error
+    passed = ({r['ticket'] for r in rows} == FEATURES.keys() and len(rows) == len(FEATURES)
+              and all(r['result'] == ('NOT COVERED' if r['ticket'] in NOT_COVERED else 'PASS') for r in rows)
+              and lifecycle_ok and not error)
     status = 0 if passed else 1
     lines = ['# Build receipts', '', f"Build head: {identity.get('commit') or 'UNAVAILABLE'}",
              f"Built: {identity.get('build_ts') or 'UNAVAILABLE'}",
@@ -90,13 +92,46 @@ def write_summary(report, identity, rows, *, elapsed, lifecycle_ok, error=None):
         lines.append(f"- {row['result']} — {FEATURES[row['ticket']]} ({row['ticket']}) | "
                      f"{row['trigger']} | [evidence]({Path(row['evidence']).as_posix()}) | {row['limitation']}")
     if error:
-        lines.extend(['', 'Run failure code: ' + error])
+        # PLACEHOLDER COPY (1351)
+        ran = sum(row['ticket'] not in NOT_COVERED for row in rows)
+        lines.extend(['', f'Run failed: {ran} of {len(FEATURES) - len(NOT_COVERED)} checks ran.'])
+        if failure_evidence:
+            lines[-1] += f' [Failure evidence]({failure_evidence.as_posix()})'
+        lines.append('Run failure code: ' + error)  # Read by the Daily worker.
     pending = report / 'RECEIPTS.md.tmp'
     pending.write_text('\n'.join(lines) + '\n', encoding='utf-8')
     pending.replace(report / 'RECEIPTS.md')
     common.write_json(report / 'completion.json', dict(build=identity, exit_code=status,
                       elapsed_s=elapsed, normal_shutdown_verified=lifecycle_ok))
     return status
+
+
+def process_context():
+    account, session = None, None
+    if os.name == 'nt':
+        import ctypes
+        from ctypes import wintypes
+        name = ctypes.create_unicode_buffer(256)
+        size = wintypes.ULONG(len(name))
+        get_name = ctypes.WinDLL('secur32').GetUserNameExW
+        get_name.argtypes = (ctypes.c_int, wintypes.LPWSTR, ctypes.POINTER(wintypes.ULONG))
+        get_name.restype = ctypes.c_ubyte
+        if get_name(2, name, ctypes.byref(size)):  # NameSamCompatible
+            account = re.sub(r'[^\w.@\\ -]', '?', name.value)
+        number = wintypes.DWORD()
+        if ctypes.windll.kernel32.ProcessIdToSessionId(os.getpid(), ctypes.byref(number)):
+            session = number.value
+    return dict(pid=os.getpid(), account=account, session_id=session)
+
+
+def run_diagnostics(failure, *, phase, operation, path):
+    if isinstance(failure, ReceiptFailure):
+        # A feature's finally block can fail while it is unwinding an earlier request.
+        earlier = failure.__context__
+        if isinstance(earlier, ReceiptFailure):
+            return run_diagnostics(earlier, phase=phase, operation=operation, path=path) + [failure.diagnostic]
+        return [failure.diagnostic]
+    return [dict(phase=phase, operation=operation, action=operation, path=path, **error_details(failure))]
 
 
 class DailyHarness(Harness):
@@ -116,13 +151,14 @@ class DailyHarness(Harness):
 
     def launch(self):
         super().launch()
-        common.wait_for(lambda: all(self.channel.call('state')[key]
-                        for key in ('model_loaded', 'desktop_ready', 'capture_ready')), timeout=120)
+        self.wait_startup_state(('model_loaded', 'desktop_ready', 'capture_ready'), timeout=120)
 
     def check(self, feature, trigger, fn, limitation, eligible=False):
         evidence = self.artifacts / (feature + '.json')
         try:
             row = make_row(feature, self.identity, trigger, evidence, fn(), limitation=limitation)
+        except ReceiptFailure:
+            raise
         except Exception as error:
             code = error.code if isinstance(error, ProbeError) else type(error).__name__
             row = make_row(feature, self.identity, trigger, evidence, {'completed': False}, limitation=limitation)
@@ -147,14 +183,26 @@ class DailyHarness(Harness):
         return dict(**changed, **self.channel.call('pace_read'))
 
     def mic(self):
-        self.channel.call('mic')
-        self.channel.call('mic_start')
+        evidence = {}
         try:
-            result = common.wait_for(lambda: (s if not (s := self.channel.call('mic_state'))['busy'] else None), timeout=60)
-            return dict(completed=result['complete'], metrics_saved=result['result_saved'],
-                        recorded_speech_recognised=result['recognised'])
+            self.channel.call('mic')
+            for case in ('match', 'difference'):
+                started = self.channel.call('mic_' + case)['started']
+                result = common.wait_for(lambda: (s if not (s := self.channel.call('mic_check_state'))['busy'] else None),
+                                         timeout=40) if started else {}
+                evidence[case] = dict(started=started, **result)
         finally:
-            self.channel.call('mic_close')
+            common.write_json(self.artifacts / 'mic-check.json', evidence)
+            self.channel.call('mic_check_close')
+        return dict(**{case + '_' + key: evidence[case].get(key) is True
+                       for case in evidence for key in ('capture_verified', 'metrics_saved', 'checklist_visible',
+                                                        'transcript_visibility_verified')})
+
+    def game(self):
+        before = self.channel.call('state')
+        if before.get('manual_game_fixture') is not True or before['game_active']:
+            return dict(manual_fixture_ready=False)
+        return dict(manual_fixture_ready=True, **super().game())
 
     def silent(self):
         started = self.channel.call('silence_start')
@@ -186,8 +234,6 @@ class DailyHarness(Harness):
     def run(self):
         # No scratch editors, UIA, global input, clipboard or foreground APIs.
         self.launch()
-        for feature, reason in NOT_COVERED.items():
-            self.uncovered(feature, reason)
         self.check('T29', 'Settings pace slider to 5 s > Apply & Close > normal restart', self.pace,
                    'Actual Qt controls/signals; no keyboard/UIA; persistence only.')
         self.check('T10', 'hey ava resume ticket T10 via installed executor', self.ticket,
@@ -196,8 +242,8 @@ class DailyHarness(Harness):
                    'Manual commands; no game detection or automatic exit proof.')
         self.check('T70', 'game mode off; authorize restart without executing restart', self.timing,
                    'One ordinary command and confirmation decision only.')
-        self.check('T80', 'Check my mic > stream-boundary recorded WAV > installed decoder > heard label', self.mic,
-                   'Real installed capture/ring/decoder/UI delivery; physical mic/driver bypassed; no accuracy score.')
+        self.check('T80', 'Check my mic > quiet and recorded phrase > verify checklist and transcript visibility', self.mic,
+                   'Installed capture, metrics, save and UI; controlled recognizer replies; no physical mic or ASR proof.')
         self.check('1252', 'Continuous listening > zero PCM for 10 seconds > visible dead-mic notice', self.silent,
                    'Installed silence observer and actual notice; no physical unplug or muted-device diagnosis.')
         self.check('1254', 'Mouse 5 callback down > recording > callback up > stopped', self.mouse,
@@ -209,7 +255,10 @@ class DailyHarness(Harness):
         placement = self.channel.call('desktop_state')
         common.write_json(self.artifacts / 'desktop.json', placement)
         if not placement or not all(v is True for v in placement.values()):
-            raise RuntimeError('MonitorPlacementNotVerified')
+            raise ReceiptFailure('transaction', 'desktop_state', 'verify_placement', 'desktop.json',
+                                 dict(code='MonitorPlacementNotVerified'))
+        for feature, reason in NOT_COVERED.items():
+            self.uncovered(feature, reason)
 
 
 def main(argv=None):
@@ -227,7 +276,7 @@ def main(argv=None):
     report.mkdir(parents=True, exist_ok=True)
     identity = {'build_ts': None, 'commit': None}
     harness = None
-    error = None
+    failures = []
     lock = report / 'RUNNING.lock'
     try:
         # Exclusive file is released on normal completion; crash evidence is
@@ -237,28 +286,36 @@ def main(argv=None):
     except FileExistsError:
         return 1
     previous_deadline = common.DEADLINE
+    phase, operation, path = 'startup', 'validate_scratch', 'app/Samsara.exe'
     try:
         root = common.prepared_root(args.scratch_root)
         app = common.validate_app(args.app, root)
+        operation, path = 'read_build_identity', 'app/BUILD_INFO.txt'
         identity = common.build_identity(app)
         if not identity.get('commit') or not re.fullmatch(r'[0-9a-fA-F]{7,40}', identity['commit']):
             raise ValueError('BuildHeadRequired')
         completion = report / 'completion.json'
         if completion.exists() and not args.force:
+            operation, path = 'read_completion', 'completion.json'
             previous = json.loads(completion.read_text(encoding='utf-8'))
             return previous['exit_code'] if previous['build'] == identity else 1
         run_name = datetime.now().strftime('%Y%m%d-%H%M%S') + '-' + uuid.uuid4().hex[:8]
+        operation, path = 'prepare_profile', 'runs/<run>/home'
         app, home = validate_daily(app, root / 'runs' / run_name / 'home', root=root)
+        operation, path = 'load_recorded_input', 'corpus/takes'
         take = replay_input.choose_take(args.corpus)
         common.reject_links(take)
+        operation, path = 'resolve_model', 'model cache'
         model = args.model
         if model is None:
             # Offline recorder configuration only; never a live Samsara profile.
             model = Path(json.loads((args.corpus / 'recorder-settings.json').read_text(encoding='utf-8-sig'))['model_path'])
         model_name = local_model_name(model)
+        operation, path = 'verify_monitor', None
         import win32api
         rect = desktop.monitor_rect([win32api.GetMonitorInfo(m[0]) for m in win32api.EnumDisplayMonitors()])
         import psutil  # noqa: F401
+        operation, path = 'prepare_profile', 'runs/<run>/home'
         home.mkdir(parents=True)
         plugins = home / 'personal_plugins'
         plugins.mkdir()
@@ -268,7 +325,7 @@ def main(argv=None):
         common.write_json(home / 'config.json', {
             'first_run_complete': True, 'microphone': None, 'mode': 'hold', 'hotkey': 'f24',
             'model_size': model_name, 'device': 'cpu', 'compute_type': 'int8',
-            'game_mode': {'cpu_model': model_name},
+            'game_mode': {'cpu_model': model_name, 'detect': 'manual'},
             'wake_word_enabled': False, 'launch_at_login': False,
             'command_mode': {'enabled': False},
             'updates': {'automatic_checks': False}, 'plugins': {'personal_dir': 'personal_plugins'},
@@ -280,41 +337,44 @@ def main(argv=None):
         })
         harness = DailyHarness(app, home, report, identity, take, model, rect, root=root)
         common.write_json(harness.artifacts / 'input.json', dict(sha256=common.file_hash(take),
-                          adapter='InputStream boundary; installed ACE ring, mic check capture/decoder/label'))
+                          adapter='InputStream boundary; installed capture, metrics and checklist'))
         common.DEADLINE = began + 480  # leave <= 65s for normal exit; never force kill
+        phase, operation, path = 'transaction', 'run_checks', None
         harness.run()
     except Exception as failure:
-        error = type(failure).__name__
+        failures.extend(run_diagnostics(failure, phase=phase, operation=operation, path=path))
     finally:
         common.DEADLINE = None  # cleanup has its own bounded normal-exit wait
-        lifecycle_ok = False
-        if harness is not None:
-            try:
-                harness.quit()
-                lifecycle_ok = bool(harness.lifecycle) and harness.lifecycle[-1].get('verified') is True
-            except Exception as failure:
-                error = error or type(failure).__name__
-            for feature in FEATURES:
-                if feature not in {r['ticket'] for r in harness.rows}:
-                    harness.check(feature, 'Run precondition/budget; trigger not executed',
-                                  lambda: {'executed': False}, 'No installed observation obtained.')
-            for row in harness.rows:
-                row['normal_shutdown_verified'] = lifecycle_ok
-                common.write_json(Path(row['evidence']), row)
-            harness.save()
-        # A cached daily result must remain byte-for-byte intact.
-        if harness is not None or error:
-            if harness is None:
-                evidence = report / 'artifacts' / 'claude' / ('preflight-' + uuid.uuid4().hex + '.json')
-                rows = [make_row(f, identity, 'Preflight; trigger not executed', evidence,
-                                 {'preflight': False}, limitation='Preflight refused: ' + error) for f in FEATURES]
-                common.write_json(evidence, dict(error=error, rows=rows))
-            else:
+        try:
+            lifecycle_ok, rows = False, []
+            cleanup = 'not_started'
+            if harness is not None:
+                try:
+                    harness.quit()
+                    lifecycle_ok = harness.shutdown_verified
+                except Exception as failure:
+                    failures.extend(run_diagnostics(failure, phase='shutdown', operation='quit', path=None))
+                    cleanup = 'normal_exit_unverified'
+                if lifecycle_ok:
+                    cleanup = 'normal_exit_verified'
                 rows = harness.rows
-            status = write_summary(report, identity, rows, elapsed=time.monotonic() - began,
-                                   lifecycle_ok=lifecycle_ok, error=error)
-        common.DEADLINE = previous_deadline
-        lock.unlink(missing_ok=True)
+                for row in rows:
+                    row['normal_shutdown_verified'] = lifecycle_ok
+                    common.write_json(Path(row['evidence']), row)
+                harness.save()
+            evidence = None
+            if failures:
+                evidence = (harness.artifacts / 'run-failure.json' if harness else
+                            report / 'artifacts' / 'claude' / ('preflight-' + uuid.uuid4().hex + '.json'))
+                common.write_json(evidence, dict(failures=failures, process=process_context(), cleanup=cleanup))
+            # A cached daily result must remain byte-for-byte intact.
+            if harness is not None or failures:
+                status = write_summary(report, identity, rows, elapsed=time.monotonic() - began,
+                                       lifecycle_ok=lifecycle_ok, error=failures[0]['code'] if failures else None,
+                                       failure_evidence=evidence)
+        finally:
+            common.DEADLINE = previous_deadline
+            lock.unlink(missing_ok=True)
     return status
 
 
