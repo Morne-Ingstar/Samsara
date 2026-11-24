@@ -99,6 +99,7 @@ class TTSPage:
         tts_enabled = QCheckBox()
         self._widgets['tts_enabled'] = tts_enabled
         feedback_combo = _FeedbackLevelCombo()
+        feedback_combo.setAccessibleName("Voice feedback")
         for level, (label, help_text) in FEEDBACK_LEVEL_CHOICES.items():
             feedback_combo.addItem(label, level)
             feedback_combo.setItemData(feedback_combo.count() - 1, help_text, Qt.ItemDataRole.ToolTipRole)

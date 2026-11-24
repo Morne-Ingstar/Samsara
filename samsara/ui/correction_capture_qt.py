@@ -224,6 +224,7 @@ class CorrectionCaptureWindow(QMainWindow):
         root.addWidget(title)
 
         self._text_edit = QTextEdit()
+        self._text_edit.setAccessibleName("Correction text")
         title.setBuddy(self._text_edit)
         self._text_edit.setPlainText(self._original_text)
         if not self._original_text:

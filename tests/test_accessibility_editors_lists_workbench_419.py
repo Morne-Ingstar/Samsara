@@ -102,7 +102,8 @@ def control_for(window, row):
 
 CONTRACTS = [
     ("ava", "F041", "Web answer sources", QAccessible.Role.List),
-    ("correction", "F047", "Correct Last Dictation", QAccessible.Role.EditableText),
+    # 1348: the editor announces its purpose while keeping its heading buddy.
+    ("correction", "F047", "Correction text", QAccessible.Role.EditableText),
     ("dictionary", "F048", "Heard", QAccessible.Role.EditableText),
     ("dictionary", "F049", "Should be", QAccessible.Role.EditableText),
     ("dictionary", "F050", "Corrections", QAccessible.Role.Table),

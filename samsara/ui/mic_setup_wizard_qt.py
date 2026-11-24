@@ -413,14 +413,14 @@ class _WizardWindow(QDialog):
         lay = QVBoxLayout(page)
         lay.setContentsMargins(32, 28, 32, 20)
         lay.setSpacing(16)
-        lay.addWidget(_body(
+        help_label = _body(
             "Select the microphone you'll be speaking into, then say a "
-            "few words to confirm it's picking up your voice."
-        ))
+            "few words to confirm it's picking up your voice.")
+        lay.addWidget(help_label)
         row = QHBoxLayout()
         device_label = _label("Microphone:")
         row.addWidget(device_label)
-        self._device_combo = QComboBox()
+        self._device_combo = QComboBox(accessibleName="Microphone", accessibleDescription=help_label.text())
         device_label.setBuddy(self._device_combo)
         self._device_combo.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed

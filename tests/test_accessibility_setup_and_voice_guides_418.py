@@ -47,7 +47,8 @@ ROWS = [
     # 630 moved key setup out of this guide; retain F039 for its provider picker.
     ("F039", "ava", "_provider", "ComboBox", "Provider"),
     ("F040", "ava", "_model_combo", "ComboBox", "Model"),
-    ("F060", "mic", "_device_combo", "ComboBox", "Microphone:"),
+    # 1348: expose the microphone name without the label's punctuation.
+    ("F060", "mic", "_device_combo", "ComboBox", "Microphone"),
     ("F061", "stress", "_results_table", "Table", "Stress Test Results"),
     ("F069", "wake", "slider:0", "Slider", "Speech threshold:"),
     ("F070", "wake", "_thresh_spin", "SpinBox", "Speech threshold:"),
@@ -97,7 +98,8 @@ def test_every_fixed_row_has_effective_name_and_native_role(guides, row, owner, 
         visible_words.append(widget.placeholderText())
     if owner == "mic":
         visible_words.extend(guides[owner]._STEP_TITLES)
-    assert name in visible_words, row
+    visible_name = f"{name}:" if row == "F060" else name
+    assert visible_name in visible_words, row
 
 
 @pytest.mark.parametrize("page,selector", [("Recognition", "_model_group")])

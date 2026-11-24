@@ -438,6 +438,7 @@ class AvaCloudPage:
         layout.addWidget(self._section_title("Ava Personality"))
         layout.addSpacing(4)
         personality_combo = QComboBox()
+        personality_combo.setAccessibleName("Ava personality")
         personality_combo.addItems(["Relaxed", "Strict"])
         current = self.app.config.get("ava_personality", "relaxed")
         personality_combo.setCurrentText("Strict" if current == "strict" else "Relaxed")
