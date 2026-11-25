@@ -266,17 +266,29 @@ def test_failed_check_redacts_exception_and_continues(identity, tmp_path):
 
 def test_quit_verifies_normal_exit_and_session_marker(identity, tmp_path):
     harness = runner.Harness(tmp_path, tmp_path, tmp_path / 'report', identity, root=tmp_path)
-    process = SimpleNamespace(pid=123, returncode=0, poll=lambda: None, wait=lambda **_: None)
+    # 1369: The fake tree drains when quit is dispatched and exposes the root exit code.
+    process = SimpleNamespace(pid=123, returncode=None, close=lambda: None)
+    process.poll = lambda: process.returncode
+    process.empty = lambda: process.returncode is not None
+    process.wait = lambda **_: None
+
+    def dispatch(*args, **kwargs):
+        process.returncode = 0
+        return {'quit_requested': True}
+
     harness.process = process
     harness.process_verified = True
-    harness.channel = SimpleNamespace(call=lambda *_, **__: {'quit_requested': True})
+    harness.channel = SimpleNamespace(call=dispatch)
     harness.quit()
-    assert harness.lifecycle[-1] == {'event': 'normal_exit', 'pid': 123, 'verified': True}
+    assert harness.lifecycle[-1] == {'event': 'normal_exit', 'pid': 123, 'verified': True,
+                                    'cleanup_outcome': 'exited'}
     marker = tmp_path / 'logs' / 'session.running'
     marker.parent.mkdir()
     marker.touch()
     # 1351: Model a second launched process with an uncleared lifecycle marker.
     harness.shutdown_verified = False
+    harness.cleanup_outcome = 'not_started'
+    process.returncode = None
     with pytest.raises(RuntimeError, match='NormalShutdownUnverified'):
         harness.quit()
     assert harness.lifecycle[-1]['verified'] is False
@@ -310,6 +322,12 @@ def test_windows_held_mailbox_files_do_not_block_next_readiness_or_quit(identity
         def wait(self, *, timeout):
             assert self.returncode == 0 and timeout == 45
 
+        def empty(self):
+            return self.returncode is not None
+
+        def close(self):
+            pass
+
     def spawn(_argv, *, cwd, env):
         nonlocal mailbox
         mailbox = installed_probe.mailbox_path(tmp_path, env[installed_probe.MAILBOX_ENV])
@@ -333,7 +351,8 @@ def test_windows_held_mailbox_files_do_not_block_next_readiness_or_quit(identity
             return probe()
         return original_wait(tick, **kwargs)
 
-    monkeypatch.setattr(runner.subprocess, 'Popen', spawn)
+    # 1369: Keep the real mailbox exchange while replacing the job-owned launch.
+    monkeypatch.setattr(runner.OwnedProcessTree, 'launch', spawn)
     monkeypatch.setitem(sys.modules, 'psutil', SimpleNamespace(Process=lambda _: SimpleNamespace(
         exe=lambda: str(tmp_path / 'Samsara.exe'))))
     monkeypatch.setattr(runner, 'wait_for', wait)

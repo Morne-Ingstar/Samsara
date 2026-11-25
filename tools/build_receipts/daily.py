@@ -78,7 +78,8 @@ def make_row(feature, identity, trigger, evidence, observations=None, *, limitat
                 observations=observations, limitation=limitation, acceptance_eligible=False)
 
 
-def write_summary(report, identity, rows, *, elapsed, lifecycle_ok, error=None, failure_evidence=None):
+def write_summary(report, identity, rows, *, elapsed, lifecycle_ok, error=None, failure_evidence=None,
+                  cleanup_outcome='not_started'):
     common.write_json(report / 'receipts.json', rows)
     passed = ({r['ticket'] for r in rows} == FEATURES.keys() and len(rows) == len(FEATURES)
               and all(r['result'] == ('NOT COVERED' if r['ticket'] in NOT_COVERED else 'PASS') for r in rows)
@@ -102,7 +103,7 @@ def write_summary(report, identity, rows, *, elapsed, lifecycle_ok, error=None, 
     pending.write_text('\n'.join(lines) + '\n', encoding='utf-8')
     pending.replace(report / 'RECEIPTS.md')
     common.write_json(report / 'completion.json', dict(build=identity, exit_code=status,
-                      elapsed_s=elapsed, normal_shutdown_verified=lifecycle_ok))
+                      elapsed_s=elapsed, normal_shutdown_verified=lifecycle_ok, cleanup_outcome=cleanup_outcome))
     return status
 
 
@@ -338,9 +339,12 @@ def main(argv=None):
         harness = DailyHarness(app, home, report, identity, take, model, rect, root=root)
         common.write_json(harness.artifacts / 'input.json', dict(sha256=common.file_hash(take),
                           adapter='InputStream boundary; installed capture, metrics and checklist'))
-        common.DEADLINE = began + 480  # leave <= 65s for normal exit; never force kill
+        common.DEADLINE = began + 480  # leave time for bounded shutdown of the owned app tree
         phase, operation, path = 'transaction', 'run_checks', None
         harness.run()
+    except KeyboardInterrupt as failure:
+        failures.extend(run_diagnostics(failure, phase=phase, operation=operation, path=path))
+        raise
     except Exception as failure:
         failures.extend(run_diagnostics(failure, phase=phase, operation=operation, path=path))
     finally:
@@ -348,30 +352,39 @@ def main(argv=None):
         try:
             lifecycle_ok, rows = False, []
             cleanup = 'not_started'
+            cleanup_outcome = 'not_started'
+            interrupted = None
             if harness is not None:
                 try:
                     harness.quit()
                     lifecycle_ok = harness.shutdown_verified
-                except Exception as failure:
+                except (Exception, KeyboardInterrupt) as failure:
                     failures.extend(run_diagnostics(failure, phase='shutdown', operation='quit', path=None))
                     cleanup = 'normal_exit_unverified'
+                    if isinstance(failure, KeyboardInterrupt):
+                        interrupted = failure
                 if lifecycle_ok:
                     cleanup = 'normal_exit_verified'
+                cleanup_outcome = harness.cleanup_outcome
                 rows = harness.rows
                 for row in rows:
                     row['normal_shutdown_verified'] = lifecycle_ok
+                    row['cleanup_outcome'] = cleanup_outcome
                     common.write_json(Path(row['evidence']), row)
                 harness.save()
             evidence = None
             if failures:
                 evidence = (harness.artifacts / 'run-failure.json' if harness else
                             report / 'artifacts' / 'claude' / ('preflight-' + uuid.uuid4().hex + '.json'))
-                common.write_json(evidence, dict(failures=failures, process=process_context(), cleanup=cleanup))
+                common.write_json(evidence, dict(failures=failures, process=process_context(), cleanup=cleanup,
+                                                 cleanup_outcome=cleanup_outcome))
             # A cached daily result must remain byte-for-byte intact.
             if harness is not None or failures:
                 status = write_summary(report, identity, rows, elapsed=time.monotonic() - began,
                                        lifecycle_ok=lifecycle_ok, error=failures[0]['code'] if failures else None,
-                                       failure_evidence=evidence)
+                                       failure_evidence=evidence, cleanup_outcome=cleanup_outcome)
+            if interrupted is not None:
+                raise interrupted
         finally:
             common.DEADLINE = previous_deadline
             lock.unlink(missing_ok=True)

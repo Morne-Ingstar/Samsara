@@ -110,6 +110,89 @@ class Channel:
                              details if isinstance(details, dict) else {})
 
 
+class OwnedProcessTree:
+    """One copied app and its descendants, held by private Windows handles."""
+
+    def __init__(self, job, process, pid):
+        self.job, self.handle, self.pid = job, process, pid
+        self.returncode = None
+
+    @classmethod
+    def launch(cls, argv, *, cwd, env, startupinfo=None, creationflags=0):
+        import win32api
+        import win32job
+        import win32process
+        from pywintypes import error as Win32Error
+
+        info = win32process.STARTUPINFO()
+        if startupinfo is not None:
+            for field in ('dwFlags', 'wShowWindow', 'dwX', 'dwY'):
+                setattr(info, field, getattr(startupinfo, field))
+        try:
+            job = win32job.CreateJobObject(None, '')  # PyWin32's spelling for an unnamed job.
+            try:
+                limits = win32job.QueryInformationJobObject(job, win32job.JobObjectExtendedLimitInformation)
+                limits['BasicLimitInformation']['LimitFlags'] = win32job.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                win32job.SetInformationJobObject(job, win32job.JobObjectExtendedLimitInformation, limits)
+                flags = creationflags | win32process.CREATE_SUSPENDED | win32process.CREATE_UNICODE_ENVIRONMENT
+                handle, thread, pid, _ = win32process.CreateProcess(
+                    argv[0], subprocess.list2cmdline(argv), None, None, False, flags, env, cwd, info)
+                try:
+                    # No application code can run or spawn a child until assignment succeeds.
+                    win32job.AssignProcessToJobObject(job, handle)
+                    win32process.ResumeThread(thread)
+                    return cls(job, handle, pid)
+                except BaseException:
+                    try:
+                        win32api.TerminateProcess(handle, 1)
+                    finally:
+                        handle.Close()
+                    raise
+                finally:
+                    thread.Close()
+            except BaseException:
+                job.Close()
+                raise
+        except Win32Error as error:
+            raise OSError(error.winerror, error.strerror, None, error.winerror) from None
+
+    def poll(self):
+        import win32event
+        import win32process
+
+        if self.handle is not None and self.returncode is None:
+            if win32event.WaitForSingleObject(self.handle, 0) == win32event.WAIT_OBJECT_0:
+                self.returncode = win32process.GetExitCodeProcess(self.handle)
+        return self.returncode
+
+    def empty(self):
+        import win32job
+
+        info = win32job.QueryInformationJobObject(self.job, win32job.JobObjectBasicAccountingInformation)
+        return info['ActiveProcesses'] == 0
+
+    def wait(self, *, timeout):
+        deadline = time.monotonic() + timeout
+        while not self.empty():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired('receipt app tree', timeout)
+            time.sleep(min(0.1, remaining))
+        return self.poll()
+
+    def terminate_tree(self):
+        import win32job
+
+        win32job.TerminateJobObject(self.job, 1)
+
+    def close(self):
+        try:
+            self.job.Close()  # Kill-on-close is the backstop if explicit termination failed.
+        finally:
+            self.handle.Close()
+            self.handle = None
+
+
 class Harness:
     def __init__(self, app, home, report, identity, *, root):
         self.app, self.home, self.report, self.identity = app, home, report, identity
@@ -122,6 +205,7 @@ class Harness:
         self.lifecycle = []
         self.process_verified = False
         self.shutdown_verified = False
+        self.cleanup_outcome = 'not_started'
 
     def launch(self):
         if self.process is not None and not self.shutdown_verified:
@@ -129,6 +213,7 @@ class Harness:
                                  dict(code='PreviousShutdownUnverified'))
         self.process, self.channel = None, None
         self.process_verified = self.shutdown_verified = False
+        self.cleanup_outcome = 'not_started'
         launch_id = uuid.uuid4().hex
         channel = mailbox_path(self.home, launch_id)
         try:
@@ -150,8 +235,8 @@ class Harness:
         env = self.launch_environment(env)
         env[MAILBOX_ENV] = launch_id
         try:
-            self.process = subprocess.Popen([str(self.app / 'Samsara.exe')], cwd=str(self.app), env=env,
-                                            **self.launch_options())
+            self.process = OwnedProcessTree.launch([str(self.app / 'Samsara.exe')], cwd=str(self.app), env=env,
+                                                   **self.launch_options())
         except OSError as error:
             raise ReceiptFailure('startup', 'launch', 'spawn', 'app/Samsara.exe', error_details(error)) from None
         self.channel = Channel(channel, self.process)
@@ -192,34 +277,59 @@ class Harness:
         return {}
 
     def quit(self):
-        if self.process is None or self.shutdown_verified:
+        process = self.process
+        if process is None or self.cleanup_outcome != 'not_started':
             return
+        self.cleanup_outcome = 'unverified'
         marker = self.home / 'logs' / 'session.running'
+        already_gone = False
         try:
-            if not self.process_verified:
-                raise ReceiptFailure('shutdown', 'quit', 'verify_process', 'app/Samsara.exe',
-                                     dict(code='UnverifiedProcess'))
             try:
-                reply = self.channel.call('quit', timeout=10)
-                if reply.get('quit_requested') is not True:
-                    raise ReceiptFailure('shutdown', 'quit', 'verify_dispatch', 'receipt_channel',
-                                         dict(code='QuitNotDispatched'))
-            except PeerExited:
-                # The copied app can exit normally before the published quit gets a reply.
-                pass
-            try:
-                self.process.wait(timeout=45)
-                good = self.process.returncode == 0 and not marker.exists()
-            except (OSError, subprocess.TimeoutExpired) as error:
+                already_gone = process.poll() is not None and process.empty()
+                if not self.process_verified:
+                    raise ReceiptFailure('shutdown', 'quit', 'verify_process', 'app/Samsara.exe',
+                                         dict(code='UnverifiedProcess'))
+                try:
+                    reply = self.channel.call('quit', timeout=10)
+                    if reply.get('quit_requested') is not True:
+                        raise ReceiptFailure('shutdown', 'quit', 'verify_dispatch', 'receipt_channel',
+                                             dict(code='QuitNotDispatched'))
+                except PeerExited:
+                    # The copied app can exit normally before the published quit gets a reply.
+                    pass
+            finally:
+                self.finish_tree(process, already_gone=already_gone)
+            if self.cleanup_outcome == 'terminated':
                 raise ReceiptFailure('shutdown', 'quit', 'wait_exit', 'logs/session.running',
-                                     error_details(error)) from None
-            if not good:
+                                     dict(code='TimeoutExpired'))
+            if process.poll() != 0 or marker.exists():
                 raise ReceiptFailure('shutdown', 'quit', 'verify_exit', 'logs/session.running',
                                      dict(code='NormalShutdownUnverified'))
             self.shutdown_verified = True
         finally:
-            self.lifecycle.append(dict(event='normal_exit', pid=self.process.pid,
-                                       verified=self.shutdown_verified))
+            try:
+                process.close()
+            finally:
+                self.lifecycle.append(dict(event='normal_exit', pid=process.pid,
+                                           verified=self.shutdown_verified, cleanup_outcome=self.cleanup_outcome))
+
+    def finish_tree(self, process, *, already_gone):
+        try:
+            try:
+                if not already_gone:
+                    process.wait(timeout=45)
+            except subprocess.TimeoutExpired:
+                pass
+            finally:
+                if process.empty():
+                    self.cleanup_outcome = 'gone' if already_gone else 'exited'
+                else:
+                    process.terminate_tree()
+                    process.wait(timeout=5)
+                    self.cleanup_outcome = 'terminated'
+        except Exception as error:
+            raise ReceiptFailure('shutdown', 'quit', 'cleanup_tree', 'app/Samsara.exe',
+                                 error_details(error)) from None
 
     def start_scratch(self):
         self.scratch_process = subprocess.Popen([sys.executable, str(Path(__file__).with_name('scratch.py')),
@@ -472,8 +582,6 @@ def main(argv=None):
     except Exception as failure:
         error = type(failure).__name__
     finally:
-        # Never kill, signal or discover an owner's process. A failed normal Exit
-        # leaves the isolated process for the runner, with lifecycle FAIL evidence.
         try:
             harness.quit()
         except Exception as failure:
@@ -491,6 +599,7 @@ def main(argv=None):
         normal = error is None and bool(harness.lifecycle) and harness.lifecycle[-1].get('verified') is True
         for row in harness.rows:
             row['normal_shutdown_verified'] = normal
+            row['cleanup_outcome'] = harness.cleanup_outcome
             row['acceptance_eligible'] = row['acceptance_eligible'] and normal
             write_json(row['evidence'], row)
         harness.save()
