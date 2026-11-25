@@ -94,7 +94,8 @@ def test_settings_footer_buttons_size_to_their_text(qapp):
     window = build_settings_window()
     window.resize(1100, 760)
     window.layout().activate()
-    for label in ("Cancel", "Apply && Close"):
+    # 1352 splits the Settings footer into two actions.
+    for label in ("Apply", "Close"):
         button = next(btn for btn in window.findChildren(QPushButton) if btn.text() == label)
         # Layouts use the natural size hint; the minimum is the 44px hit floor.
         assert button.width() >= button.sizeHint().width()

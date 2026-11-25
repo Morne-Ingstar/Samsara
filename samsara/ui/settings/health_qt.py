@@ -51,8 +51,9 @@ class HealthPage:
         # _fmt_time lives in _refresh_health_log (where it's actually used) --
         # this tab only builds the static command reference + table chrome.
 
+        # PLACEHOLDER COPY (1352)
         instant_note = QLabel(
-            "This tab is read-only — nothing here goes through Apply & Close. "
+            "This tab is read-only. "
             "Health entries are logged automatically by voice command."
         )
         instant_note.setWordWrap(True)

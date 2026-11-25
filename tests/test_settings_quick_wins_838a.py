@@ -49,7 +49,8 @@ def test_health_hides_apply_and_all_footers_say_cancel(qapp, monkeypatch):
             sidebar_row = next(row for row, index in window._sidebar_row_to_stack_index.items()
                                if index == stack_index)
             window._sidebar.setCurrentRow(sidebar_row)
-            assert window._close_button.text() == "Cancel"
+            # 1352 keeps the Close label across all destinations.
+            assert window._close_button.text() == "Close"
 
         help_index = next(i for i, module in enumerate(PAGE_MODULES)
                           if module.TITLE == "Help")
@@ -61,7 +62,7 @@ def test_health_hides_apply_and_all_footers_say_cancel(qapp, monkeypatch):
 
         for name in tools_page.TOOLS:
             window._select_tool(name)
-            assert window._close_button.text() == "Cancel"
+            assert window._close_button.text() == "Close"
             if name == "Health":
                 assert window._apply_button.isHidden()
             else:

@@ -92,6 +92,8 @@ class _SettingsWindow(
         self._building_contents = True
         self._assembly_depth = 0
         self._controls_at_open = copy.deepcopy(self.app.config)
+        self._tool_config_baselines = {}
+        self._draft_baselines = {}
         self.__dict__.pop('_refresh_conditions', None)
         self.__dict__.pop('_component_rows', None)
         self._tool_name = tool
@@ -160,18 +162,21 @@ class _SettingsWindow(
         footer_strip.setObjectName('footer')
         footer = QHBoxLayout(footer_strip)
         footer.addStretch()
-        # PLACEHOLDER COPY (838a): one left footer label across every page.
-        cancel = QPushButton("Cancel")
-        self._close_button = cancel
-        cancel.clicked.connect(self.close)
-        footer.addWidget(cancel)
-        apply = QPushButton("Apply && Close")
+        # PLACEHOLDER COPY (1352)
+        apply = QPushButton("Apply")
         apply.setObjectName("apply")
         self._apply_button = apply
-        apply.clicked.connect(self._apply_and_close)
+        apply.clicked.connect(self._apply)
         footer.addWidget(apply)
+        close = QPushButton("Close")
+        self._close_button = close
+        close.clicked.connect(self.close)
+        footer.addWidget(close)
+        for button in (apply, close):
+            button.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        QWidget.setTabOrder(apply, close)
         page_column.addWidget(footer_strip)
-        # Air around Tools / Cancel / Apply so they no longer touch the window edges (360).
+        # Keep the footer controls clear of the window edges (360).
         footer.setContentsMargins(theme.SPACE_2, theme.SPACE_1, theme.SPACE_2, theme.SPACE_2)
         footer.setSpacing(theme.SPACE_1)
         self._search_debounce = QTimer(self)
@@ -336,8 +341,6 @@ class _SettingsWindow(
         if row in self._sidebar_row_to_stack_index:
             self._tool_name = None
             self.setWindowTitle("Samsara — Settings")
-            if hasattr(self, '_close_button'):
-                self._close_button.setText('Cancel')
             self._ensure_destination(row)
             self._stack.setCurrentIndex(row)
             self._refresh_apply_button()
@@ -378,8 +381,6 @@ class _SettingsWindow(
         # Land at the heading after those layout/focus events as well.
         QTimer.singleShot(0, self._visit_callback(
             lambda: page.verticalScrollBar().setValue(0), page))
-        # PLACEHOLDER COPY (838a): one left footer label across every page.
-        self._close_button.setText('Cancel')
         self.setWindowTitle('Samsara — ' + tools_page.LABELS[name])
 
     def _refresh_apply_button(self):
@@ -399,9 +400,120 @@ class _SettingsWindow(
 
     def closeEvent(self, event):
         event.ignore()
+        if self.isVisible() and any(
+            self._draft_values(name) != baseline
+            for name, baseline in self._draft_baselines.items()
+        ):
+            self._ask_to_discard()
+            return
+        self._finish_close()
+
+    def _ask_to_discard(self):
+        if getattr(self, '_discard_dialog', None) is not None:
+            return
+        # PLACEHOLDER COPY (1352)
+        dialog = QMessageBox(QMessageBox.Icon.Warning, "Unsaved settings",
+                             "Discard your unsaved changes?", parent=self)
+        discard = dialog.addButton("Discard changes", QMessageBox.ButtonRole.DestructiveRole)
+        keep = dialog.addButton("Keep editing", QMessageBox.ButtonRole.RejectRole)
+        dialog.setDefaultButton(keep)
+        dialog.setEscapeButton(keep)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self._discard_dialog = dialog
+
+        def finished(_result):
+            self._discard_dialog = None
+            if dialog.clickedButton() is discard:
+                self._finish_close(discard=True)
+
+        dialog.finished.connect(finished)
+        dialog.open()
+
+    def _finish_close(self, *, discard=False):
+        if 'ava' in self._source_pages:
+            # A preview can write before Apply even if the controls look clean
+            # or Settings is hidden. The rollback keeps accepted consent.
+            if discard or (self._ava_immediate_before is not None
+                           and not self._ava_apply_committed):
+                self._cancel_ava_route_preview()
         self._visit_generation += 1
         self._stop_visit_timers()
         self.hide()
+
+    def _ensure_destination(self, index):
+        page = super()._ensure_destination(index)
+        name = _TAB_NAMES[index]
+        if name not in self._draft_baselines:
+            if name == 'Ava':
+                # Defer the existing route-preview rollback until Close is accepted.
+                self.removeEventFilter(self._ava_visit_filter)
+            if name == 'Audio':
+                voice = self._widgets['tts_voice_combo']
+                voice._settings_choice = voice.currentData()
+
+                def voice_changed(_index):
+                    voice._settings_choice = voice.currentData()
+
+                # Catalog refresh blocks this signal. Only a change to the
+                # selection counts as a pending voice edit.
+                voice.currentIndexChanged.connect(voice_changed)
+            self._draft_baselines[name] = self._draft_values(name)
+        return page
+
+    def _ensure_tool(self, name):
+        super()._ensure_tool(name)
+        if name not in self._draft_baselines:
+            self._draft_baselines[name] = self._draft_values(name)
+
+    @assembling
+    def _draft_values(self, name):
+        """Read the assembled editors without running their save callbacks."""
+        if name == 'Music':
+            return copy.deepcopy(self._music_library)
+        if name == 'Command library':
+            from samsara.ui.settings.commands_qt import _INTEGRATION_PACKS
+            return {pack: box.isChecked() for pack, box in self._widgets['_pack_checkboxes'].items()
+                    if pack not in _INTEGRATION_PACKS}
+        if name == 'Integrations':
+            values = {'todoist_enabled': self._widgets['todoist_enabled'].isChecked(),
+                      'todoist_token': self._widgets['todoist_token'].text()}
+            hermes = self._widgets.get('hermes_section')
+            if hermes is not None:
+                values.update(hermes=hermes.enabled.isChecked(), profile=hermes.profile.text(),
+                              model=hermes.model.text(), effort=hermes.effort.currentData())
+            return values
+
+        values = {}
+        for row in self._destination_rows:
+            if row.page_name != name:
+                continue
+            for widget in row.value.findChildren(QWidget):
+                if isinstance(widget, _HotkeyButton):
+                    values[widget] = widget.combo
+                elif isinstance(widget, QCheckBox):
+                    values[widget] = widget.isChecked()
+                elif isinstance(widget, QComboBox):
+                    if widget is self._widgets.get('mic_combo'):
+                        from samsara.ui.settings.general_qt import _MIC_CHOICE_ROLE
+                        choice = widget.currentData(_MIC_CHOICE_ROLE) or {}
+                        values[widget] = choice.get('microphone_name') or choice.get('microphone')
+                    elif widget is self._widgets.get('tts_voice_combo'):
+                        values[widget] = widget._settings_choice
+                    else:
+                        data = widget.currentData()
+                        values[widget] = widget.currentText() if data is None else data
+                elif isinstance(widget, (QSpinBox, QDoubleSpinBox, QSlider)):
+                    values[widget] = widget.value()
+                elif isinstance(widget, (QLineEdit, QPlainTextEdit)) and not widget.isReadOnly():
+                    if not isinstance(widget.parentWidget(), (QAbstractSpinBox, QComboBox)):
+                        values[widget] = widget.text() if isinstance(widget, QLineEdit) else widget.toPlainText()
+        if name == 'Dictation':
+            values['wake_profiles'] = tuple(
+                (controls['id'], controls['phrase'].text(), controls['target_process'].text(),
+                 controls['send_word'].text(), controls['enabled'].isChecked())
+                for controls in self._widgets['wake_profile_controls']
+            )
+        return values
 
     def apply_theme(self):
         self.setStyleSheet(presentation_style())
@@ -481,12 +593,23 @@ class _SettingsWindow(
         return profiles
 
     def _apply_and_close(self):
+        # Keep the existing internal save-and-close entry for its callers.
+        if self._apply():
+            self._finish_close()
+
+    def _apply(self):
+        tool = self._tool_name
         previous_sound = self.app.config.get('sound_theme', 'cute')
-        super()._apply_and_close()
-        if self._tool_name in ('Command library', 'Integrations'):
+        if not super()._apply_and_close(close=False):
+            return False
+        for name in (tool,) if tool else _TAB_NAMES:
+            if name in self._draft_baselines:
+                self._draft_baselines[name] = self._draft_values(name)
+        if tool in ('Command library', 'Integrations'):
             rebuild = getattr(getattr(self.app, 'command_executor', None), 'rebuild_matcher', None)
             if callable(rebuild):
                 rebuild()
-        if not self._tool_name and self.app.config.get('sound_theme', 'cute') != previous_sound:
+        if not tool and self.app.config.get('sound_theme', 'cute') != previous_sound:
             root = Path(getattr(self.app, 'sounds_dir', None) or Path(__file__).resolve().parents[2] / 'sounds')
             self._apply_sound_theme(self.app.config['sound_theme'], root, root / 'themes')
+        return True

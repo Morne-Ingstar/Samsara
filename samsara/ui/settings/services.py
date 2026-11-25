@@ -457,7 +457,7 @@ class SettingsServices:
         from samsara.tts.runtime import rebuild_tts_runtime
         rebuild_tts_runtime(self.app, requested)
 
-    def _apply_and_close(self):
+    def _apply_and_close(self, *, close=True):
         """Collect updates from each tab's registered save fn, in
         registration order (== tab-build order in __init__), merge into one
         dict, then a single locked config.update + save_config.
@@ -473,6 +473,11 @@ class SettingsServices:
         from samsara import listening_display
         from samsara import ava_readiness
         from samsara.ui.speech_hardware_qt import hardware_signature, request_settings_restart
+        if getattr(self.app, '_config_load_failed', False):
+            self._show_settings_save_error()
+            return False
+        opened = copy.deepcopy(getattr(self, '_config_at_open', None))
+        ava_committed = getattr(self, '_ava_apply_committed', False)
         previous_hardware = hardware_signature(self.app.config)
         previous_ava = ava_readiness.settings_signature(self.app)
         wake_was_enabled = bool(self.app.config.get('wake_word_enabled', False))
@@ -482,32 +487,38 @@ class SettingsServices:
             updates.update(save_fn(updates))
         from samsara.model_guard import settings_choices, save_settings
         model_choices = settings_choices(self, updates)
+        draft = copy.deepcopy(updates)
         if hasattr(self, '_config_at_open'):
             from samsara.settings_merge import merge_outside_changes
+            baselines = getattr(self, '_tool_config_baselines', {})
+            tool = getattr(self, '_tool_name', None)
+            baseline = self._config_at_open
+            if tool:
+                baseline = baselines.get(tool, getattr(self, '_controls_at_open', baseline))
             updates, kept = merge_outside_changes(
-                self._config_at_open, self.app.config, updates)
+                baseline, self.app.config, updates)
             if kept:
                 logger.info('[SETTINGS] kept changes made outside this window: %s', ', '.join(kept))
 
         if 'tts' in updates and hasattr(self, '_validate_tts_voice'):
             updates['tts'] = self._validate_tts_voice(updates['tts'])
 
-        # Switch the live stream before the bulk config write. If the new ID
-        # were written first, switch_microphone() would hit its same-ID guard
-        # and ACE would continue recording from the old device.
-        apply_microphone_choice(self.app, updates)
-
-
         requested_output = updates.get('output_device')
         requested_output_name = updates.get('output_device_name')
-        current_output = (
-            self.app.config.get('output_device'),
-            self.app.config.get('output_device_name'),
-        )
-        if 'output_device' in updates and (
-            requested_output, requested_output_name
-        ) != current_output:
-            self.app.switch_output_device(requested_output, requested_output_name)
+        try:
+            # Switch the live stream before the bulk config write. If the new ID
+            # were written first, switch_microphone() would hit its same-ID guard
+            # and ACE would continue recording from the old device.
+            apply_microphone_choice(self.app, updates)
+            current_output = (
+                self.app.config.get('output_device'),
+                self.app.config.get('output_device_name'),
+            )
+            if ('output_device' in updates
+                    and (requested_output, requested_output_name) != current_output):
+                self.app.switch_output_device(requested_output, requested_output_name)
+        except Exception:
+            return self._settings_save_failed(opened, ava_committed)
         was_sc_enabled = bool(
             self.app.config.get('smart_corrections', {}).get('enabled', False)
         )
@@ -532,13 +543,29 @@ class SettingsServices:
                     (self.app.config.get('command_mode') or {}).get('command_matching_enabled', False))
             if replace_tts:
                 self._replace_tts_runtime(requested_tts)
-            save_settings(self.app, model_choices)
-            if 'diagnostics' in updates:
+            try:
+                saved = save_settings(self.app, model_choices)
+            except Exception:
+                saved = False
+            if saved is not False and 'diagnostics' in updates:
                 # Recording paths use this cached flag; Apply takes effect on
                 # the next utterance without restarting the running app.
                 self.app._stage_timing_enabled = bool(
                     (self.app.config.get('diagnostics', {}) or {}).get('stage_timing', False)
                 )
+
+        if saved is False:
+            return self._settings_save_failed(opened, ava_committed)
+
+        if opened is not None:
+            # The controls still show their submitted values after an outside
+            # change wins the merge. Use those values for the next merge.
+            if tool:
+                # A tool can carry live values owned by another destination.
+                # Keep those out of the other destination's opening snapshot.
+                baselines[tool] = {**baseline, **draft}
+            else:
+                self._config_at_open.update(draft)
 
         ava_readiness.recheck_after_settings(self.app, previous_ava)
         if "tts" in updates:
@@ -580,7 +607,8 @@ class SettingsServices:
             except Exception as e:
                 logger.debug(f"[SETTINGS] Smart Corrections warm_up call failed: {e}")
 
-        self.close()
+        if close:
+            self.close()
         from samsara.wake_setup import calibration_needed
         if not wake_was_enabled and calibration_needed(self.app.config):
             from samsara.ui.mic_setup_wizard_qt import open_wake_calibration
@@ -589,3 +617,22 @@ class SettingsServices:
         listening_display.request_restart_once(
             self.app, lambda text: QMessageBox.information(self, "Samsara", text),
         )
+        return True
+
+    def _settings_save_failed(self, opened, ava_committed):
+        # Ava's collector can adjust the opening snapshot before the write.
+        if opened is not None:
+            self._config_at_open = opened
+        if hasattr(self, '_ava_apply_committed'):
+            self._ava_apply_committed = ava_committed
+        self._show_settings_save_error()
+        return False
+
+    def _show_settings_save_error(self):
+        logger.error('[SETTINGS] Could not save changes')
+        # PLACEHOLDER COPY (1352)
+        dialog = QMessageBox(QMessageBox.Icon.Warning, "Settings",
+                             "Could not save your changes. Try Apply again.",
+                             QMessageBox.StandardButton.Ok, self)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dialog.open()

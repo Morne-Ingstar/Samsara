@@ -5,7 +5,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtWidgets import QLabel
+from PySide6.QtWidgets import QLabel, QMessageBox
 
 from samsara import ai_preferences, smart_corrections
 from samsara.config_defaults import cfg_get
@@ -65,6 +65,14 @@ def settings(monkeypatch, qt_widget_scope, tmp_path):
 def select(window, title):
     window._sidebar.setCurrentRow(_TAB_NAMES.index(title))
     return window._stack.currentWidget()
+
+
+def close_and_discard(window):
+    # 1356: Close asks before discarding staged changes.
+    window._close_button.click()
+    dialog, = (box for box in window.findChildren(QMessageBox) if box.isVisible())
+    next(button for button in dialog.buttons() if button.text() == "Discard changes").click()
+    assert not window.isVisible()
 
 
 def defaults(**overrides):
@@ -253,7 +261,7 @@ def test_moved_values_apply_and_cancel_round_trip_with_precision(settings):
     window._pages["Dictation"].advanced.toggle.setChecked(True)
     window._widgets["sc_model"].setText("discarded-model")
     window._widgets["scroll_target_foreground"].click()
-    window._close_button.click()
+    close_and_discard(window)
     window.show()
     widgets = window._widgets
     assert widgets["sc_model"].text() == "fixture-model"
@@ -315,7 +323,7 @@ def test_wake_profiles_remove_middle_add_and_cancel(settings):
     window._pages["Dictation"].advanced.toggle.setChecked(True)
     window._widgets["wake_profile_controls"][0]["remove"].click()
     window._widgets["wake_profile_add"].click()
-    window._close_button.click()
+    close_and_discard(window)
     window.show()
     controls = window._widgets["wake_profile_controls"]
     assert [control["id"] for control in controls] == [record["id"] for record in saved]

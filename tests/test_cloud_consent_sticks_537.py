@@ -7,7 +7,7 @@ from unittest.mock import Mock
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent
-from PySide6.QtWidgets import QDialog, QPushButton
+from PySide6.QtWidgets import QDialog, QMessageBox, QPushButton
 
 from plugins.commands import ask_ollama
 from samsara import ai_preferences as ai, ava_readiness, cloud_llm, ava_turn_queue, execution_policy
@@ -300,6 +300,38 @@ def test_cancel_discards_route_provider_and_key_but_retains_exact_consents(harne
         destination = ai.provider_for({'cloud_llm': {'provider': provider}}, 'cloud')
         assert ai.consent_covers(window.app.config['ava']['consent'],
                                  features=('ava',), provider=destination, cloud=True)
+
+
+def test_visible_close_keeps_ava_preview_until_discard_and_persists_exact_consents(harness):
+    make, _, _ = harness
+    config = local_accepted()
+    window = make(config)
+    window.show_tab('Ava')
+    window._widgets['providerRoute'].setCurrentIndex(2)
+    window._widgets['cloud_provider'].setCurrentText('OpenAI')
+    window._widgets['cloud_api_key'].setText('synthetic-unapplied')
+    accepted = deepcopy(window.app.config['ava']['consent'])
+
+    def choose(text):
+        dialog, = (box for box in window.findChildren(QMessageBox) if box.isVisible())
+        next(button for button in dialog.buttons() if button.text() == text).click()
+
+    window._close_button.click()
+    choose('Keep editing')
+    assert window.isVisible()
+    assert window.app.config['ava']['provider_policy'] == 'cloud'
+    assert window.app.config['cloud_llm']['provider'] == 'openai'
+    assert window._widgets['cloud_api_key'].text() == 'synthetic-unapplied'
+
+    window.close()
+    choose('Discard changes')
+    assert not window.isVisible()
+    persisted = json.loads(window.app.state_file.read_text(encoding='utf-8'))
+    for settings in (persisted, window.app.config):
+        assert settings['ava']['provider_policy'] == 'local'
+        assert settings['cloud_llm']['provider'] == 'deepseek'
+        assert settings['cloud_llm']['api_key'] == config['cloud_llm']['api_key']
+        assert settings['ava']['consent'] == accepted
 
 
 def test_cancel_preserves_outside_edits_after_route_choice(harness):
