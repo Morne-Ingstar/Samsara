@@ -178,23 +178,57 @@ def perform(app, home, operation):
             notice_title_correct=bool(getattr(app, '_mic_silence_notice_1252', None)
             and app._mic_silence_notice_1252.windowTitle() == 'No sound from your microphone')))
     if operation == 'continuous_stop':
-        app.stop_continuous_mode()
+        try:
+            app.stop_continuous_mode()
+        finally:
+            if getattr(app, '_receipt_reread_manager', None) is not None:
+                def clear_draft():
+                    manager = app._receipt_reread_manager
+                    manager.reset()
+                    app.listening_indicator.set_session_mode(None)
+                    app.live_surface.sync_draft(manager)
+                    app._receipt_reread_manager = None
+                on_ui(clear_draft)
         return dict(stopped=not app.continuous_active)
     if operation == 'reread_stage':
         from samsara.session_modes import SessionMode, UtteranceSignals
-        manager = app._session_mode_manager
-        if not manager.buffer_dictate_until_commit:
-            raise RuntimeError('ManualDraftRequired')
-        manager.force_mode(SessionMode.DICTATE)
-        manager.dispatch_utterance('The receipt draft stays here.', UtteranceSignals(True, (), True))
-        return dict(draft_present=bool(manager.draft_document.text))
+
+        def stage():
+            manager = app._ensure_session_mode_manager()
+            send_mode = (app.config.get('hands_free') or {}).get('send_mode', 'staged')
+            if not manager.buffer_dictate_until_commit or send_mode != 'staged':
+                raise RuntimeError('ManualDraftRequired')
+            if manager.draft_document.text or manager.retained_draft:
+                raise RuntimeError('EmptyDraftRequired')
+            # Toggle entry uses this same reset. The silence fixture already
+            # owns capture, so do not start a second microphone consumer.
+            app._receipt_reread_manager = manager
+            manager.reset(initial_mode=SessionMode.DICTATE)
+            app.listening_indicator.set_session_mode('HANDS FREE')
+            # Skip foreground-based verbatim detection for this fixture. The
+            # short fragment also bypasses the single-line editor probe.
+            previous_verbatim = app.config.get('verbatim')
+            app.config['verbatim'] = {'enabled': False}
+            try:
+                outcome = manager.dispatch_utterance('Synthetic receipt draft', UtteranceSignals(True, (), True))
+            finally:
+                if previous_verbatim is None:
+                    app.config.pop('verbatim')
+                else:
+                    app.config['verbatim'] = previous_verbatim
+            app.live_surface.sync_draft(manager)
+            return dict(draft_present=outcome.kind == 'dictate_staged' and bool(manager.draft_document.text))
+
+        return on_ui(stage)
     if operation == 'reread_state':
         def observe():
-            from PySide6.QtWidgets import QApplication, QPushButton
-            buttons = [b for w in QApplication.topLevelWidgets() for b in w.findChildren(QPushButton)
-                       if b.accessibleName() == 'Re-read draft audio']
-            return dict(reread_visible=any(b.isVisible() for b in buttons),
-                        handsfree_draft=bool(app._session_mode_manager.draft_document.text))
+            from PySide6.QtWidgets import QPushButton
+            widget = app.live_surface.widget
+            buttons = widget.findChildren(QPushButton) if widget is not None else ()
+            manager = getattr(app, '_receipt_reread_manager', None)
+            return dict(reread_visible=any(b.accessibleName() == 'Re-read draft audio' and b.isVisible()
+                                           for b in buttons),
+                        handsfree_draft=bool(manager and manager.draft_document.text))
         return on_ui(observe)
     if operation == 'mouse_down':
         replay.silence()
