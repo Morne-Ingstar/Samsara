@@ -13,13 +13,15 @@ from samsara.spoken_numbers import parse_spoken_number
 _PORT = 8790
 _TIMEOUT = 1.0
 _MAX_BYTES = 2 * 1024 * 1024
-_STATUSES = {"working", "waiting", "parked", "done"}
+_STATUSES = {"working", "waiting", "parked", "done", "prep_audit", "landed", "in_daily", "reopened"}
 
 
 @dataclass(frozen=True)
 class Answer:
     text: str
     kind: str = "success"
+    reason: str = "ok"
+    http_status: int | None = None
 
 
 def request_id(utterance):
@@ -81,12 +83,14 @@ def summarize(document, ticket_id, *, now=None):
     if len({row["id"] for row in rows}) != len(rows):
         raise ValueError("duplicate ticket identifiers")
     if not rows:
-        return Answer("Cockpit returned no tickets. Its ticket store may be empty or missing.", "error")
+        return Answer("Cockpit returned no tickets. Its ticket store may be empty or missing.",
+                      "error", reason="missing_id")
     row = next((row for row in rows if row["id"] == ticket_id), None)
     if row is None:
-        return Answer(f"I couldn't find ticket {ticket_id}. Say another ticket number.", "clarification")
+        return Answer(f"I couldn't find ticket {ticket_id}. Say another ticket number.",
+                      "clarification", reason="missing_id")
     status = row.get("status")
-    if status is not None and status not in _STATUSES:
+    if status is not None and (not isinstance(status, str) or status not in _STATUSES):
         raise ValueError("invalid ticket status")
     text = (f"{ticket_id}: {_field(row, 'title', 100)}. Status: {status or 'not recorded'}. "
             f"Left off: {_field(row, 'left_off', 160)}. Next: {_field(row, 'next', 130)}. "
@@ -97,16 +101,16 @@ def summarize(document, ticket_id, *, now=None):
 
 def lookup(ticket_id):
     """One GET, direct IPv4 loopback, no proxies, redirects or attachment reads."""
-    if not ticket_id:
-        return Answer("Which ticket number? Say resume ticket T seven.", "clarification")
-    if not re.fullmatch(r"T[1-9][0-9]*", ticket_id):
-        return Answer("Which ticket number? Say resume ticket T seven.", "clarification")
+    if not ticket_id or not re.fullmatch(r"T[1-9][0-9]*", ticket_id):
+        return Answer("Which ticket number? Say resume ticket T seven.",
+                      "clarification", reason="invalid_id")
     connection = HTTPConnection("127.0.0.1", _PORT, timeout=_TIMEOUT)
     try:
         connection.request("GET", "/api/tickets", headers={"Accept": "application/json"})
         response = connection.getresponse()
         if response.status != 200:
-            return Answer("I couldn't read Cockpit's tickets. Its local API returned an error.", "error")
+            return Answer("I couldn't read Cockpit's tickets. Its local API returned an error.",
+                          "error", reason="http_status", http_status=response.status)
         if response.getheader("Content-Type", "").split(";", 1)[0].strip().lower() != "application/json":
             raise ValueError("unexpected content type")
         # Bound body size and total body-read duration, including slow trickles.
@@ -128,11 +132,14 @@ def lookup(ticket_id):
                 raise ValueError("response too large")
         return summarize(json.loads(b"".join(chunks).decode("utf-8")), ticket_id)
     except TimeoutError:
-        return Answer("Cockpit's ticket lookup timed out. Try again when Cockpit is responding.", "error")
+        return Answer("Cockpit's ticket lookup timed out. Try again when Cockpit is responding.",
+                      "error", reason="timeout")
     except (OSError, HTTPException):
-        return Answer("I couldn't reach Cockpit's local ticket service. Check that Cockpit is running.", "error")
+        return Answer("I couldn't reach Cockpit's local ticket service. Check that Cockpit is running.",
+                      "error", reason="api_unavailable")
     except (ValueError, TypeError, RecursionError):
-        return Answer("Cockpit returned invalid ticket data. I couldn't read that ticket.", "error")
+        return Answer("Cockpit returned invalid ticket data. I couldn't read that ticket.",
+                      "error", reason="schema_error")
     finally:
         connection.close()
 

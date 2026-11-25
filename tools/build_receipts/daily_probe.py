@@ -223,8 +223,8 @@ def perform(app, home, operation):
                         correct_answer_to_speech=observed == [True])
         finally:
             coordinator.speak = original
-    if operation in {'ticket_lookup', 'ticket', 'game_on', 'game_off', 'confirmation_policy',
-                     'mic', 'quit'}:
+    if operation in {'ticket_lookup', 'ticket_lookup_diagnostic', 'ticket', 'game_on', 'game_off',
+                     'confirmation_policy', 'mic', 'quit'}:
         return legacy_perform(app, home, operation)
     raise ValueError('UnknownOperation')
 

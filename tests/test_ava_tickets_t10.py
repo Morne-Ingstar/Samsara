@@ -3,7 +3,9 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import runpy
 import socket
+import sys
 import threading
 import time
 
@@ -146,6 +148,88 @@ def test_real_handler_queue_http_and_speech(harness, monkeypatch, words, policy_
     assert h.app._ava_turn_outcome == ('Ticket record', 'success')
     assert before == document()
     assert all(item.cancelled for item in h.timers)
+
+
+@pytest.fixture
+def daily_ticket_probe(monkeypatch, tmp_path):
+    from tools.build_receipts import desktop, installed_probe, replay_input
+
+    # The copied-build harness installs these modules under plugin-local names.
+    monkeypatch.setitem(sys.modules, 'receipt_probe', installed_probe)
+    monkeypatch.setitem(sys.modules, 'receipt_replay', replay_input)
+    monkeypatch.setitem(sys.modules, 'receipt_desktop', desktop)
+    daily_perform = runpy.run_module('tools.build_receipts.daily_probe')['perform']
+    app = SimpleNamespace(_receipt_replay=None)
+    handled = set()
+
+    def call(operation):
+        txid = f'{len(handled):032x}'
+        installed_probe.publish(tmp_path / f'request-{txid}.json', dict(id=txid, operation=operation))
+        installed_probe.service_requests(tmp_path, handled, lambda op: daily_perform(app, tmp_path, op))
+        reply = json.loads((tmp_path / f'response-{txid}.json').read_text(encoding='utf-8'))
+        assert reply.pop('id') == txid
+        return reply
+
+    return call
+
+
+@pytest.mark.parametrize('status', [
+    'working', 'waiting', 'parked', 'done', 'prep_audit', 'landed', 'in_daily', 'reopened',
+])
+def test_all_cockpit_statuses_reach_speech_and_daily_probe(harness, monkeypatch, daily_ticket_probe, status):
+    with server(monkeypatch, document(id='T10', status=status)) as requests:
+        harness.ask('resume ticket T ten')
+        harness.ask('where were we on ticket T ten?')
+        harness.drain()
+        lookup = daily_ticket_probe('ticket_lookup')
+        diagnostic = daily_ticket_probe('ticket_lookup_diagnostic')
+
+    assert [request[:2] for request in requests] == [('GET', '/api/tickets')] * 4
+    assert len(harness.speech) == 2 and harness.calls == []
+    assert all(f'Status: {status}.' in text for text, _ in harness.speech)
+    assert harness.app._ava_turn_outcome == ('Ticket record', 'success')
+    assert lookup == {'ok': True, 'value': {'lookup_success': True, 'has_id': True, 'has_checkpoint': True}}
+    assert diagnostic == {'ok': True, 'value': {'reason': 'ok', 'http_status': None}}
+
+
+@pytest.mark.parametrize('body,options,reason,http_status', [
+    pytest.param({}, {'status': 302, 'location': 'https://invalid.example'}, 'http_status', 302, id='redirect'),
+    pytest.param({}, {'status': 404}, 'http_status', 404, id='http-not-found'),
+    pytest.param(None, {'delay': .3}, 'timeout', None, id='timeout'),
+    pytest.param(document(), {}, 'missing_id', None, id='missing-ticket'),
+    pytest.param({'rev': 1, 'tickets': []}, {}, 'missing_id', None, id='empty-store'),
+    pytest.param(b'{bad', {}, 'schema_error', None, id='malformed-json'),
+    pytest.param(document(id='T10', status=['working']), {}, 'schema_error', None, id='invalid-status-type'),
+    pytest.param(document(id='T10', padding='x' * (2 * 1024 * 1024)), {},
+                 'schema_error', None, id='oversize-valid-json'),
+])
+def test_daily_ticket_diagnostic_failure(daily_ticket_probe, monkeypatch, body, options, reason, http_status):
+    with server(monkeypatch, body, **options) as requests:
+        assert daily_ticket_probe('ticket_lookup_diagnostic') == {
+            'ok': True, 'value': {'reason': reason, 'http_status': http_status},
+        }
+        assert daily_ticket_probe('ticket_lookup') == {
+            'ok': True, 'value': {'lookup_success': False, 'has_id': False, 'has_checkpoint': False},
+        }
+    assert [request[:2] for request in requests] == [('GET', '/api/tickets')] * 2
+
+
+def test_daily_ticket_diagnostic_unavailable(daily_ticket_probe, monkeypatch):
+    def offline(address, *_args, **_kwargs):
+        assert address == ('127.0.0.1', 8790)
+        raise ConnectionRefusedError('synthetic exception detail')
+
+    monkeypatch.setattr(socket, 'create_connection', offline)
+    assert daily_ticket_probe('ticket_lookup_diagnostic') == {
+        'ok': True, 'value': {'reason': 'api_unavailable', 'http_status': None},
+    }
+
+
+def test_daily_ticket_diagnostic_does_not_accept_ticket_argument(daily_ticket_probe, monkeypatch):
+    monkeypatch.setattr(tickets, 'HTTPConnection', lambda *a, **kw: pytest.fail('unexpected HTTP'))
+    assert daily_ticket_probe('ticket_lookup_diagnostic T7') == {
+        'ok': False, 'error': {'code': 'ValueError', 'winerror': None, 'errno': None},
+    }
 
 
 @pytest.mark.parametrize('words', ['resume ticket', 'resume that one', 'resume tickets T7 and T8',
