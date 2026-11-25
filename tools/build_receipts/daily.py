@@ -161,11 +161,17 @@ class DailyHarness(Harness):
             row = make_row(feature, self.identity, trigger, evidence, fn(), limitation=limitation)
         except Exception as error:
             if isinstance(error, ReceiptFailure):
-                if not isinstance(error, ReplyReadLocked) or error.diagnostic['phase'] != 'transaction':
+                if error.diagnostic['phase'] != 'transaction' or error.code == 'ProbeExited':
+                    raise
+                reply_locked = isinstance(error, ReplyReadLocked)
+                dispatch_failed = error.diagnostic['action'] == 'dispatch'
+                # A probe dispatch error arrives through a working mailbox.
+                if not (reply_locked or dispatch_failed):
                     raise
                 diagnostics = run_diagnostics(error, phase='transaction', operation='run_checks', path=None)
-                # PLACEHOLDER COPY (1372)
-                limitation += ' The reply file stayed locked until the read deadline.'
+                if reply_locked:
+                    # PLACEHOLDER COPY (1372)
+                    limitation += ' The reply file stayed locked until the read deadline.'
             code = error.code if isinstance(error, ProbeError) else type(error).__name__
             row = make_row(feature, self.identity, trigger, evidence, {'completed': False}, limitation=limitation)
             row['failure_code'] = code
@@ -215,9 +221,20 @@ class DailyHarness(Harness):
     def silent(self):
         # Quiet continuous input is expected. A completed silent hold still warns.
         capture = self.mouse(hold_seconds=1.0)
-        result = common.wait_for(lambda: (s if (s := self.channel.call('silence_state'))['notice_visible'] else None),
-                                 timeout=25)
-        return dict(**capture, **result)
+        notice = dict(notice_visible=False, notice_title_correct=False)
+
+        def visible():
+            state = self.channel.call('silence_state')
+            notice.update(notice_visible=state['notice_visible'] is True,
+                          notice_title_correct=state['notice_title_correct'] is True)
+            return notice['notice_visible']
+
+        try:
+            common.wait_for(visible, timeout=25)
+        except TimeoutError:
+            # Retain the completed hold and last notice observation in a failed row.
+            pass
+        return dict(**capture, **notice)
 
     def reread(self):
         try:
