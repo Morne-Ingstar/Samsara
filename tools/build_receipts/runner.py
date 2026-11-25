@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import errno
 import json
 import os
 from pathlib import Path
@@ -46,6 +47,10 @@ class PeerExited(ReceiptFailure):
     """A published quit may exit before the reply is visible."""
 
 
+class ReplyReadLocked(ReceiptFailure):
+    """The reply remained unreadable until the transaction deadline."""
+
+
 class Channel:
     def __init__(self, directory, process):
         self.directory, self.process = directory, process
@@ -57,13 +62,24 @@ class Channel:
             return None
 
     def wait_reply(self, name, error_name, *, phase, operation, timeout, request=None):
+        locked_reply = None
+
         def response():
+            nonlocal locked_reply
+            locked_reply = None
             for filename in (error_name, name):
                 try:
                     value = self.read(filename)
                 except (OSError, ValueError) as error:
-                    raise ReceiptFailure(phase, operation, 'read_reply', f'receipt_channel/{filename}',
-                                         error_details(error)) from None
+                    path = f'receipt_channel/{filename}'
+                    details = error_details(error)
+                    winerror = details['winerror']
+                    if (winerror in (32, 33) or
+                            (winerror is None and details['errno'] == errno.EACCES)):
+                        # Poll this same file again without publishing another request.
+                        locked_reply = ReplyReadLocked(phase, operation, 'read_reply', path, details)
+                        return None
+                    raise ReceiptFailure(phase, operation, 'read_reply', path, details) from None
                 if value is None:
                     continue
                 if not isinstance(value, dict):
@@ -85,6 +101,8 @@ class Channel:
         try:
             return wait_for(response, timeout=timeout)
         except TimeoutError as error:
+            if locked_reply is not None:
+                raise locked_reply from None
             raise ReceiptFailure(phase, operation, 'wait_reply', f'receipt_channel/{name}',
                                  error_details(error)) from None
 
@@ -379,9 +397,17 @@ class Harness:
     def ticket(self):
         # Real installed Cockpit reader, never serialize or echo its contents.
         result = self.channel.call('ticket_lookup')
-        self.channel.call('ticket')
-        reply = wait_for(lambda: (s if (s := self.channel.call('state'))['ticket_answer'] else None))
-        return dict(**result, command_reply_queued=reply['ticket_success'])
+        dispatch = self.channel.call('ticket')
+        admitted = dispatch.get('dispatch_state') in ('queued', 'completed')
+        reply = dispatch
+        if admitted and not reply['ticket_answer']:
+            try:
+                reply = wait_for(lambda: (s if (s := self.channel.call('state'))['ticket_answer'] else None))
+            except TimeoutError:
+                # Keep the reader and executor evidence when the reply never appears.
+                pass
+        return dict(**result, command_admitted=admitted, ticket_reply_observed=reply['ticket_answer'] is True,
+                    command_reply_queued=admitted and reply['ticket_success'] is True)
 
     def pace(self):
         self.channel.call('settings')

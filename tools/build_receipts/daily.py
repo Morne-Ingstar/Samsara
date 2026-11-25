@@ -13,10 +13,10 @@ import uuid
 
 try:
     from . import common, desktop, replay_input
-    from .runner import Harness, ProbeError, ReceiptFailure, error_details
+    from .runner import Harness, ProbeError, ReceiptFailure, ReplyReadLocked, error_details
 except ImportError:
     import common, desktop, replay_input
-    from runner import Harness, ProbeError, ReceiptFailure, error_details
+    from runner import Harness, ProbeError, ReceiptFailure, ReplyReadLocked, error_details
 
 
 FEATURES = {
@@ -156,14 +156,21 @@ class DailyHarness(Harness):
 
     def check(self, feature, trigger, fn, limitation, eligible=False):
         evidence = self.artifacts / (feature + '.json')
+        diagnostics = None
         try:
             row = make_row(feature, self.identity, trigger, evidence, fn(), limitation=limitation)
-        except ReceiptFailure:
-            raise
         except Exception as error:
+            if isinstance(error, ReceiptFailure):
+                if not isinstance(error, ReplyReadLocked) or error.diagnostic['phase'] != 'transaction':
+                    raise
+                diagnostics = run_diagnostics(error, phase='transaction', operation='run_checks', path=None)
+                # PLACEHOLDER COPY (1372)
+                limitation += ' The reply file stayed locked until the read deadline.'
             code = error.code if isinstance(error, ProbeError) else type(error).__name__
             row = make_row(feature, self.identity, trigger, evidence, {'completed': False}, limitation=limitation)
             row['failure_code'] = code
+            if diagnostics is not None:
+                row['failure_diagnostics'] = diagnostics
         common.write_json(evidence, row)
         self.rows.append(row)
         self.save()
@@ -206,27 +213,26 @@ class DailyHarness(Harness):
         return dict(manual_fixture_ready=True, **super().game())
 
     def silent(self):
-        started = self.channel.call('silence_start')
-        try:
-            result = common.wait_for(lambda: (s if (s := self.channel.call('silence_state'))['notice_visible'] else None), timeout=25)
-            return dict(**started, **result)
-        finally:
-            self.channel.call('continuous_stop')
+        # Quiet continuous input is expected. A completed silent hold still warns.
+        capture = self.mouse(hold_seconds=1.0)
+        result = common.wait_for(lambda: (s if (s := self.channel.call('silence_state'))['notice_visible'] else None),
+                                 timeout=25)
+        return dict(**capture, **result)
 
     def reread(self):
-        self.channel.call('silence_start')
         try:
+            self.channel.call('silence_start')
             staged = self.channel.call('reread_stage')
             result = common.wait_for(lambda: (s if (s := self.channel.call('reread_state'))['reread_visible'] else None))
             return dict(**staged, **result)
         finally:
             self.channel.call('continuous_stop')
 
-    def mouse(self):
-        down = self.channel.call('mouse_down')
+    def mouse(self, *, hold_seconds=.3):
         try:
+            down = self.channel.call('mouse_down')
             common.wait_for(lambda: self.channel.call('mouse_state')['recording'], timeout=5)
-            time.sleep(.3)
+            time.sleep(hold_seconds)
         finally:
             self.channel.call('mouse_up')
         common.wait_for(lambda: not any(self.channel.call('mouse_state').values()), timeout=30)
@@ -245,8 +251,8 @@ class DailyHarness(Harness):
                    'One ordinary command and confirmation decision only.')
         self.check('T80', 'Check my mic > quiet and recorded phrase > verify checklist and transcript visibility', self.mic,
                    'Installed capture, metrics, save and UI; controlled recognizer replies; no physical mic or ASR proof.')
-        self.check('1252', 'Continuous listening > zero PCM for 10 seconds > visible dead-mic notice', self.silent,
-                   'Installed silence observer and actual notice; no physical unplug or muted-device diagnosis.')
+        self.check('1252', 'Hold capture with zero PCM > release > visible dead-mic notice', self.silent,
+                   'Installed hold silence observer and notice; no physical unplug or stalled-device coverage.')
         self.check('1254', 'Mouse 5 callback down > recording > callback up > stopped', self.mouse,
                    'Behaviour below hook boundary, silence only; physical button, global hook and helper IPC NOT COVERED.')
         self.check('1251', 'Continuous DICTATE > synthetic staged draft > visible Re-read', self.reread,
@@ -332,6 +338,8 @@ def main(argv=None):
             'updates': {'automatic_checks': False}, 'plugins': {'personal_dir': 'personal_plugins'},
             'command_packs': {'window-management': True, 'ai': True},
             'audio_coordinator': {'duck_factor': 1.0},
+            # Exercise the real local reply queue at zero playback volume.
+            'tts': {'enabled': True, 'feedback_level': 'brief', 'engine': 'winrt', 'volume': 0.0},
             'ducking': {'enabled': False, 'recording_mode': 'off', 'hands_free_enabled': False},
             'ava_edit': {'enabled': False}, 'ui': {'live_surface': {'enabled': True}},
             'history': {'enabled': False}, 'privacy_mode': True,
