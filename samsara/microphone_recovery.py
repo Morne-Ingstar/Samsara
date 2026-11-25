@@ -629,6 +629,7 @@ class DeviceChanges:
         self._event_trigger = 'state'
         self.notifications = True
         self._capture = None
+        self.missing_capture = None
         self._render = None
         self._name_ambiguity_reported = False
         self._reported = set()
@@ -837,6 +838,10 @@ class DeviceChanges:
             removed = False
         else:
             removed = bool(previous) and previous != present
+        if removed and not present and ace is not None:
+            self.missing_capture = (ace, name)
+        elif present:
+            self.missing_capture = None
         configured = getattr(self.app, 'config', {}).get('microphone_name')
         configured_before = matching_capture_endpoints(before, configured)
         configured_present = matching_capture_endpoints(current, configured)

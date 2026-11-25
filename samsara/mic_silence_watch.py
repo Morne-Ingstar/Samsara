@@ -1,7 +1,7 @@
-"""1252: passive dead-input observations; never decide capture or decoding.
+"""Observe capture liveness and the level of completed hold attempts.
 
-Only numeric levels survive a poll. No hardware is opened and no PCM is saved.
-The narrow floor includes the reported ~1e-4 RMS, not ordinary quiet speech.
+An open stream can deliver quiet PCM or digital zeros indefinitely. Keep the
+low-level test for an explicit hold, where the user has requested input.
 """
 import logging
 import math
@@ -12,7 +12,7 @@ from samsara.wake_noise_notice import WakeNoiseNotice
 
 
 DEAD_RMS = .00015
-LISTEN_SECONDS = 10.
+STALL_SECONDS = 10.
 HOLD_SECONDS = .1
 TITLE = 'No sound from your microphone'  # PLACEHOLDER COPY (1252)
 HELP = ('Check the mic cable, the selected input on your audio interface, '
@@ -48,32 +48,37 @@ def device_name(app):
 class SilenceWatch:
     def __init__(self, app, deliver=None):
         self.app = app
-        self.deliver = deliver or (lambda active, name: present(app, active, name))
+        self.deliver = deliver
         self.lock = threading.RLock()
         self.active = False
-        self.identity = None
-        self.dead_seconds = 0.
-        self.last_stamp = None
-        self.last_seq = None
+        self.cause = self.warning_device = self.warning_at = None
+        self.notice_version = None
         self.engine = self.reader = None
+        self.stream = self.stream_seen_at = self.last_frame_at = self.frame_epoch = None
         self.was_excluded = False
         self.excluded_until = float('-inf')
         self.wake_noise_notice = WakeNoiseNotice(app)
 
-    def reset_run(self):
-        self.dead_seconds = 0.
-        self.last_stamp = self.last_seq = None
-
-    def transition(self, active, source, maximum, seconds):
-        if active == self.active:
+    def transition(self, cause, source, device, maximum, seconds):
+        active = cause is not None
+        if active == self.active and (not active or device == self.warning_device):
+            if active and cause != 'hold':
+                self.cause = cause  # A transport fault can follow a quiet hold in one outage.
             return
         self.active = active
+        self.cause = cause
+        self.warning_device = device if active else None
+        self.warning_at = time.perf_counter() if active else None
+        self.notice_version = object()
         name = device_name(self.app)
         log.info('[MIC_SILENT] state=%s source=%s max_rms=%.7f floor=%.7f seconds=%.2f',
                  'silent' if active else 'recovered', source, maximum, DEAD_RMS, seconds)
         # Capture's observer queues UI work only; failures never escape it.
         try:
-            self.deliver(active, name)
+            if self.deliver is None:
+                present(self.app, active, name, announce_recovery=maximum > DEAD_RMS)
+            else:
+                self.deliver(active, name)
         except Exception:
             log.debug('[MIC_SILENT] notice delivery unavailable')
 
@@ -82,9 +87,11 @@ class SilenceWatch:
             return
         maximum = max(levels)
         with self.lock:
+            engine = getattr(self.app, '_ace_engine', None)
+            device = (engine, getattr(engine, 'capture_name', None))
             if maximum > DEAD_RMS:
-                self.reset_run()
-                self.transition(False, 'hold', maximum, len(levels) * .1)
+                if self.cause == 'hold':
+                    self.transition(None, 'hold', device, maximum, len(levels) * .1)
                 return
             if excluded(self.app, hold=True):
                 return
@@ -97,40 +104,21 @@ class SilenceWatch:
                                 for a, b in evidence.intervals)
                         for i in range(len(levels))) * .1
             if clean >= HOLD_SECONDS:
-                self.transition(True, 'hold', maximum, clean)
-
-    def level(self, rms, stamp, seq, identity, *, listening, skip=False):
-        with self.lock:
-            if identity != self.identity:
-                self.identity = identity
-                self.reset_run()
-                # A new endpoint is not evidence that sound has returned.
-            if skip or not math.isfinite(rms) or rms < 0:
-                self.reset_run()
-                return
-            if rms > DEAD_RMS:
-                self.reset_run()
-                self.transition(False, 'listening', rms, .1)
-                return
-            if not listening:
-                self.reset_run()
-                return
-            contiguous = (self.last_seq is not None and seq == self.last_seq + 1
-                          and 0 < stamp - self.last_stamp <= .25)
-            self.dead_seconds = self.dead_seconds + .1 if contiguous else .1
-            self.last_stamp, self.last_seq = stamp, seq
-            if self.dead_seconds + 1e-6 >= LISTEN_SECONDS:
-                self.transition(True, 'listening', rms, self.dead_seconds)
+                self.transition('hold', 'hold', device, maximum, clean)
 
     def detach(self):
         engine, reader = self.engine, self.reader
         self.engine = self.reader = None
-        self.reset_run()
+        self.stream = self.stream_seen_at = self.last_frame_at = self.frame_epoch = None
         self.wake_noise_notice.begin_poll(0., active=False)
         if engine is not None and reader is not None:
             engine.unregister_consumer(reader)
 
     def poll(self):
+        with self.lock:
+            self._poll()
+
+    def _poll(self):
         import numpy as np
         from samsara.audio_engine.frame import FRAME_MS
         from samsara.audio_engine.ring import EMPTY
@@ -149,31 +137,63 @@ class SilenceWatch:
         self.was_excluded = blocked
         if skip:
             self.excluded_until = now
+        stream = getattr(engine, 'rescan_stream', None)
+        if stream is not self.stream:
+            self.stream = stream
+            self.stream_seen_at = now if stream is not None else None
+            self.last_frame_at = None
+        device = (engine, getattr(engine, 'capture_name', None))
         holding = bool(getattr(self.app, 'recording', False)
                        or getattr(self.app, '_hotkey_recording', False))
         listening = bool(getattr(self.app, 'continuous_active', False)
-                         or getattr(self.app, 'wake_word_active', False)) and not holding
+                         or getattr(self.app, 'wake_word_active', False))
         check_noise = self.wake_noise_notice.begin_poll(
             now, active=getattr(self.app, 'wake_word_active', False))
         before = self.reader.overrun_count
+        resumed = False
+        maximum = 0.
+        caught_up = False
         # Bounded work, even if a synthetic writer produces frames without pause.
         for _ in range(1000 // FRAME_MS * 2):
             frame = self.reader.read_next()
             if frame is EMPTY:
-                if self.last_stamp is not None and now - self.last_stamp > .5:
-                    self.reset_run()
+                caught_up = True
                 break
-            pcm = frame.pcm.astype(np.float64) / 32767.
-            rms = float(np.sqrt(np.mean(pcm * pcm)))
             discontinuity = self.reader.overrun_count != before
             before = self.reader.overrun_count
-            identity = (id(engine), getattr(engine, 'capture_name', None), frame.device_epoch)
-            ineligible = (skip or discontinuity or frame.t_capture <= self.excluded_until
-                          or now - frame.t_capture > 1. or frame.t_capture > now or holding)
-            self.level(rms, frame.t_capture, frame.seq, identity, listening=listening, skip=ineligible)
+            fresh = 0. <= now - frame.t_capture <= 1.
+            after_warning = fresh and self.warning_at is not None and frame.t_capture > self.warning_at
+            if fresh:
+                changed_epoch = self.frame_epoch is not None and frame.device_epoch != self.frame_epoch
+                self.frame_epoch = frame.device_epoch
+                self.last_frame_at = frame.t_capture
+                resumed |= after_warning and (
+                    self.cause != 'hold' or changed_epoch or device != self.warning_device)
+            ineligible = (not fresh or skip or discontinuity or holding
+                          or frame.t_capture <= self.excluded_until)
+            if not check_noise and (ineligible or not after_warning):
+                continue
+            pcm = frame.pcm.astype(np.float64) / 32767.
+            rms = float(np.sqrt(np.mean(pcm * pcm)))
+            if after_warning and not ineligible:
+                maximum = max(maximum, rms)
             if check_noise:
                 self.wake_noise_notice.observe(
-                    rms, frame.t_capture, frame.seq, identity, skip=ineligible)
+                    rms, frame.t_capture, frame.seq, (*device, frame.device_epoch), skip=ineligible)
+        # Recheck after reading. The active engine may have changed during a rescan.
+        if (getattr(self.app, '_ace_engine', None) is not engine or not engine._running
+                or getattr(engine, 'capture_name', None) != device[1]
+                or getattr(engine, 'rescan_stream', None) is not stream):
+            return
+        changes = getattr(self.app, '_microphone_changes', None)
+        removed = getattr(changes, 'missing_capture', None) == device
+        heartbeat = self.last_frame_at if self.last_frame_at is not None else self.stream_seen_at
+        if removed or getattr(engine, 'device_lost', False):
+            self.transition('removed', 'endpoint', device, 0., 0.)
+        elif (listening or holding) and caught_up and heartbeat is not None and now - heartbeat >= STALL_SECONDS:
+            self.transition('stalled', 'callbacks', device, 0., now - heartbeat)
+        elif resumed or maximum > DEAD_RMS:
+            self.transition(None, 'callbacks', device, maximum, 0.)
 
 
 def watch_for(app):
@@ -198,18 +218,22 @@ def poll(app):
 def close(app):
     watch = vars(app).get('_mic_silence_watch_1252')
     if watch is not None:
-        watch.detach()
+        with watch.lock:
+            watch.detach()
 
 
-def present(app, active, name):
+def present(app, active, name, *, announce_recovery=True):
     """Reuse the important mic-warning path and add its missing action button.
 
     This nonmodal notice is independent of the Compact/Full display choice.
     It never activates itself or changes the current capture session.
     """
+    watch = vars(app).get('_mic_silence_watch_1252')
+    version = None if watch is None else watch.notice_version
+
     def show():
-        watch = vars(app).get('_mic_silence_watch_1252')
-        if watch is None or watch.active != active:
+        if (watch is None or vars(app).get('_mic_silence_watch_1252') is not watch
+                or watch.active != active or watch.notice_version is not version):
             return  # Drop a stale queued warning/recovery.
         from samsara.live_surface.feedback import schedule_feedback, schedule_owner_clear
         window = getattr(app, '_mic_silence_notice_1252', None)
@@ -217,7 +241,8 @@ def present(app, active, name):
             if window is not None:
                 window.hide()
             schedule_owner_clear(app, 'capture_mic_silent')
-            schedule_feedback(app, RECOVERED, 'success', 3000)
+            if announce_recovery:
+                schedule_feedback(app, RECOVERED, 'success', 3000)
             return
         body = TITLE + '\n' + name + '\n\n' + HELP
         schedule_feedback(app, body, 'warning', None, source='capture_mic_silent')
@@ -245,7 +270,8 @@ def present(app, active, name):
             row.addWidget(check)
             dismiss = QPushButton('Dismiss')  # PLACEHOLDER COPY (1252)
             dismiss.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
-            dismiss.clicked.connect(window.hide)
+            dismiss.clicked.connect(window.reject)
+            window.rejected.connect(lambda: schedule_owner_clear(app, 'capture_mic_silent'))
             row.addWidget(dismiss)
             row.addStretch()
             layout.addLayout(row)

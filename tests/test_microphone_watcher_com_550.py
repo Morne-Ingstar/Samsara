@@ -17,7 +17,6 @@ ROOT = Path(__file__).resolve().parents[1]
 def child(mode):
     import importlib.abc
     import threading
-    import time
     from types import ModuleType, SimpleNamespace
 
     calls = []
@@ -48,11 +47,12 @@ def child(mode):
                           output_device=None)
     # Model a runner with no endpoints. Registration itself uses real pycaw/COM.
     app._microphone_changes = recovery.DeviceChanges(app, endpoints=lambda: frozenset())
-    errors, passes = [], []
+    errors = []
+    first_pass = threading.Event()
     real_tick = app._microphone_changes.tick
     def tick():
-        passes.append(1)
         real_tick()
+        first_pass.set()
     app._microphone_changes.tick = tick
     def run():
         try:
@@ -61,14 +61,15 @@ def child(mode):
             errors.append(type(exc).__name__ + ': ' + str(exc))
     worker = threading.Thread(target=run, daemon=True)
     worker.start()
-    time.sleep(1.2)
+    # Cold COM startup can outlast a fixed sleep. Let the watcher complete a pass.
+    passed_before_stop = first_pass.wait(timeout=8)
     alive_before_stop = worker.is_alive()
     stop.set()
     worker.join(5)
     result = dict(case=mode, com_imported_before_thread=before,
                   real_comtypes=bool(getattr(sys.modules.get('comtypes'), '__file__', None)),
                   alive_before_stop=alive_before_stop, ended_by_stop=not worker.is_alive(),
-                  exceptions=errors, passes=len(passes),
+                  exceptions=errors, passed_before_stop=passed_before_stop,
                   mode='notifications' if app._microphone_changes.notifications else 'comparing',
                   audio_calls=calls, real_sounddevice_loaded=hasattr(audio, '__file__')
                   and isinstance(getattr(audio, '__file__'), str))
@@ -93,7 +94,7 @@ def test_real_comtypes_watcher_stops_only_when_requested(tmp_path, mode):
     assert evidence['alive_before_stop'] is True
     assert evidence['ended_by_stop'] is True
     assert evidence['exceptions'] == []
-    assert evidence['passes'] >= 1
+    assert evidence['passed_before_stop'] is True
     assert evidence['mode'] in ('notifications', 'comparing')
     assert evidence['audio_calls'] == []
     assert evidence['real_sounddevice_loaded'] is False

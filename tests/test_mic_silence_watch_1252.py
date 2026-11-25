@@ -24,11 +24,6 @@ def evidence(seconds=5., intervals=()):
     return NS(stopped=100., intervals=list(intervals))
 
 
-def feed(watch, count, level=.0001, *, offset=0, identity='input', **kw):
-    for i in range(offset, offset + count):
-        watch.level(level, (i + 1) * .1, i, identity, listening=True, **kw)
-
-
 def test_synthetic_floor_qualification():
     rng = np.random.default_rng(1252)
     dead = rng.normal(size=(50, FRAME_SIZE))
@@ -68,34 +63,57 @@ def test_quiet_real_short_or_unknown_hold_never_warns(levels):
     assert events == []
 
 
-def test_ten_seconds_listening_once_then_one_recovery_and_rearm(caplog):
-    _, watch, events = rig()
+def test_ten_seconds_listening_once_then_one_recovery_and_rearm(caplog, monkeypatch):
+    app, watch, events = rig()
+    engine = app._ace_engine = Engine()
+    clock = NS(now=0.)
+    monkeypatch.setattr(silence.time, 'perf_counter', lambda: clock.now)
+    watch.poll()
     with caplog.at_level(logging.INFO, logger='Samsara'):
-        feed(watch, 99)
+        write(engine, 0.)
+        watch.poll()
+        # 1338: ten seconds of stalled callbacks, rather than quiet PCM.
+        clock.now = 9.9
+        watch.poll()
         assert events == []
-        feed(watch, 201, offset=99)
+        for stamp in (10., 20., 30.):
+            clock.now = stamp
+            watch.poll()
         assert len(events) == 1
-        feed(watch, 20, .0005, offset=300)
+        clock.now = 31.
+        write(engine, clock.now, value=32)
+        watch.poll()
         assert [e[0] for e in events] == [True, False]
-        feed(watch, 100, offset=320)
+        clock.now = 41.
+        watch.poll()
     assert [e[0] for e in events] == [True, False, True]
     assert caplog.text.count('[MIC_SILENT]') == 3
 
 
 @pytest.mark.parametrize('boundary', ['gap', 'epoch', 'skip', 'inactive'])
-def test_listening_requires_contiguous_eligible_samples(boundary):
-    _, watch, events = rig()
-    feed(watch, 99)
+def test_listening_requires_contiguous_eligible_samples(boundary, monkeypatch):
+    app, watch, events = rig()
+    engine = app._ace_engine = Engine()
+    clock = NS(now=0.)
+    monkeypatch.setattr(silence.time, 'perf_counter', lambda: clock.now)
+    watch.poll()
+    feed(engine, watch, clock, 99)
+    epoch = 0
+    # 1338: preserve gap, endpoint, exclusion, and disabled-listening coverage
+    # using the same ring path as production.
     if boundary == 'gap':
-        feed(watch, 99, offset=150)
+        clock.now += 5.
     elif boundary == 'epoch':
-        feed(watch, 99, offset=99, identity='new endpoint')
+        epoch = 1
     elif boundary == 'skip':
-        watch.level(.0001, 10., 99, 'input', listening=True, skip=True)
-        feed(watch, 99, offset=100)
+        app.audio_coordinator = NS(is_speaking=True)
+        feed(engine, watch, clock, 1)
+        app.audio_coordinator.is_speaking = False
     else:
-        watch.level(.0001, 10., 99, 'input', listening=False)
-        feed(watch, 99, offset=100)
+        app.continuous_active = False
+        feed(engine, watch, clock, 1)
+        app.continuous_active = True
+    feed(engine, watch, clock, 99, epoch=epoch)
     assert events == []
 
 
@@ -147,6 +165,15 @@ def write(engine, stamp, value=3, epoch=0):
     engine.bus.write(np.full(FRAME_SIZE, value, np.int16), stamp, epoch)
 
 
+def feed(engine, watch, clock, count, *, value=3, epoch=0):
+    start = clock.now
+    for index in range(1, count + 1):
+        clock.now = start + index / 10
+        write(engine, clock.now, value=value, epoch=epoch)
+        if index % 5 == 0 or index == count:
+            watch.poll()
+
+
 @pytest.mark.parametrize('mode', ['continuous_active', 'wake_word_active'])
 def test_real_ring_seam_no_missing_samples_as_silence_and_recovery(mode, monkeypatch):
     app, watch, events = rig()
@@ -160,11 +187,11 @@ def test_real_ring_seam_no_missing_samples_as_silence_and_recovery(mode, monkeyp
     clock.now = 20.
     silence.poll(app)
     assert events == []
-    for i in range(100):
-        clock.now = 20. + (i + 1) * .1
-        write(engine, clock.now)
-        if i % 5 == 4:
-            silence.poll(app)
+    feed(engine, watch, clock, 100)
+    # 1338: fresh low-level samples can be ordinary quiet. Keep testing that
+    # the real reader can clear a warning once audio returns after a hold.
+    assert events == []
+    watch.hold([.0001], evidence())
     assert events == [(True, 'Synthetic interface')]
     clock.now += .1
     write(engine, clock.now, 32)
@@ -199,7 +226,7 @@ def test_stale_ring_backlog_and_overrun_cannot_warn(monkeypatch):
         write(engine, i * .1)
     for _ in range(10):
         watch.poll()
-    assert events == [] and watch.dead_seconds == 0
+    assert events == [] and watch.last_frame_at is None  # 1338: stale frames cannot arm liveness.
 
 
 def test_watcher_poll_exception_cannot_change_endpoint_recovery_or_cleanup(monkeypatch):
