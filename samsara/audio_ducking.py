@@ -26,6 +26,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Protocol
@@ -45,7 +46,7 @@ SWEEP_INTERVAL_SECONDS = 0.5
 # to" comparisons (relative-attenuation conditional restore, see stop()).
 # WASAPI volumes are float32 under the hood; a few ULPs of round-trip
 # drift through get/set is normal and must not look like a user change.
-_VOLUME_EPSILON = 1e-3
+_VOLUME_EPSILON = 2e-5
 
 
 def _floats_close(a: float, b: float, epsilon: float = _VOLUME_EPSILON) -> bool:
@@ -82,11 +83,9 @@ class _SharedSessionState:
     original_volume: float
     lease_factors: dict[int, float]
     applied_volume: float
-    # 73: the level last confirmed written to the app. `applied_volume` is
-    # bookkeeping and moves before the write; when a session vanishes this is
-    # what the app is really left at, and what a later session of it is
-    # matched against.
-    written_volume: float | None = None
+    written_volume: float
+    # A failed RPC may have changed the mixer before its reply was lost.
+    attempted_volume: float | None = None
 
 
 _DUCKER_LOCK = threading.Lock()
@@ -146,9 +145,6 @@ DUCK_JOURNAL_NAME = "duck_state.json"
 # (0.12 * 0.12 = 1.4%) leave a full-volume app.
 IMPLAUSIBLE_ORIGINAL_FLOOR = 0.02
 
-# Pending entries kept while their app is not running are capped, oldest out.
-_PENDING_CAP = 64
-
 _JOURNAL_LOCK = threading.RLock()
 _RECOVERY_LOCK = threading.Lock()
 _journal_path: Path | None = None
@@ -168,9 +164,19 @@ def _journal_key(handle: Any) -> str:
     return f"pid:{getattr(handle, 'pid', 0)}:{getattr(handle, 'process_name', None) or ''}"
 
 
-def _write_journal_locked() -> None:
+def _matches_recorded_level(entry: dict, current: float) -> bool:
+    for field in ("applied", "previous_applied"):
+        try:
+            if _floats_close(current, float(entry[field])):
+                return True
+        except (KeyError, TypeError, ValueError):
+            continue
+    return False
+
+
+def _write_journal_locked() -> bool:
     if _journal_path is None:
-        return
+        return True
     payload = {
         "version": 1,
         "ducked": list(_journal_pending) + list(_journal_active.values()),
@@ -184,25 +190,36 @@ def _write_journal_locked() -> None:
         os.replace(tmp, _journal_path)
     except Exception as exc:
         logger.debug("[DUCK] duck journal write failed: %s", exc)
+        return False
+    return True
 
 
-def _journal_record(session_id: str, handle: Any, original: float, applied: float) -> None:
+def _journal_record(state: _SharedSessionState, applied: float, previous: float | None = None) -> bool:
     with _JOURNAL_LOCK:
-        entry = _journal_active.get(session_id)
-        if entry is None:
-            entry = {
-                "key": _journal_key(handle),
-                "pid": int(getattr(handle, "pid", 0) or 0),
-                "process_name": getattr(handle, "process_name", None),
-                "original": float(original),
-            }
-            _journal_active[session_id] = entry
-        # Unchanged leases preserve the original. An observed mixer change
-        # rebases it, so crash recovery also respects the user's latest level.
-        entry["original"] = float(original)
-        entry["original_verified"] = True
-        entry["applied"] = float(applied)
-        _write_journal_locked()
+        session_id = state.session_id
+        before = _journal_active.get(session_id)
+        entry = {
+            "key": _journal_key(state.handle),
+            "pid": state.pid,
+            "process_name": getattr(state.handle, "process_name", None),
+            "original": state.original_volume,
+            "original_verified": True,
+            "applied": applied,
+        }
+        # Across a nested transition, either of these levels can survive a
+        # crash. The original itself never needs a recovery write.
+        if previous is not None and previous != state.original_volume and previous != applied:
+            entry["previous_applied"] = previous
+        if entry == before:
+            return True
+        _journal_active[session_id] = entry
+        if _write_journal_locked():
+            return True
+        if before is None:
+            _journal_active.pop(session_id)
+        else:
+            _journal_active[session_id] = before
+        return False
 
 
 def _journal_forget(session_id: str) -> None:
@@ -211,24 +228,15 @@ def _journal_forget(session_id: str) -> None:
             _write_journal_locked()
 
 
-def _journal_orphan(session_id: str, left_at: float | None) -> None:
+def _journal_orphan(session_id: str) -> bool:
     """A release could not verify or restore this session (it vanished, or
     the write failed): hand its entry back to the pending queue so the next
     start() or sweep retries it (73), instead of waiting for a relaunch."""
     with _JOURNAL_LOCK:
         entry = _journal_active.pop(session_id, None)
         if entry is None:
-            return
-        if left_at is not None:
-            entry["applied"] = float(left_at)
+            return False
         _journal_pending.append(entry)
-        if len(_journal_pending) > _PENDING_CAP:
-            dropped = _journal_pending[: len(_journal_pending) - _PENDING_CAP]
-            del _journal_pending[: len(dropped)]
-            logger.warning(
-                "[DUCK] duck journal over %d pending entries, dropped the oldest: %s",
-                _PENDING_CAP, ", ".join(str(e.get("process_name")) for e in dropped),
-            )
         _write_journal_locked()
     logger.info(
         "[DUCK] %s could not be restored now; queued to restore when it is seen again",
@@ -236,8 +244,9 @@ def _journal_orphan(session_id: str, left_at: float | None) -> None:
     )
     flight_recorder.record(
         "ducker_restore_queued", session_id=session_id,
-        process_name=entry.get("process_name"), left_at=left_at,
+        process_name=entry.get("process_name"), left_at=entry["applied"],
     )
+    return True
 
 
 def _register_duck_factor(level: float) -> None:
@@ -357,7 +366,7 @@ def configure_duck_journal(path: str | os.PathLike, *, previous_unclean: bool = 
                 entries.append(dict(entry, original=remembered))
             else:
                 abandoned.append(entry)
-        _journal_pending[:] = entries[-_PENDING_CAP:]
+        _journal_pending[:] = entries
         pending = len(_journal_pending)
         if scrubbed_levels or retargeted or abandoned:
             _write_journal_locked()
@@ -390,7 +399,7 @@ def configure_duck_journal(path: str | os.PathLike, *, previous_unclean: bool = 
 
 
 @session_transaction
-def recover_leftover_ducks(sessions: list | None = None) -> int:
+def recover_leftover_ducks(sessions: list | None = None, *, exact_only: bool = False) -> int:
     """Restore sessions a previous run -- or a release that could not verify
     its session -- left ducked. `sessions` is an enumeration the caller just
     made (start() and sweeps pass theirs); without it one is made here.
@@ -407,50 +416,44 @@ def recover_leftover_ducks(sessions: list | None = None) -> int:
                 logger.warning("[DUCK] leftover duck recovery could not list sessions: %s", exc)
                 return 0  # entries stay queued; the next start() retries
         with _DUCKER_LOCK:
-            owned = set(_SHARED_SESSIONS)
+            owned = {_journal_key(state.handle) for state in _SHARED_SESSIONS.values()}
 
         by_key: dict[str, Any] = {}
         by_name: dict[str, list] = {}
+        pending_keys = {entry.get("key") for entry in pending}
+        pending_names = Counter(entry.get("process_name") for entry in pending)
         for s in sessions:
-            by_key[_journal_key(s)] = s
+            key = _journal_key(s)
+            by_key[key] = s
             name = getattr(s, "process_name", None)
-            if name:
+            if name and key not in pending_keys and key not in owned:
                 by_name.setdefault(name, []).append(s)
 
         restored = 0
         resolved: list[dict] = []
         for entry in pending:
             original = float(entry.get("original", 0.0))
-            applied = float(entry.get("applied", -1.0))
             name = entry.get("process_name")
-            candidates = [by_key[entry["key"]]] if entry.get("key") in by_key else list(by_name.get(name, []))
-            # A session a live duck holds is that duck's to restore, and says
-            # nothing about this entry either way.
-            candidates = [s for s in candidates if getattr(s, "session_id", None) not in owned]
-            if not candidates:
-                # The app is not running (or only under a live duck). Keep the
-                # entry: Windows keeps a per-app volume, so it opens at the
-                # ducked level when it comes back.
+            key = entry.get("key")
+            if key in owned:
                 continue
-            for session in candidates:
-                # Only a session still at exactly what we left it at is ours
-                # to put back; any other level is a heal or a user change.
-                try:
-                    current = float(session.get_master_volume())
-                except Exception:
+            session = by_key.get(key)
+            if session is None:
+                # Windows can carry a retired session's level into a new
+                # session. Keep the existing fallback for unambiguous apps.
+                candidates = by_name.get(name, [])
+                if exact_only or pending_names[name] != 1 or len(candidates) != 1:
                     continue
-                if not _floats_close(current, applied):
-                    continue
-                if original <= IMPLAUSIBLE_ORIGINAL_FLOOR and not entry.get("original_verified"):
-                    break
-                try:
-                    session.set_master_volume(original)
+                session, = candidates
+            try:
+                current = float(session.get_master_volume())
+                if _matches_recorded_level(entry, current):
+                    if current != original:
+                        session.set_master_volume(original)
                     restored += 1
-                    if session in by_name.get(name, []):
-                        by_name[name].remove(session)
-                except Exception as exc:
-                    logger.warning("[DUCK] leftover duck restore failed for %s: %s", name, exc)
-                break
+            except Exception as exc:
+                logger.warning("[DUCK] leftover duck restore failed for %s: %s", name, exc)
+                continue  # keep evidence through transient read or write failure
             resolved.append(entry)
             # Restored or not, the journal's original is the best evidence of
             # this app's real level: it guards the next capture of it.
@@ -619,260 +622,143 @@ class SessionDucker:
             self._pid_counts[pid] = count
         return True
 
+    def _observe_volume(self, state: _SharedSessionState, current: float) -> None:
+        attempted = state.attempted_volume
+        with self._lock:
+            if attempted is None or not _floats_close(current, attempted):
+                if rebase_user_volume(state, current, _VOLUME_EPSILON):
+                    _journal_record(state, current)
+                    _remember_level(getattr(state.handle, "process_name", None), current)
+                    logger.info("[DUCK] session=%s new user level=%.5f kept", state.session_id, current)
+            state.written_volume = current
+            state.attempted_volume = None
+
+    def _apply_duck_level(self, state: _SharedSessionState, target: float) -> None:
+        state.applied_volume = target
+        if not _journal_record(state, target, state.written_volume):
+            raise OSError("could not save the original volume in the duck journal")
+        if state.written_volume == target:
+            return
+        state.attempted_volume = target
+        state.handle.set_master_volume(target)
+        state.written_volume = target
+        state.attempted_volume = None
+        _journal_record(state, target)
+
     @session_transaction
-    def _release_session(
-        self,
-        session_id: str,
-        *,
-        rollback_volume: float | None = None,
-        conditional_restore: bool = False,
-    ) -> None:
+    def _release_session(self, session_id: str) -> bool:
         with self._lock:
             self._untrack_session_locked(session_id)
             state = _SHARED_SESSIONS.get(session_id)
             if state is None or self._lease_id not in state.lease_factors:
-                return
+                return False
+            state.lease_factors.pop(self._lease_id)
+            final = not state.lease_factors
+            if final:
+                _SHARED_SESSIONS.pop(session_id)
 
-            expected_volume = state.written_volume if state.written_volume is not None else state.applied_volume
-            left_at = state.written_volume if state.written_volume is not None else expected_volume
-            state.lease_factors.pop(self._lease_id, None)
-            handle = state.handle
-            close_handle = False
-            restore_volume = None
-
-            if state.lease_factors:
-                state.applied_volume = self._target_for_factors(state)
-                restore_volume = state.applied_volume
-                _journal_record(session_id, handle, state.original_volume, restore_volume)
-            else:
-                _SHARED_SESSIONS.pop(session_id, None)
-                restore_volume = (
-                    rollback_volume if rollback_volume is not None else state.original_volume
-                )
-                close_handle = True
-
-        if conditional_restore:
-            try:
-                current = float(handle.get_master_volume())
-            except Exception as exc:
-                # CANNOT VERIFY -> DO NOT RESTORE (child-process amendment).
-                # Previously a failed read fell through to restoring the
-                # pre-duck snapshot anyway. With COM in a child that is
-                # killed and respawned, a read failure most often means the
-                # sid belonged to a dead child or the session vanished --
-                # in neither case is the snapshot known to still be the
-                # right answer, and writing it would clobber whatever the
-                # user or the app has since set. Recorded so an incident
-                # bundle shows exactly which sessions were skipped.
-                logger.warning(
-                    "SessionDucker.release(): failed to read current volume "
-                    "for session %s: %s -- skipping restore (cannot verify)",
-                    session_id,
-                    exc,
-                )
-                flight_recorder.record(
-                    "ducker_restore_skipped",
-                    session_id=session_id,
-                    reason=str(exc),
-                )
-                if close_handle:
-                    # 73: queued for the next start() or sweep, which put it
-                    # back if the app is still at the level we left it at.
-                    _journal_orphan(session_id, left_at)
-                    self._close_session(handle)
-                else:
-                    # Still leased: the journal must name what the app is
-                    # really at, not the target this release never wrote.
-                    with self._lock:
-                        if _SHARED_SESSIONS.get(session_id) is state:
-                            _journal_record(session_id, handle, state.original_volume, left_at)
-                return
-            if not _floats_close(current, expected_volume):
-                with self._lock:
-                    rebase_user_volume(state, current, _VOLUME_EPSILON)
-                    if not close_handle:
-                        _journal_record(session_id, handle, current, current)
-                    _remember_level(getattr(handle, "process_name", None), current)
-                logger.info("[DUCK] session=%s user level=%.3f kept; stale restore=%.3f discarded",
-                            session_id, current, restore_volume)
-                if close_handle:
-                    _journal_forget(session_id)  # the user's change wins
-                    self._close_session(handle)
-                return
-
-        if restore_volume is None:
-            return
+        handle = state.handle
+        current = None
         try:
-            handle.set_master_volume(restore_volume)
+            current = float(handle.get_master_volume())
+            self._observe_volume(state, current)
+            if final:
+                target = state.original_volume
+                if current != target:
+                    handle.set_master_volume(target)
+                _journal_forget(session_id)
+            else:
+                target = self._target_for_factors(state)
+                self._apply_duck_level(state, target)
             logger.info("[DUCK] session=%s restored=%.3f original=%.3f expected=%.3f",
-                        session_id, restore_volume, state.original_volume, expected_volume)
+                        session_id, target, state.original_volume, current)
         except Exception as exc:
-            logger.warning(
-                "SessionDucker.release(): failed to restore session %s: %s",
-                session_id,
-                exc,
-            )
-            if close_handle:
-                _journal_orphan(session_id, left_at)  # still ducked: retried (73)
+            logger.warning("[DUCK] could not restore session %s: %s", session_id, exc)
+            if current is None:
+                flight_recorder.record("ducker_restore_skipped", session_id=session_id, reason=str(exc))
+            if final:
+                return _journal_orphan(session_id)
+        finally:
+            if final:
                 self._close_session(handle)
-            return
-        if close_handle:
-            _journal_forget(session_id)
-            self._close_session(handle)
-        else:
-            with self._lock:
-                if _SHARED_SESSIONS.get(session_id) is state:
-                    state.written_volume = restore_volume
+        return False
+
+    def _release_sessions(self, session_ids: list[str]) -> None:
+        retry = False
+        for session_id in reversed(session_ids):
+            retry |= self._release_session(session_id)
+        if retry:
+            # A failed read or host restart may be transient. Only retry
+            # exact sessions here so release ignores streams that vanished.
+            recover_leftover_ducks(exact_only=True)
 
     @session_transaction
-    def _add_session_if_needed(
-        self,
-        session: _SessionHandle,
-        generation: int,
-    ) -> tuple[str, float] | None:
+    def _add_session_if_needed(self, session: _SessionHandle, generation: int) -> bool:
         session_id = session.session_id
-        state: _SharedSessionState | None = None
-        previous_volume: float | None = None
-        target_volume: float | None = None
-        should_add_lease = False
-        needs_master_volume = False
-        created_new_state = False
-        close_now = False
-
-        # Re-read before composing a new lease: an older hold's original is
-        # no longer authoritative after the user changes the mixer (1182).
-        with self._lock:
-            existing = _SHARED_SESSIONS.get(session_id)
-        if existing is not None:
-            try:
-                current = float(existing.handle.get_master_volume())
-            except Exception as exc:
-                self._increment_counter(failed=True)
-                self._set_last_error(exc)
-                self._close_session(session)
-                return None
-            with self._lock:
-                if rebase_user_volume(existing, current, _VOLUME_EPSILON):
-                    _journal_record(session_id, existing.handle, current, current)
-                    _remember_level(getattr(existing.handle, "process_name", None), current)
-                    logger.info("[DUCK] session=%s new user original=%.3f supersedes older leases",
-                                session_id, current)
-
         with self._lock:
             if not self._is_generation_active(generation) or session_id in self._tracked_by_id:
-                close_now = True
-            else:
-                state = _SHARED_SESSIONS.get(session_id)
-                if state is None:
-                    needs_master_volume = True
-                elif self._lease_id in state.lease_factors:
-                    close_now = True
-                else:
-                    previous_volume = state.applied_volume
-                    state.lease_factors[self._lease_id] = self.duck_level
-                    state.applied_volume = self._target_for_factors(state)
-                    target_volume = state.applied_volume
-                    should_add_lease = True
-                    _journal_record(session_id, state.handle, state.original_volume, target_volume)
-
-        if close_now:
-            self._close_session(session)
-            return None
-
-        if needs_master_volume:
-            try:
-                original_volume = float(session.get_master_volume())
-            except Exception:
-                self._increment_counter(failed=True)
-                self._set_last_error("ISimpleAudioVolume.GetMasterVolume failed")
                 self._close_session(session)
-                return None
-            live_volume = original_volume
-            original_volume, plausible = _vet_original(session, live_volume)
-
-            with self._lock:
-                if not self._is_generation_active(generation) or session_id in self._tracked_by_id:
-                    close_now = True
-                else:
-                    state = _SHARED_SESSIONS.get(session_id)
-                    if state is None:
-                        state = _SharedSessionState(
-                            session_id=session_id,
-                            pid=session.pid,
-                            handle=session,
-                            original_volume=original_volume,
-                            lease_factors={self._lease_id: self.duck_level},
-                            applied_volume=_clamp_volume(original_volume * self.duck_level),
-                        )
-                        _SHARED_SESSIONS[session_id] = state
-                        # A failed engage rolls back to what was really
-                        # playing, not to a remembered level.
-                        previous_volume = live_volume
-                        target_volume = state.applied_volume
-                        created_new_state = True
-                        should_add_lease = True
-                        _journal_record(session_id, session, original_volume, target_volume)
-                        if plausible:
-                            _remember_level(getattr(session, "process_name", None), original_volume)
-                    elif self._lease_id in state.lease_factors:
-                        close_now = True
-                    else:
-                        previous_volume = state.applied_volume
-                        state.lease_factors[self._lease_id] = self.duck_level
-                        state.applied_volume = self._target_for_factors(state)
-                        target_volume = state.applied_volume
-                        should_add_lease = True
-                        _journal_record(session_id, state.handle, state.original_volume, target_volume)
-            if close_now:
-                self._close_session(session)
-                return None
-
-        if (
-            state is None
-            or target_volume is None
-            or previous_volume is None
-            or not should_add_lease
-        ):
-            self._close_session(session)
-            return None
-
-        try:
-            state.handle.set_master_volume(target_volume)
-            logger.info("[DUCK] session=%s app=%s original=%.3f applied=%.3f lease=%s",
-                        session_id, getattr(state.handle, "process_name", None),
-                        state.original_volume, target_volume, self._lease_id)
-        except Exception:
-            self._increment_counter(failed=True)
-            self._set_last_error("set_master_volume failed")
-            self._release_session(session_id, rollback_volume=previous_volume)
-            return None
-
-        tracked_now = False
-        with self._lock:
-            if _SHARED_SESSIONS.get(session_id) is state:
-                state.written_volume = target_volume
+                return False
             state = _SHARED_SESSIONS.get(session_id)
-            if (
-                state is not None
-                and self._is_generation_active(generation)
-                and self._lease_id in state.lease_factors
-                and session_id not in self._tracked_by_id
-            ):
-                self._track_session_locked(state)
-                tracked_now = True
 
-        if not tracked_now:
+        handle = state.handle if state is not None else session
+        try:
+            current = float(handle.get_master_volume())
+        except Exception as exc:
             self._increment_counter(failed=True)
-            self._release_session(session_id, rollback_volume=previous_volume)
-            # If this was a freshly-created state, the handle belongs to us;
-            # ensure any duplicate COM reference used for enumeration is closed.
-            if not created_new_state:
+            self._set_last_error(exc)
+            self._close_session(session)
+            return False
+
+        if state is None:
+            key = _journal_key(session)
+            name = getattr(session, "process_name", None)
+            with _JOURNAL_LOCK:
+                # The host can assign a new sid to the same Windows session.
+                # Also leave sessions with unresolved recovery evidence alone.
+                replaced_host_session = getattr(session, "instance_id", None) and any(
+                    entry.get("key") == key
+                    for entry in _journal_active.values()
+                )
+                recovering = any(
+                    entry.get("key") == key
+                    or (name and entry.get("process_name") == name and _matches_recorded_level(entry, current))
+                    for entry in _journal_pending
+                )
+            if replaced_host_session or recovering:
                 self._close_session(session)
-            return None
+                return False
+            original, plausible = _vet_original(session, current)
+            state = _SharedSessionState(
+                session_id, session.pid, session, original, {}, current, current,
+            )
+            with self._lock:
+                _SHARED_SESSIONS[session_id] = state
+            if plausible:
+                _remember_level(name, original)
+        else:
+            self._observe_volume(state, current)
+            if session is not handle:
+                self._close_session(session)
 
+        state.lease_factors[self._lease_id] = self.duck_level
+        try:
+            self._apply_duck_level(state, self._target_for_factors(state))
+        except Exception as exc:
+            self._increment_counter(failed=True)
+            self._set_last_error(exc)
+            if self._release_session(session_id):
+                recover_leftover_ducks(exact_only=True)
+            return False
+
+        with self._lock:
+            self._track_session_locked(state)
         self._increment_counter(ducked=True)
+        logger.info("[DUCK] session=%s app=%s original=%.3f applied=%.3f lease=%s",
+                    session_id, getattr(handle, "process_name", None),
+                    state.original_volume, state.applied_volume, self._lease_id)
+        return True
 
-        return session_id, previous_volume
     @observe_duck
     @lifecycle_transaction
     def start(self) -> None:
@@ -894,8 +780,7 @@ class SessionDucker:
             generation = self._sweep_generation
 
         self._begin_work()
-        applied: list[tuple[str, float]] = []
-        stale_start = False
+        applied: list[str] = []
         try:
             discovered = list(_iter_audio_sessions())
             if _journal_pending:
@@ -909,41 +794,23 @@ class SessionDucker:
                     self._close_session(session)
                     continue
 
-                added = self._add_session_if_needed(session, generation)
-                if added is not None:
-                    applied.append(added)
+                if self._add_session_if_needed(session, generation):
+                    applied.append(session.session_id)
 
             with self._lock:
-                if self._is_generation_active(generation):
-                    self._schedule_sweep_locked()
-                    self._register_atexit_locked()
-                else:
-                    stale_start = True
-            if stale_start:
-                return
+                self._register_atexit_locked()
+                self._schedule_sweep_locked()
         except Exception as exc:
-            for session_id, previous_volume in reversed(applied):
-                self._release_session(
-                    session_id,
-                    rollback_volume=previous_volume,
-                )
+            self._release_sessions(applied)
             self._increment_counter(failed=True)
             self._set_last_error(exc)
-            stale_start = True
             logger.warning("SessionDucker.start(): ducking disabled: %s", exc)
+            with self._lock:
+                self._active = False
+                self._clear_tracking_locked()
         finally:
             self._end_work()
 
-        if stale_start:
-            for session_id, previous_volume in reversed(applied):
-                self._release_session(
-                    session_id,
-                    rollback_volume=previous_volume,
-                )
-            with self._lock:
-                if self._sweep_generation == generation:
-                    self._active = False
-                    self._clear_tracking_locked()
     @observe_duck
     @lifecycle_transaction
     def stop(self) -> None:
@@ -971,8 +838,7 @@ class SessionDucker:
         if timer is not None:
             timer.cancel()
 
-        for session_id in reversed(tracked_order):
-            self._release_session(session_id, conditional_restore=True)
+        self._release_sessions(tracked_order)
 
     def _run_sweep(self) -> None:
         generation = -1
