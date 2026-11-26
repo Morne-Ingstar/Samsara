@@ -26,6 +26,39 @@ except ImportError:
     from installed_probe import MAILBOX_ENV, error_details, mailbox_path, publish, reject_links
 
 
+# Closed reply contract for the separately installed ticket reader.
+_TICKET_LOOKUP_DETAILS = {
+    'ok': {'ok'},
+    'invalid_id': {'bad_request_id'},
+    'http_status': {'non_200'},
+    'timeout': {'response_headers_timeout', 'response_body_timeout'},
+    'api_unavailable': {'connection_refused', 'http_protocol_error', 'os_error'},
+    'missing_id': {'empty_store', 'id_not_found'},
+    'schema_error': {'unexpected_content_type', 'response_too_large', 'invalid_json',
+                     'invalid_envelope', 'invalid_ticket_identifiers', 'duplicate_ticket_identifiers',
+                     'invalid_ticket_status', 'invalid_ticket_field', 'invalid_updated_field'},
+}
+
+
+def _ticket_lookup_diagnostic(reply):
+    if not isinstance(reply, dict):
+        raise ProbeError('InvalidProbeReply')
+    reason, detail = reply.get('reason'), reply.get('detail')
+    if (not isinstance(reason, str) or not isinstance(detail, str)
+            or detail not in _TICKET_LOOKUP_DETAILS.get(reason, ())):
+        raise ProbeError('InvalidProbeReply')
+    metrics = {}
+    for field in ('http_status', 'elapsed_ms', 'body_bytes', 'ticket_count'):
+        value = reply.get(field)
+        if value is None and field != 'elapsed_ms' and field in reply:
+            metrics[field] = None
+        elif type(value) is int and (100 <= value <= 599 if field == 'http_status' else value >= 0):
+            metrics[field] = value
+        else:
+            raise ProbeError('InvalidProbeReply')
+    return dict(reason=reason, detail=detail, **metrics)
+
+
 class ProbeError(RuntimeError):
     def __init__(self, code):
         self.code = code if isinstance(code, str) and re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,79}', code) else 'Unknown'
@@ -385,6 +418,8 @@ class Harness:
             row = receipt(ticket, self.identity, trigger, evidence,
                           {'completed': False}, limitation=limitation + '; ' + type(error).__name__)
             row['failure_code'] = error.code if isinstance(error, ProbeError) else type(error).__name__
+        else:
+            self.add_ticket_diagnostic(row)
         write_json(evidence, row)
         self.rows.append(row)
         self.save()
@@ -393,6 +428,19 @@ class Harness:
     def save(self):
         write_json(self.report / 'receipts.json', self.rows)
         write_json(self.artifacts / 'lifecycle.json', self.lifecycle)
+
+    def add_ticket_diagnostic(self, row):
+        if row['ticket'] != 'T10' or all(
+                value is True for key, value in row['observations'].items() if key != 'build_newer_than_landing'):
+            return
+        try:
+            diagnostic = _ticket_lookup_diagnostic(self.channel.call('ticket_lookup_diagnostic'))
+        except Exception as error:
+            code = error.code if isinstance(error, ProbeError) else error_details(error)['code']
+            diagnostic = dict(failure_code=code)
+        evidence = self.artifacts / 'T10_diagnostic.json'
+        write_json(evidence, diagnostic)
+        row.update(ticket_lookup_diagnostic=diagnostic, ticket_lookup_diagnostic_evidence=str(evidence.absolute()))
 
     def ticket(self):
         # Real installed Cockpit reader, never serialize or echo its contents.

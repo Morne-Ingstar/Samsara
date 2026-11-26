@@ -146,6 +146,8 @@ def test_ticket_receipt_records_reader_dispatch_and_reply_independently(
             return dict(lookup_success=lookup, has_id=lookup, has_checkpoint=lookup)
         if operation == 'ticket':
             return dict(dispatch_state=dispatch, dispatched=False, ticket_answer=False, ticket_success=False)
+        if operation == 'ticket_lookup_diagnostic':
+            return dict(reason='ok', detail='ok', http_status=200, elapsed_ms=1, body_bytes=50, ticket_count=1)
         assert operation == 'state'
         return dict(ticket_answer=observed, ticket_success=success)
 
@@ -161,7 +163,11 @@ def test_ticket_receipt_records_reader_dispatch_and_reply_independently(
                                       command_reply_queued=success, build_newer_than_landing=True)
     assert row['result'] == ('PASS' if lookup and success else 'FAIL')
     assert calls[:2] == ['ticket_lookup', 'ticket']
-    assert calls[2:] == ['state'] * (1 if observed else 2 if admitted else 0)
+    # 1388c adds one diagnostic request after a failed feature check.
+    expected = ['state'] * (1 if observed else 2 if admitted else 0)
+    if not (lookup and success):
+        expected.append('ticket_lookup_diagnostic')
+    assert calls[2:] == expected
 
 
 def test_silence_receipt_checks_notice_after_the_hold_is_released(monkeypatch, tmp_path, clock):

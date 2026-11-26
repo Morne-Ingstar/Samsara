@@ -92,6 +92,12 @@ def write_summary(report, identity, rows, *, elapsed, lifecycle_ok, error=None, 
     for row in rows:
         lines.append(f"- {row['result']} — {FEATURES[row['ticket']]} ({row['ticket']}) | "
                      f"{row['trigger']} | [evidence]({Path(row['evidence']).as_posix()}) | {row['limitation']}")
+        diagnostic = row.get('ticket_lookup_diagnostic')
+        if diagnostic:
+            fields = ', '.join(f'{key}={value}' for key, value in diagnostic.items())
+            evidence = Path(row['ticket_lookup_diagnostic_evidence']).as_posix()
+            # PLACEHOLDER COPY (1388c)
+            lines.append(f'  - T10 lookup diagnostic: {fields}. [Diagnostic evidence]({evidence})')
     if error:
         # PLACEHOLDER COPY (1351)
         ran = sum(row['ticket'] not in NOT_COVERED for row in rows)
@@ -177,6 +183,8 @@ class DailyHarness(Harness):
             row['failure_code'] = code
             if diagnostics is not None:
                 row['failure_diagnostics'] = diagnostics
+        else:
+            self.add_ticket_diagnostic(row)
         common.write_json(evidence, row)
         self.rows.append(row)
         self.save()
