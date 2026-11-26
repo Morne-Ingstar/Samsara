@@ -4,9 +4,9 @@ Two things a keyboard-unable user cannot check for themselves:
 
 1. WINDOW INTEGRITY. Windows UIPI silently drops keystrokes a process sends to
    a window whose process runs at a HIGHER integrity level (an elevated/admin
-   window: Task Manager, an admin terminal, an installer). SendInput still
-   reports every event as accepted, and Ctrl+V is dropped the same way, so
-   nothing downstream can tell. window_integrity() asks BEFORE injecting.
+   window: Task Manager, an admin terminal, an installer). SendInput does not
+   report UIPI as the reason for failure. window_integrity() checks before
+   typing or sending Ctrl+V.
 
 2. PACED DELETION. "scratch that" removes what was just typed. Sending
    Shift+Left pairs relies on the target reading the Shift state in step with
@@ -33,10 +33,8 @@ RID_NAMES = {0x0000: "untrusted", 0x1000: "low", 0x2000: "medium", 0x3000: "high
 _TOKEN_QUERY = 0x0008
 _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 _TOKEN_INTEGRITY_LEVEL = 25
-_WM_GETTEXTLENGTH = 0x000E
-_SMTO_ABORTIFHUNG = 0x0002
+_PROBE_MESSAGE_NAME = "Samsara.WindowIntegrityProbe"
 _ERROR_ACCESS_DENIED = 5
-_PROBE_TIMEOUT_MS = 150
 
 
 @dataclass(frozen=True)
@@ -74,9 +72,10 @@ class _Win32:
         self.user32.GetForegroundWindow.restype = wintypes.HWND
         self.user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(DW)]
         self.user32.GetWindowThreadProcessId.restype = DW
-        self.user32.SendMessageTimeoutW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM,
-                                                    wintypes.UINT, wintypes.UINT, ctypes.POINTER(ctypes.c_size_t)]
-        self.user32.SendMessageTimeoutW.restype = ctypes.c_ssize_t
+        self.user32.RegisterWindowMessageW.argtypes = [wintypes.LPCWSTR]
+        self.user32.RegisterWindowMessageW.restype = wintypes.UINT
+        self.user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+        self.user32.PostMessageW.restype = BOOL
         self.kernel32.OpenProcess.argtypes = [DW, BOOL, DW]
         self.kernel32.OpenProcess.restype = H
         self.kernel32.GetCurrentProcess.restype = H
@@ -137,12 +136,12 @@ def window_integrity(hwnd: Optional[int] = None) -> IntegrityVerdict:
 
     1. Read the target process's token integrity level and compare it with
        ours (authoritative when the token is readable).
-    2. If it is not readable -- the case for many elevated processes seen from
-       a standard one -- probe UIPI directly: WM_GETTEXTLENGTH is one of the
-       messages UIPI refuses from a lower-integrity sender, failing with
-       ERROR_ACCESS_DENIED. A refusal means HIGHER; an answer means the
-       message boundary is open, so OK.
-    3. Anything else (no window, probe timed out, API missing) is UNKNOWN.
+    2. If a token is unreadable, post a registered message with no payload.
+       By default UIPI blocks registered messages from lower to higher
+       integrity. PostMessageW signals that refusal with ERROR_ACCESS_DENIED.
+       Using our own message avoids colliding with a target's commands, and
+       posting does not wait for the target's message loop.
+    3. Anything else (no window, other API failures) is UNKNOWN.
     """
     started = time.perf_counter()
 
@@ -179,13 +178,13 @@ def window_integrity(hwnd: Optional[int] = None) -> IntegrityVerdict:
             else:
                 why = f"OpenProcess error {ctypes.get_last_error()}"
 
-        result = ctypes.c_size_t(0)
+        message = api.user32.RegisterWindowMessageW(_PROBE_MESSAGE_NAME)
+        if not message:
+            return verdict(UNKNOWN, "uipi_probe", f"token unreadable ({why}); could not register probe", own)
         ctypes.set_last_error(0)
-        answered = api.user32.SendMessageTimeoutW(hwnd, _WM_GETTEXTLENGTH, 0, 0, _SMTO_ABORTIFHUNG,
-                                                  _PROBE_TIMEOUT_MS, ctypes.byref(result))
+        if api.user32.PostMessageW(hwnd, message, 0, 0):
+            return verdict(OK, "uipi_probe", f"token unreadable ({why}); UIPI allowed the probe", own)
         error = ctypes.get_last_error()
-        if answered:
-            return verdict(OK, "uipi_probe", f"token unreadable ({why}); window answered", own)
         if error == _ERROR_ACCESS_DENIED:
             return verdict(HIGHER, "uipi_probe", f"token unreadable ({why}); UIPI refused the probe", own)
         return verdict(UNKNOWN, "uipi_probe", f"token unreadable ({why}); probe failed with error {error}", own)
@@ -210,10 +209,8 @@ def window_integrity(hwnd: Optional[int] = None) -> IntegrityVerdict:
 #: the seam between two chunks, where one call's last partial batch is not
 #: followed by a pause -- and that seam is not bare: session_modes re-runs the
 #: focus-lock and HWND checks per chunk and dictation.py's _remove_chars_fn
-#: re-runs window_integrity() (a SendMessageTimeoutW probe) before each call,
-#: which costs more wall-clock than the 30 ms pause it replaces. A counted
-#: scratch is therefore paced no faster than one long one, and re-checks the
-#: target more often than one long one would.
+#: re-runs window_integrity() before each call. A counted scratch re-checks
+#: the target more often than one long one would.
 DELETE_BATCH = 8
 DELETE_BATCH_PAUSE_S = 0.03
 
