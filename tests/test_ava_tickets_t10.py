@@ -189,25 +189,28 @@ def test_all_cockpit_statuses_reach_speech_and_daily_probe(harness, monkeypatch,
     assert all(f'Status: {status}.' in text for text, _ in harness.speech)
     assert harness.app._ava_turn_outcome == ('Ticket record', 'success')
     assert lookup == {'ok': True, 'value': {'lookup_success': True, 'has_id': True, 'has_checkpoint': True}}
-    assert diagnostic == {'ok': True, 'value': {'reason': 'ok', 'http_status': None}}
+    # 1388b reports the actual HTTP status along with the lookup outcome.
+    assert diagnostic['ok'] is True
+    assert (diagnostic['value']['reason'], diagnostic['value']['http_status']) == ('ok', 200)
 
 
 @pytest.mark.parametrize('body,options,reason,http_status', [
     pytest.param({}, {'status': 302, 'location': 'https://invalid.example'}, 'http_status', 302, id='redirect'),
     pytest.param({}, {'status': 404}, 'http_status', 404, id='http-not-found'),
     pytest.param(None, {'delay': .3}, 'timeout', None, id='timeout'),
-    pytest.param(document(), {}, 'missing_id', None, id='missing-ticket'),
-    pytest.param({'rev': 1, 'tickets': []}, {}, 'missing_id', None, id='empty-store'),
-    pytest.param(b'{bad', {}, 'schema_error', None, id='malformed-json'),
-    pytest.param(document(id='T10', status=['working']), {}, 'schema_error', None, id='invalid-status-type'),
+    pytest.param(document(), {}, 'missing_id', 200, id='missing-ticket'),
+    pytest.param({'rev': 1, 'tickets': []}, {}, 'missing_id', 200, id='empty-store'),
+    pytest.param(b'{bad', {}, 'schema_error', 200, id='malformed-json'),
+    pytest.param(document(id='T10', status=['working']), {}, 'schema_error', 200, id='invalid-status-type'),
     pytest.param(document(id='T10', padding='x' * (2 * 1024 * 1024)), {},
-                 'schema_error', None, id='oversize-valid-json'),
+                 'schema_error', 200, id='oversize-valid-json'),
 ])
 def test_daily_ticket_diagnostic_failure(daily_ticket_probe, monkeypatch, body, options, reason, http_status):
     with server(monkeypatch, body, **options) as requests:
-        assert daily_ticket_probe('ticket_lookup_diagnostic') == {
-            'ok': True, 'value': {'reason': reason, 'http_status': http_status},
-        }
+        # 1388b adds scalar diagnostics, including the status on body and schema errors.
+        diagnostic = daily_ticket_probe('ticket_lookup_diagnostic')
+        assert diagnostic['ok'] is True
+        assert (diagnostic['value']['reason'], diagnostic['value']['http_status']) == (reason, http_status)
         assert daily_ticket_probe('ticket_lookup') == {
             'ok': True, 'value': {'lookup_success': False, 'has_id': False, 'has_checkpoint': False},
         }
@@ -220,9 +223,10 @@ def test_daily_ticket_diagnostic_unavailable(daily_ticket_probe, monkeypatch):
         raise ConnectionRefusedError('synthetic exception detail')
 
     monkeypatch.setattr(socket, 'create_connection', offline)
-    assert daily_ticket_probe('ticket_lookup_diagnostic') == {
-        'ok': True, 'value': {'reason': 'api_unavailable', 'http_status': None},
-    }
+    # 1388b distinguishes refusal from the other API-unavailable cases.
+    diagnostic = daily_ticket_probe('ticket_lookup_diagnostic')
+    assert diagnostic['ok'] is True
+    assert (diagnostic['value']['reason'], diagnostic['value']['http_status']) == ('api_unavailable', None)
 
 
 def test_daily_ticket_diagnostic_does_not_accept_ticket_argument(daily_ticket_probe, monkeypatch):

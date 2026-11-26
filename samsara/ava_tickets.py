@@ -24,6 +24,12 @@ class Answer:
     http_status: int | None = None
 
 
+class _InvalidSchema(ValueError):
+    def __init__(self, detail, message):
+        super().__init__(message)
+        self.detail = detail
+
+
 def request_id(utterance):
     """None means unrelated; empty string means ticket-shaped but unclear."""
     phrase = " ".join(utterance.casefold().replace("â€™", "'").split()).strip(" .?!")
@@ -43,7 +49,7 @@ def _field(row, name, limit):
     if value is None or value == "":
         return "not recorded"
     if not isinstance(value, str):
-        raise ValueError("invalid ticket field")
+        raise _InvalidSchema("invalid_ticket_field", "invalid ticket field")
     value = " ".join("".join(" " if unicodedata.category(c).startswith("C") else c for c in value).split())
     if len(value) > limit:
         value = value[:limit].rsplit(" ", 1)[0] + "â€¦"
@@ -54,7 +60,7 @@ def _age(value, now):
     if not value:
         return "modification time not recorded"
     if not isinstance(value, str):
-        raise ValueError("invalid updated field")
+        raise _InvalidSchema("invalid_updated_field", "invalid updated field")
     try:
         updated = datetime.fromisoformat(value.replace("Z", "+00:00"))
         if updated.tzinfo is None:
@@ -73,49 +79,76 @@ def _age(value, now):
 
 
 def summarize(document, ticket_id, *, now=None):
+    return _summarize(document, ticket_id, now=now)[0]
+
+
+def _summarize(document, ticket_id, *, now=None):
     if (not isinstance(document, dict) or type(document.get("rev")) is not int
             or document["rev"] < 0 or not isinstance(document.get("tickets"), list)):
-        raise ValueError("invalid response envelope")
+        raise _InvalidSchema("invalid_envelope", "invalid response envelope")
     rows = document["tickets"]
     if any(not isinstance(row, dict) or not isinstance(row.get("id"), str)
            or not re.fullmatch(r"T[1-9][0-9]*", row["id"]) for row in rows):
-        raise ValueError("invalid ticket identifiers")
+        raise _InvalidSchema("invalid_ticket_identifiers", "invalid ticket identifiers")
     if len({row["id"] for row in rows}) != len(rows):
-        raise ValueError("duplicate ticket identifiers")
+        raise _InvalidSchema("duplicate_ticket_identifiers", "duplicate ticket identifiers")
     if not rows:
         return Answer("Cockpit returned no tickets. Its ticket store may be empty or missing.",
-                      "error", reason="missing_id")
+                      "error", reason="missing_id"), "empty_store"
     row = next((row for row in rows if row["id"] == ticket_id), None)
     if row is None:
         return Answer(f"I couldn't find ticket {ticket_id}. Say another ticket number.",
-                      "clarification", reason="missing_id")
+                      "clarification", reason="missing_id"), "id_not_found"
     status = row.get("status")
     if status is not None and (not isinstance(status, str) or status not in _STATUSES):
-        raise ValueError("invalid ticket status")
+        raise _InvalidSchema("invalid_ticket_status", "invalid ticket status")
     text = (f"{ticket_id}: {_field(row, 'title', 100)}. Status: {status or 'not recorded'}. "
             f"Left off: {_field(row, 'left_off', 160)}. Next: {_field(row, 'next', 130)}. "
             f"Waiting on: {_field(row, 'waiting_on', 90)}. "
             f"{_age(row.get('updated'), now or datetime.now(timezone.utc))}.")
-    return Answer(text)
+    return Answer(text), "ok"
 
 
 def lookup(ticket_id):
     """One GET, direct IPv4 loopback, no proxies, redirects or attachment reads."""
+    return _lookup(ticket_id)[0]
+
+
+def diagnose(ticket_id) -> dict:
+    """Run the same lookup and return only closed codes and scalar metrics."""
+    return _lookup(ticket_id if isinstance(ticket_id, str) else "")[1]
+
+
+def _lookup(ticket_id) -> tuple[Answer, dict]:
+    started = time.monotonic()
+    http_status = body_bytes = ticket_count = None
+
+    def result(answer, detail):
+        return answer, dict(
+            reason=answer.reason,
+            detail=detail,
+            http_status=http_status if http_status is not None and 100 <= http_status <= 599 else None,
+            elapsed_ms=int((time.monotonic() - started) * 1000),
+            body_bytes=body_bytes,
+            ticket_count=ticket_count,
+        )
+
     if not ticket_id or not re.fullmatch(r"T[1-9][0-9]*", ticket_id):
-        return Answer("Which ticket number? Say resume ticket T seven.",
-                      "clarification", reason="invalid_id")
+        return result(Answer("Which ticket number? Say resume ticket T seven.",
+                             "clarification", reason="invalid_id"), "bad_request_id")
     connection = HTTPConnection("127.0.0.1", _PORT, timeout=_TIMEOUT)
     try:
         connection.request("GET", "/api/tickets", headers={"Accept": "application/json"})
         response = connection.getresponse()
-        if response.status != 200:
-            return Answer("I couldn't read Cockpit's tickets. Its local API returned an error.",
-                          "error", reason="http_status", http_status=response.status)
+        http_status = response.status
+        if http_status != 200:
+            return result(Answer("I couldn't read Cockpit's tickets. Its local API returned an error.",
+                                 "error", reason="http_status", http_status=http_status), "non_200")
         if response.getheader("Content-Type", "").split(";", 1)[0].strip().lower() != "application/json":
-            raise ValueError("unexpected content type")
+            raise _InvalidSchema("unexpected_content_type", "unexpected content type")
         # Bound body size and total body-read duration, including slow trickles.
         deadline = time.monotonic() + _TIMEOUT
-        chunks, length = [], 0
+        chunks, body_bytes = [], 0
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -123,23 +156,37 @@ def lookup(ticket_id):
             # HTTPResponse may own the socket after a Connection: close header.
             if connection.sock is not None:
                 connection.sock.settimeout(remaining)
-            chunk = response.read1(min(65536, _MAX_BYTES + 1 - length))
+            chunk = response.read1(min(65536, _MAX_BYTES + 1 - body_bytes))
             if not chunk:
                 break
             chunks.append(chunk)
-            length += len(chunk)
-            if length > _MAX_BYTES:
-                raise ValueError("response too large")
-        return summarize(json.loads(b"".join(chunks).decode("utf-8")), ticket_id)
+            body_bytes += len(chunk)
+            if body_bytes > _MAX_BYTES:
+                raise _InvalidSchema("response_too_large", "response too large")
+        try:
+            document = json.loads(b"".join(chunks).decode("utf-8"))
+        except (ValueError, RecursionError):
+            raise _InvalidSchema("invalid_json", "invalid JSON") from None
+        if isinstance(document, dict) and isinstance(document.get("tickets"), list):
+            ticket_count = len(document["tickets"])
+        return result(*_summarize(document, ticket_id))
     except TimeoutError:
-        return Answer("Cockpit's ticket lookup timed out. Try again when Cockpit is responding.",
-                      "error", reason="timeout")
-    except (OSError, HTTPException):
-        return Answer("I couldn't reach Cockpit's local ticket service. Check that Cockpit is running.",
-                      "error", reason="api_unavailable")
-    except (ValueError, TypeError, RecursionError):
-        return Answer("Cockpit returned invalid ticket data. I couldn't read that ticket.",
-                      "error", reason="schema_error")
+        detail = "response_headers_timeout" if http_status is None else "response_body_timeout"
+        return result(Answer("Cockpit's ticket lookup timed out. Try again when Cockpit is responding.",
+                             "error", reason="timeout"), detail)
+    except (OSError, HTTPException) as error:
+        if isinstance(error, ConnectionRefusedError):
+            detail = "connection_refused"
+        elif isinstance(error, HTTPException):
+            detail = "http_protocol_error"
+        else:
+            detail = "os_error"
+        return result(Answer("I couldn't reach Cockpit's local ticket service. Check that Cockpit is running.",
+                             "error", reason="api_unavailable"), detail)
+    except (ValueError, TypeError, RecursionError) as error:
+        detail = error.detail if isinstance(error, _InvalidSchema) else "invalid_envelope"
+        return result(Answer("Cockpit returned invalid ticket data. I couldn't read that ticket.",
+                             "error", reason="schema_error"), detail)
     finally:
         connection.close()
 

@@ -254,9 +254,9 @@ def perform(app, home, operation):
     if operation in {'ticket_lookup', 'ticket_lookup_diagnostic'}:
         # Contents stay in memory. This checks the installed reader, not voice/ASR.
         from samsara import ava_tickets
-        answer = ava_tickets.lookup('T10')
         if operation == 'ticket_lookup_diagnostic':
-            return dict(reason=answer.reason, http_status=answer.http_status)
+            return ava_tickets.diagnose('T10')
+        answer = ava_tickets.lookup('T10')
         return dict(lookup_success=answer.kind == 'success',
                     has_id=answer.text.startswith('T10:'),
                     has_checkpoint='Left off:' in answer.text and 'Next:' in answer.text)
