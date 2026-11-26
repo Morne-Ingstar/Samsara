@@ -19274,6 +19274,108 @@
     },
     {
       "aliases": [
+        "bullet that",
+        "make that a bulleted list"
+      ],
+      "args": [],
+      "canonical_id": "structural_format.make_that_a_bulleted_list",
+      "description": "Make a bulleted list using the selection or verified last dictation.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "that_a_bulleted_list",
+      "pack": "core",
+      "plugin": "structural_format",
+      "precondition": "",
+      "risk": "write",
+      "source": "plugins/commands/structural_format.py:8",
+      "undoable": true,
+      "undoable_source": "declared: reversible (not verified rollback)",
+      "verb": "make",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "make that a code block"
+      ],
+      "args": [],
+      "canonical_id": "structural_format.make_that_a_code_block",
+      "description": "Wrap in a fenced code block using the selection or verified last dictation.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "that_a_code_block",
+      "pack": "core",
+      "plugin": "structural_format",
+      "precondition": "",
+      "risk": "write",
+      "source": "plugins/commands/structural_format.py:8",
+      "undoable": true,
+      "undoable_source": "declared: reversible (not verified rollback)",
+      "verb": "make",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "make that a numbered list",
+        "number that"
+      ],
+      "args": [],
+      "canonical_id": "structural_format.number_that",
+      "description": "Make a numbered list using the selection or verified last dictation.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "that",
+      "pack": "core",
+      "plugin": "structural_format",
+      "precondition": "",
+      "risk": "write",
+      "source": "plugins/commands/structural_format.py:8",
+      "undoable": true,
+      "undoable_source": "declared: reversible (not verified rollback)",
+      "verb": "number",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "quote that"
+      ],
+      "args": [],
+      "canonical_id": "structural_format.quote_that",
+      "description": "Wrap in a quote using the selection or verified last dictation.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "that",
+      "pack": "core",
+      "plugin": "structural_format",
+      "precondition": "",
+      "risk": "write",
+      "source": "plugins/commands/structural_format.py:8",
+      "undoable": true,
+      "undoable_source": "declared: reversible (not verified rollback)",
+      "verb": "quote",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
+        "remove the bullets"
+      ],
+      "args": [],
+      "canonical_id": "structural_format.remove_the_bullets",
+      "description": "Remove list markers using the selection or verified last dictation.",
+      "examples": [],
+      "kind": "plugin",
+      "object": "the_bullets",
+      "pack": "core",
+      "plugin": "structural_format",
+      "precondition": "",
+      "risk": "write",
+      "source": "plugins/commands/structural_format.py:8",
+      "undoable": true,
+      "undoable_source": "declared: reversible (not verified rollback)",
+      "verb": "remove",
+      "whole_utterance": false
+    },
+    {
+      "aliases": [
         "find my",
         "find tab",
         "find the tab",

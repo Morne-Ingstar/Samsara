@@ -491,3 +491,33 @@ def command_for_utterance(text: str) -> "str | None":
         if intent.is_discard_utterance(text):
             return "discard"
     return None
+
+
+def replace_native_range(state, start, end, replacement):
+    """Replace one proven range in a plain Unicode Edit control and read it back."""
+    import ctypes
+    from ctypes import wintypes
+    from samsara import delivery_verify as dv
+
+    control = state[1]
+    if _window_class(control) != 'edit':
+        return None  # Rich controls may have styling this receipt cannot restore.
+    api = ctypes.windll.user32
+    hwnd = wintypes.HWND(control)
+    style = api.GetWindowLongW(hwnd, -16)
+    payload = replacement.encode('utf-16-le')
+    wanted = state[2][:start * 2] + payload + state[2][end * 2:]
+    if (not api.IsWindowUnicode(hwnd) or style & 0x2838  # Numeric, read-only, password, case conversion
+            or ('\n' in replacement or '\r' in replacement) and not style & 0x4
+            or not 0 <= start < end <= len(state[2]) // 2
+            or len(wanted) // 2 > min(dv.MAX_UNITS, dv._send(control, 0x00D5))
+            or dv.snapshot() != (state, True)):
+        return None
+    dv._send(control, 0x00B1, start, end)  # EM_SETSEL
+    if dv.snapshot() != ((*state[:3], start, end, state[5]), True):
+        return None
+    buffer = ctypes.create_unicode_buffer(replacement)
+    dv._send(control, 0x00C2, 1, ctypes.addressof(buffer))  # EM_REPLACESEL
+    caret = start + len(payload) // 2
+    actual = dv.snapshot()
+    return actual[0] if actual == ((*state[:2], wanted, caret, caret, state[5]), True) else None

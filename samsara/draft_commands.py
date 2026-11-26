@@ -9,6 +9,8 @@ from __future__ import annotations
 from copy import deepcopy
 import re
 
+from samsara.structural_format import COMMANDS as STRUCTURAL_COMMANDS, rewrite_span
+
 
 INSERTIONS = {
     'period': '.', 'full stop': '.', 'comma': ',', 'question mark': '?',
@@ -201,6 +203,9 @@ def undo_local_edit(manager):
 
 def dispatch_draft_command(manager, phrase, text):
     """Return None only for an external command or when no draft is owned."""
+    if phrase in STRUCTURAL_COMMANDS:
+        # The registered handler owns its single undo entry in either lane.
+        return manager._dispatch_command(text, allow_suggestion=False)
     if not _active(manager):
         return None
     app = _app(manager)
@@ -308,8 +313,24 @@ def targets_draft(manager, phrase):
         return False
     commands = getattr(getattr(_app(manager), 'command_executor', None), 'commands', {})
     metadata = commands.get(phrase, {})
-    return not metadata.get('scope') and (phrase in LOCAL_COMMANDS or phrase == 'greet me'
+    return not metadata.get('scope') and (phrase in LOCAL_COMMANDS or phrase in STRUCTURAL_COMMANDS
+                                         or phrase == 'greet me'
                                          or metadata.get('type') == 'text')
+
+
+def format_draft(manager, transform):
+    from samsara.structural_format import draft_span
+    document = manager.draft_document
+    editor = _editor(manager)
+    span, selected = draft_span(document, editor.span, manager.pending_word_correction(), manager._stack.peek())
+    if span is None or not (original := document.text[span[0]:span[1]]).strip():
+        return False
+    rewritten = rewrite_span(document.text, span, transform)
+    if rewritten != original:
+        editor.replace(manager, rewritten, span)
+        if not selected:
+            manager._stack.peek().extra['formatted_range'] = editor.key, (span[0], editor.cursor)
+    return True
 
 
 def stage_at_cursor(manager, prepared):

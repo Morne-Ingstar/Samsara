@@ -102,6 +102,43 @@ def last_delivery(app, *, delete=False):
     return True
 
 
+def format_external(manager, proof, transform):
+    """Use current selection or an unchanged last-delivery receipt."""
+    from samsara.ava_edit.selection import replace_native_range
+    from samsara.session_modes import StackItem, check_focus_lock
+    from samsara.structural_format import editor_rewrite
+    from samsara.utterance_undo import ReplacementUnit
+
+    if not proof or not proof[1]:
+        return False
+    state = proof[0]
+    process = manager._foreground_exe_resolver()
+    if not process or manager._foreground_hwnd_resolver() != state[0]:
+        return False
+    item = manager.top_dictation_chunk()
+    receipt = (item.extra.get('undo_unit') if item and not item.extra.get('external_selection')
+               and item.extra.get('hwnd') == state[0]
+               and check_focus_lock(item.extra.get('target_process'), process) else None)
+    edit = editor_rewrite(state, transform, receipt.expected if receipt else None, item.payload if receipt else '')
+    if edit is None:
+        return False
+    start, end, original, rewritten = edit
+    if rewritten == original:
+        return True
+    try:
+        after = replace_native_range(state, start, end, rewritten)
+    except (OSError, RuntimeError):
+        return False
+    if after is None:
+        return False
+    selected = state[3] != state[4]
+    unit = ReplacementUnit(state if selected else receipt.expected, after, start, original, rewritten)
+    manager._stack.push(StackItem('dictation_chunk', rewritten, manager.mode, manager._clock(),
+        {'hwnd': state[0], 'target_process': process, 'undo_unit': unit, 'external_selection': selected}))
+    manager._scratch_redo = None
+    return True
+
+
 class SelectionHandler:
     def execute(self, cmd, ctx):
         action = cmd["selection_action"]

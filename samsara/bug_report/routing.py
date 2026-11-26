@@ -40,10 +40,11 @@ def dispatch_command(manager, text, *, heard=None, allow_suggestion=True):
             "phrase": result.phrase, "state": state, "heard": heard,
         })
     if result.matched:
-        manager._stack.push(StackItem(
-            kind="command", payload=result.phrase or text,
-            mode=SessionMode.COMMAND, timestamp=manager._clock(),
-        ))
+        if not getattr(result, "detail", {}).get("owns_undo"):
+            manager._stack.push(StackItem(
+                kind="command", payload=result.phrase or text,
+                mode=SessionMode.COMMAND, timestamp=manager._clock(),
+            ))
         return DispatchOutcome(kind="command_executed", detail={
             **getattr(result, "detail", {}),
             "phrase": result.phrase, "state": state, "heard": heard,

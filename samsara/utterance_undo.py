@@ -7,7 +7,33 @@ from collections import deque
 from copy import deepcopy
 import logging
 
+from samsara import delivery_verify as dv
+
 log = logging.getLogger("Samsara.session_modes")
+
+
+class ReplacementUnit(dv.ReadbackUnit):
+    """A verified edit carrying the exact original range for scratch and redo."""
+
+    def __init__(self, before, after, start, original, rewritten):
+        super().__init__(before, after, rewritten)
+        self.start, self.original = start, original
+
+    def _change(self, redo):
+        from samsara.ava_edit.selection import replace_native_range
+        proof = dv.snapshot()
+        if (self.removed != redo or self.expected is None or not proof or not proof[1]
+                or proof[0][:5] != self.expected[:5]):
+            return False
+        old, new = (self.original, self.text) if redo else (self.text, self.original)
+        end = self.start + len(old.encode('utf-16-le')) // 2
+        self.expected = replace_native_range(proof[0], self.start, end, new)
+        if self.expected is None:
+            return False
+        self.removed = not redo
+        if redo:
+            self.before, self.after = proof[0], self.expected
+        return True
 
 
 class UtteranceUndoMixin:

@@ -224,6 +224,11 @@ def _consume_word_correction(self, text: str, normalized: str,
         self._pending_correction = None
         log.info("[SESSION] word correction dropped: %r is a control phrase", describe_text(text))
         return None
+    from samsara.structural_format import COMMANDS, PHRASES
+    if normalized in PHRASES and self._hands_free_command_probe_fn is not None:
+        match = self._hands_free_command_probe_fn(text)
+        if match is not None and match.phrase in COMMANDS:
+            return None  # Keep the range for formatting; normal command gates still run.
     if not passes_switch_anti_hallucination_gate(signals):
         # Degraded audio must not edit the draft; the click stays armed so
         # the user can simply say the word again.
