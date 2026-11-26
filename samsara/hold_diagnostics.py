@@ -49,6 +49,11 @@ class Evidence:
     intervals: list = field(default_factory=list)
     stopped: float = None
     bound: bool = False
+    # ACE capture and TTS use perf_counter. Keep the legacy monotonic audit
+    # separate because the clocks can have different origins on Windows.
+    capture_cutoff: float | None = None
+    frame_ends: tuple | None = None
+    warning_intervals: list = field(default_factory=list)
 
     def snapshot(self):
         with self.lock:
@@ -67,6 +72,9 @@ class Evidence:
 def begin(app):
     global _active
     evidence = Evidence()
+    prior_cue = getattr(app, '_hold_warning_last_cue', None)
+    if prior_cue is not None:
+        evidence.warning_intervals.append(prior_cue)
     app._hold_evidence_1121 = evidence
     _active = (app, evidence)
     return evidence
@@ -90,12 +98,20 @@ def get(owner):
 
 
 def cue(app, duration_s):
+    now = time.monotonic()
+    queued_at = time.perf_counter()
+    duration_s = max(0., duration_s)
+    remaining = getattr(app, '_audio_output_idle_after', 0.) - now
+    window = (queued_at, queued_at + max(duration_s, remaining))
+    app._hold_warning_last_cue = window
     evidence = get(app)
-    if evidence is not None and getattr(app, 'recording', False) and evidence.stopped is None:
-        now = time.monotonic()
+    if evidence is not None:
         with evidence.lock:
-            evidence.intervals.append((now, now + max(0., duration_s)))
-            evidence.values['cue_events'] += 1
+            if evidence.stopped is None:
+                evidence.warning_intervals.append(window)
+                if getattr(app, 'recording', False):
+                    evidence.intervals.append((now, now + duration_s))
+                    evidence.values['cue_events'] += 1
 
 
 def observe_duck(operation):
@@ -103,16 +119,20 @@ def observe_duck(operation):
     @wraps(operation)
     def run(*args, **kwargs):
         active = _active
-        evidence = (active[1] if active is not None and
-                    getattr(active[0], 'recording', False) and active[1].stopped is None else None)
+        evidence = active[1] if active is not None and active[1].stopped is None else None
+        recording = evidence is not None and getattr(active[0], 'recording', False)
         started = time.monotonic()
+        capture_started = time.perf_counter()
         try:
             return operation(*args, **kwargs)
         finally:
             if evidence is not None:
                 with evidence.lock:
-                    evidence.intervals.append((started, time.monotonic()))
-                    evidence.values['duck_events'] += 1
+                    if evidence.stopped is None:
+                        evidence.warning_intervals.append((capture_started, time.perf_counter()))
+                    if recording:
+                        evidence.intervals.append((started, time.monotonic()))
+                        evidence.values['duck_events'] += 1
     return run
 
 
@@ -160,14 +180,18 @@ def captured(consumer, frames, audit):
     import numpy as np
     from samsara.audio_engine.frame import FRAME_MS
     levels = [float(np.sqrt(np.mean(frame * frame))) for frame in frames]
+    snapshot = getattr(consumer, 'capture_snapshot', None)
     with evidence.lock:
         evidence.stopped = time.monotonic()
+        evidence.capture_cutoff = consumer._capture_not_after
+        if snapshot is not None:
+            evidence.frame_ends = tuple(frame.captured_at for frame in snapshot.frames)
         evidence.values.update(captured_audio_ms=len(frames) * FRAME_MS,
             release_audio_ms=audit['release_frame'] * FRAME_MS,
             admitted_tail_ms=max(0, len(frames) - audit['release_frame']) * FRAME_MS,
             tail_threshold=audit['threshold'], tail_threshold_source=audit.get('threshold_source', 'unknown'),
             release_to_stop_ms=round(max(0., evidence.stopped - audit['released_at']) * 1000),
-            cutoff_set=int(consumer._capture_not_after is not None))
+            cutoff_set=int(evidence.capture_cutoff is not None))
         if evidence.values['last_speech_source'] != 'vad_p01':
             end = max((i + 1 for i, level in enumerate(levels) if level >= audit['threshold']), default=None)
             evidence.values.update(last_speech_end_ms=end * FRAME_MS if end is not None else None,

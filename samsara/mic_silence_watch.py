@@ -8,6 +8,7 @@ import math
 import threading
 import time
 
+from samsara.audio_engine.frame import FRAME_MS
 from samsara.wake_noise_notice import WakeNoiseNotice
 
 
@@ -23,21 +24,51 @@ _create_lock = threading.RLock()
 log = logging.getLogger('Samsara')
 
 
-def excluded(app, *, hold=False):
-    """Observe existing playback/duck state, including the TTS echo tail."""
-    coordinator = getattr(app, 'audio_coordinator', None)
+def capture_ducked(app, *, hold):
     owners = getattr(app, '_hands_free_capture_duck_owners', ())
     # A negative token is this hold's media-output duck. It does not mute the
     # microphone; captured evidence separately excludes its setup/restore work.
     ducked = any(token >= 0 for token in owners) if hold else bool(
         owners or getattr(app, '_hands_free_capture_ducker', None) is not None)
+    return ducked or getattr(app, '_hands_free_capture_duck_starting', False)
+
+
+def excluded(app, *, hold=False):
+    """Observe existing playback/duck state, including the TTS echo tail."""
+    coordinator = getattr(app, 'audio_coordinator', None)
     return bool(
         getattr(coordinator, 'is_speaking', False)
         or time.monotonic() - getattr(app, '_tts_last_speaking', float('-inf')) < .3
-        or ducked or getattr(app, '_hands_free_capture_duck_starting', False)
+        or capture_ducked(app, hold=hold)
         or time.monotonic() < getattr(app, '_audio_output_idle_after', 0.)
         or getattr(app, '_playback_buffer', ()) is not None
         and len(getattr(app, '_playback_buffer', ())) > 0)
+
+
+def clean_hold_seconds(app, evidence, frame_count):
+    frame_s = FRAME_MS / 1000.
+    frame_ends = getattr(evidence, 'frame_ends', None)
+    if frame_ends is None:
+        # Older observers without capture timestamps still need the live guards.
+        if excluded(app, hold=True):
+            return 0.
+        frame_ends = (evidence.stopped - remaining * frame_s
+                      for remaining in range(frame_count - 1, -1, -1))
+        intervals = evidence.intervals
+        cutoff = evidence.stopped
+    else:
+        if len(frame_ends) != frame_count or capture_ducked(app, hold=True):
+            return 0.
+        intervals = list(evidence.warning_intervals)
+        coordinator = getattr(app, 'audio_coordinator', None)
+        speech_windows = getattr(coordinator, 'speech_windows', None)
+        if callable(speech_windows):
+            intervals.extend((w.start_ns / 1e9, w.end_ns / 1e9) for w in speech_windows())
+        cutoff = evidence.capture_cutoff if evidence.capture_cutoff is not None else math.inf
+    clean = sum(end <= cutoff and not any(start < stop and start < end and end - frame_s < stop
+                                         for start, stop in intervals)
+                for end in frame_ends)
+    return clean * frame_s
 
 
 def device_name(app):
@@ -93,16 +124,7 @@ class SilenceWatch:
                 if self.cause == 'hold':
                     self.transition(None, 'hold', device, maximum, len(levels) * .1)
                 return
-            if excluded(self.app, hold=True):
-                return
-            # Existing evidence times cue/duck operations on the monotonic clock.
-            # Do not count affected frames as proof of a dead input. Ordinary
-            # output duck setup excludes only its operation, not the whole take.
-            end = evidence.stopped
-            start = end - len(levels) * .1
-            clean = sum(not any(start + (i + 1) * .1 > a and start + i * .1 < b
-                                for a, b in evidence.intervals)
-                        for i in range(len(levels))) * .1
+            clean = clean_hold_seconds(self.app, evidence, len(levels))
             if clean >= HOLD_SECONDS:
                 self.transition('hold', 'hold', device, maximum, clean)
 
