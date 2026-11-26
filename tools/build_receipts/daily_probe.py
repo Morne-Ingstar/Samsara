@@ -248,7 +248,7 @@ def perform(app, home, operation):
         original = coordinator.speak
         observed = []
         def speak(text, *args, **kwargs):
-            observed.append(text == 'A phrase that tells Samsara to listen for a command without holding a key.')
+            observed.append(text == 'Say “jarvis” to make Samsara listen for one command.')
             return original(text, *args, **kwargs)
         coordinator.speak = speak
         try:

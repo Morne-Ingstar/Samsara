@@ -307,7 +307,8 @@ def test_help_observer_forwards_and_restores_real_speech_call(probe, tmp_path):
     coordinator = SimpleNamespace(speak=lambda text: spoken.append(text))
     original = coordinator.speak
     def process(*args, **kwargs):
-        coordinator.speak('A phrase that tells Samsara to listen for a command without holding a key.')
+        # 1386b: match the current wake-word Help reply.
+        coordinator.speak('Say “jarvis” to make Samsara listen for one command.')
         return SimpleNamespace(state=SimpleNamespace(value='completed'))
     app = SimpleNamespace(_receipt_replay=None, audio_coordinator=coordinator,
                           command_executor=SimpleNamespace(process_text=process))
