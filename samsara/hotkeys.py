@@ -46,6 +46,12 @@ _listener_error_lock = threading.Lock()
 _main_hotkey_lock_init = threading.Lock()
 
 
+def _log_hotkey_fire(key, binding):
+    if getattr(key, 'hold_mods', None) is not None:
+        logger.info("[HOTKEY_FIRE] name=%s mods=%#x physical=%#x suppressed=%s",
+                    binding, key.hold_mods, key.hold_physical_mods, key.hold_suppressed)
+
+
 def _main_hotkey_lock(app):
     # Legacy app delegates and small stand-ins do not initialize this field.
     with _main_hotkey_lock_init:
@@ -227,7 +233,10 @@ class HotkeyCluster:
                 and hotkey_str == self.config.get('hotkey')):
             return False  # primary mouse holds belong solely to their existing mouse path
         if listener is not None or hold_key_rules.parts(hotkey_str) & {'mouse4', 'mouse5'}:
-            return hold_key_rules.binding_down(hotkey_str, mouse_down | set(getattr(listener, 'event_down', ())))
+            return hold_key_rules.binding_down(
+                hotkey_str, mouse_down | set(getattr(listener, 'event_down', ())),
+                getattr(listener, 'unverified_modifiers', ()),
+            )
         required_keys = self.parse_hotkey(hotkey_str)
         if not required_keys:
             # A mouse binding is never "held" on the keyboard.
@@ -350,10 +359,12 @@ class HotkeyCluster:
                 complete_hotkey = self.alarm_manager.complete_hotkey
                 dismiss_hotkey = self.alarm_manager.dismiss_hotkey
                 if self.check_hotkey_state(complete_hotkey):
+                    _log_hotkey_fire(key, 'alarms.complete_hotkey')
                     self.alarm_manager.complete()
                     self.play_sound('success')
                     return
                 if self.check_hotkey_state(dismiss_hotkey):
+                    _log_hotkey_fire(key, 'alarms.dismiss_hotkey')
                     self.alarm_manager.dismiss()
                     self.play_sound('stop')
                     return
@@ -371,6 +382,7 @@ class HotkeyCluster:
         keep_hotkey = self.config.get('keep_dictation_hotkey', '')
         if keep_hotkey and self.check_hotkey_state(keep_hotkey):
             if not getattr(self, '_keep_dictation_down', False):
+                _log_hotkey_fire(key, 'keep_dictation_hotkey')
                 self._keep_dictation_down = True
                 from samsara.kept_dictations import request_keep
                 request_keep(self)
@@ -390,10 +402,12 @@ class HotkeyCluster:
                 and not getattr(self, '_pause_hotkey_down', False)):
             self._pause_hotkey_down = True
             if self._pause_active_hold():
+                _log_hotkey_fire(key, 'ui.live_surface.pause_hotkey')
                 return
 
         if (self.check_hotkey_state(memo_hotkey)
                 and not self.hotkey_pressed and not self.recording):
+            _log_hotkey_fire(key, 'memo_hotkey')
             logger.debug(f"[MEMO] Hotkey detected: {memo_hotkey}")
             self._capture_sink = None
             self._memo_recording = True
@@ -407,6 +421,7 @@ class HotkeyCluster:
 
         if (self.check_hotkey_state(task_hotkey)
                 and not self.hotkey_pressed and not self.recording):
+            _log_hotkey_fire(key, 'task_hotkey')
             logger.debug(f"[TASK] Hotkey detected: {task_hotkey}")
             self._memo_recording = True
             self._capture_sink = 'task'
@@ -427,6 +442,7 @@ class HotkeyCluster:
             if self._stop_in_flight:
                 logger.debug("[HOTKEY] Ignored re-trigger while stop in flight")
                 return
+            _log_hotkey_fire(key, 'command_hotkey')
             logger.debug(f"[HOTKEY] Command hotkey detected: {command_hotkey}")
             self.hotkey_pressed = True
             # Keep key-down ownership until release, including a failed start.
@@ -436,6 +452,7 @@ class HotkeyCluster:
         # Undo hotkey (works in any mode, edge-triggered)
         undo_hotkey = self.config.get('undo_hotkey', 'ctrl+alt+z')
         if self.check_hotkey_state(undo_hotkey) and not self.hotkey_pressed:
+            _log_hotkey_fire(key, 'undo_hotkey')
             logger.debug(f"[HOTKEY] Undo hotkey detected: {undo_hotkey}")
             self.hotkey_pressed = True
             thread_registry.spawn("dictation.undo_last_dictation", self.undo_last_dictation, daemon=True)
@@ -444,6 +461,7 @@ class HotkeyCluster:
         # Correction report hotkey (works in any mode, edge-triggered)
         correction_hotkey = self.config.get('correction_hotkey', 'ctrl+alt+r')
         if self.check_hotkey_state(correction_hotkey) and not self.hotkey_pressed:
+            _log_hotkey_fire(key, 'correction_hotkey')
             logger.debug(f"[HOTKEY] Correction hotkey detected: {correction_hotkey}")
             self.hotkey_pressed = True
             self._schedule_ui(self._report_correction_dialog)
@@ -455,6 +473,7 @@ class HotkeyCluster:
         # threshold-based "Report Correction" dialog).
         capture_correction_hotkey = self.config.get('hotkeys', {}).get('capture_correction', 'ctrl+alt+x')
         if self.check_hotkey_state(capture_correction_hotkey) and not self.hotkey_pressed:
+            _log_hotkey_fire(key, 'hotkeys.capture_correction')
             logger.debug(f"[HOTKEY] Capture correction hotkey detected: {capture_correction_hotkey}")
             self.hotkey_pressed = True
             thread_registry.spawn(
@@ -463,6 +482,7 @@ class HotkeyCluster:
 
         # Check for wake word enable/disable toggle (works in any mode)
         if self.check_hotkey_state(wake_hotkey) and not self.hotkey_pressed:
+            _log_hotkey_fire(key, 'wake_word_hotkey')
             logger.debug(f"[HOTKEY] Wake word hotkey detected: {wake_hotkey}")
             self.hotkey_pressed = True
             new_state = not self.config.get('wake_word_enabled', False)
@@ -479,6 +499,7 @@ class HotkeyCluster:
         if (self._hands_free_dictation_commit_available()
                 and self.check_hotkey_state(dictate_commit_hotkey)
                 and not self.hotkey_pressed):
+            _log_hotkey_fire(key, 'dictate_commit_hotkey')
             logger.debug('[HOTKEY] Paste staged thought detected: %s', dictate_commit_hotkey)
             self.hotkey_pressed = True
             thread_registry.spawn(
@@ -490,6 +511,7 @@ class HotkeyCluster:
 
         # Check for continuous mode toggle (works in any mode)
         if self.check_hotkey_state(cont_hotkey) and not self.hotkey_pressed:
+            _log_hotkey_fire(key, 'continuous_hotkey')
             logger.debug(f"[HOTKEY] Continuous mode hotkey detected: {cont_hotkey}")
             self.hotkey_pressed = True
             self.toggle_continuous_mode()
@@ -506,11 +528,13 @@ class HotkeyCluster:
                 logger.debug(f"[HOTKEY] Continuous commit hotkey detected: {commit_hotkey}")
                 self.hotkey_pressed = True
                 if self._continuous_consumer is not None:
+                    _log_hotkey_fire(key, 'continuous_commit_hotkey')
                     self._continuous_consumer.commit_now()
                 return
 
         # Check for cancel recording hotkey (only when recording)
         if self.check_hotkey_state(cancel_hotkey) and self.recording:
+            _log_hotkey_fire(key, 'cancel_hotkey')
             logger.debug(f"[HOTKEY] Cancel hotkey detected: {cancel_hotkey}")
             self.cancel_recording()
             return
@@ -522,6 +546,7 @@ class HotkeyCluster:
 
             # Check for complete hotkey (user did the task, gets streak credit)
             if self.check_hotkey_state(complete_hotkey):
+                _log_hotkey_fire(key, 'alarms.complete_hotkey')
                 logger.debug(f"[HOTKEY] Alarm complete hotkey detected: {complete_hotkey}")
                 self.alarm_manager.complete()
                 self.play_sound('success')  # Success sound for completion
@@ -529,6 +554,7 @@ class HotkeyCluster:
 
             # Check for dismiss hotkey (just silence, no credit, breaks streak)
             if self.check_hotkey_state(dismiss_hotkey):
+                _log_hotkey_fire(key, 'alarms.dismiss_hotkey')
                 logger.debug(f"[HOTKEY] Alarm dismiss hotkey detected: {dismiss_hotkey}")
                 self.alarm_manager.dismiss()
                 self.play_sound('stop')  # Neutral sound for dismissal
@@ -1356,6 +1382,7 @@ class HotkeyCluster:
                 if pressed:
                     if self._command_mode_key_held:
                         return  # auto-repeat — already handled the real press
+                    _log_hotkey_fire(key, 'command_mode.button')
                     self._command_mode_key_held = True
                 else:
                     if not self._command_mode_key_held:
@@ -1393,6 +1420,7 @@ class HotkeyCluster:
                     return  # phantom release
                 self._ava_mode_key_held = False
             if pressed and not self.ava_mode_active and not self.command_mode_active:
+                _log_hotkey_fire(key, 'ava_mode_key')
                 self.enter_ava_mode()
             elif not pressed and self.ava_mode_active:
                 self.exit_ava_mode()

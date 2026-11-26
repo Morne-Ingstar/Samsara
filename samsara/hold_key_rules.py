@@ -3,9 +3,13 @@
 The rules are pure; Qt and pynput are imported only when constructing their
 adapters. Saved bindings are never migrated or validated on load.
 """
+import ctypes
 from dataclasses import dataclass
+import logging
 from types import SimpleNamespace
 import weakref
+
+logger = logging.getLogger("Samsara")
 
 _capture_ref = None
 _captured_mouse = set()
@@ -73,6 +77,15 @@ VK_NAMES = {
     186: ';', 187: '=', 188: ',', 189: '-', 190: '.', 191: '/',
     192: '`', 219: '[', 220: '\\', 221: ']', 222: "'",
 }
+# The native filter normalizes Ctrl/Alt/Shift to a side and both Win keys to 'win'.
+_MODIFIER_VKS = {
+    'left_ctrl': (162,), 'right_ctrl': (163,),
+    'left_alt': (164,), 'right_alt': (165,),
+    'left_shift': (160,), 'right_shift': (161,),
+    'win': (91, 92),
+}
+_MODIFIER_BITS = {name: 1 << i for i, name in enumerate(_MODIFIER_VKS)}
+_MODIFIER_MASK = (1 << len(_MODIFIER_BITS)) - 1
 ALONE = frozenset([f'f{n}' for n in range(1, 25)] +
                   [f'numpad{n}' for n in range(10)] +
                   ['numpad_add', 'numpad_subtract', 'numpad_multiply',
@@ -129,9 +142,12 @@ def combo_string(keys):
     return '+'.join(sorted(keys, key=lambda k: (order.get(base_modifier(k), 9), k)))
 
 
-def binding_down(binding, down):
+def binding_down(binding, down, unverified_modifiers=()):
     wanted = parts(binding)
-    available = set(down) | {base_modifier(k) for k in down}
+    available = set(down)
+    if len(wanted) > 1:
+        available.difference_update(unverified_modifiers)
+    available.update(base_modifier(k) for k in tuple(available))
     return bool(wanted) and wanted <= available
 
 
@@ -230,17 +246,35 @@ class SuppressionState:
     def __init__(self, config):
         self.config = config
         self.down = set()
-        self.swallowed = set()
+        # binding for a shortcut, None for picker capture, False for a pending up only
+        self.swallowed = {}
 
-    def event(self, name, pressed, injected=False, captured=False):
+    def clear_stale_modifiers(self, stale, pressing):
+        # A swallowed standalone modifier may be invisible to Windows.
+        # Keep its existing hold/release ownership but exclude it from chords.
+        retained = stale & self.swallowed.keys()
+        if not stale:
+            return retained
+        self.down.difference_update(stale - retained)
+        remaining = (self.down - stale) | {pressing}
+        available = remaining | {base_modifier(key) for key in remaining}
+        lost = (stale | {base_modifier(key) for key in stale}) - available
+        for key, binding in self.swallowed.items():
+            wanted = parts(binding)
+            if len(wanted) > 1 and wanted & lost:
+                # Preserve the paired up unless a subsequent down passes through.
+                self.swallowed[key] = False
+        return retained
+
+    def event(self, name, pressed, injected=False, captured=False, unverified_modifiers=()):
         if injected or name is None:
             return False
         if pressed:
             self.down.add(name)
             if captured:
-                self.swallowed.add(name)
+                self.swallowed[name] = None
                 return True
-            if name in self.swallowed:
+            if name in self.swallowed and self.swallowed[name] is not False:
                 return True
             config = self.config()
             occupied = assignments(config)
@@ -253,13 +287,14 @@ class SuppressionState:
                     continue
                 binding = config_value(config, path, default)
                 if (validate(binding, occupied, path).allowed and name in swallow_binding(binding)
-                        and binding_down(binding, self.down)):
-                    self.swallowed.add(name)
+                        and binding_down(binding, self.down, unverified_modifiers)):
+                    self.swallowed[name] = binding
                     return True
+            self.swallowed.pop(name, None)
             return False
         self.down.discard(name)
         consumed = name in self.swallowed
-        self.swallowed.discard(name)
+        self.swallowed.pop(name, None)
         return consumed or captured
 
 
@@ -271,7 +306,22 @@ def hold_event_matches(app, key, binding, pressed, was_held=False):
     member = name in wanted or base_modifier(name) in wanted
     if not pressed:
         return bool(was_held and member)
-    return member and binding_down(binding, key.hold_keys)
+    return member and binding_down(binding, key.hold_keys,
+                                   getattr(key, 'hold_unverified_modifiers', ()))
+
+
+def _modifier_pressed(name):
+    user32 = getattr(getattr(ctypes, 'windll', None), 'user32', None)
+    return user32 is not None and any(user32.GetAsyncKeyState(vk) & 0x8000
+                                      for vk in _MODIFIER_VKS[name])
+
+
+def _modifier_mask(names):
+    return sum(_MODIFIER_BITS.get(name, 0) for name in names)
+
+
+def _modifiers_from_mask(mask):
+    return {name for name, bit in _MODIFIER_BITS.items() if mask & bit}
 
 
 def hold_listener(app, keyboard, press, release):
@@ -279,11 +329,16 @@ def hold_listener(app, keyboard, press, release):
     state = SuppressionState(lambda: app.config)
 
     class Listener(keyboard.Listener):
+        _SUPPRESSED_MESSAGE = 0x2000
         _HOLD_MESSAGE = 0x4000
         _CAPTURE_MESSAGE = 0x8000
+        _STALE_SHIFT = 16
+        _PHYSICAL_SHIFT = 23
+        _RETAINED_SHIFT = 25  # above the VK, scan and extended flag in packed
 
         def __init__(self):
             self.event_down = set()
+            self.unverified_modifiers = set()
             super().__init__(on_press=press, on_release=release,
                              win32_event_filter=self._hold_filter)
 
@@ -297,9 +352,27 @@ def hold_listener(app, keyboard, press, release):
             pressed = msg in self._PRESS_MESSAGES
             packed = int(data.vkCode) | (int(data.scanCode) << 8) | ((int(data.flags) & 1) << 24)
             captured = route_capture(name, pressed)
+            stale = set()
+            physical = set()
+            if pressed:
+                tracked = state.down & _MODIFIER_BITS.keys()
+                # Windows updates the async state of this event's key after
+                # the hook returns. Its keydown is already our evidence.
+                physical = {mod for mod in tracked if mod == name or _modifier_pressed(mod)}
+                if name in _MODIFIER_BITS:
+                    physical.add(name)
+                stale = tracked - physical
+            retained = state.clear_stale_modifiers(stale, name)
+            suppressed = state.event(name, pressed, captured=captured,
+                                     unverified_modifiers=retained)
             message = msg | self._HOLD_MESSAGE | (self._CAPTURE_MESSAGE if captured else 0)
+            if suppressed:
+                message |= self._SUPPRESSED_MESSAGE
+            message |= _modifier_mask(stale) << self._STALE_SHIFT
+            message |= _modifier_mask(physical) << self._PHYSICAL_SHIFT
+            packed |= _modifier_mask(retained) << self._RETAINED_SHIFT
             self._message_loop.post(self._WM_PROCESS, message, packed)
-            if state.event(name, pressed, captured=captured):
+            if suppressed:
                 self.suppress_event()  # native hook returns 1, after queueing our event
             return False  # callback already queued; this alone never swallows
 
@@ -307,14 +380,37 @@ def hold_listener(app, keyboard, press, release):
             if not msg & self._HOLD_MESSAGE:
                 return super()._process(msg, packed)
             name = physical_key(packed & 255, (packed >> 8) & 65535, (packed >> 24) & 1)
-            pressed = (msg & ~(self._HOLD_MESSAGE | self._CAPTURE_MESSAGE)) in self._PRESS_MESSAGES
-            self.deliver(name, pressed, captured=bool(msg & self._CAPTURE_MESSAGE))
+            pressed = (msg & 0x1FFF) in self._PRESS_MESSAGES
+            stale = (msg >> self._STALE_SHIFT) & _MODIFIER_MASK
+            physical = (msg >> self._PHYSICAL_SHIFT) & _MODIFIER_MASK
+            retained = (packed >> self._RETAINED_SHIFT) & _MODIFIER_MASK
+            self.deliver(name, pressed, captured=bool(msg & self._CAPTURE_MESSAGE),
+                         stale=stale, physical=physical, retained=retained,
+                         suppressed=bool(msg & self._SUPPRESSED_MESSAGE))
 
-        def deliver(self, name, pressed, captured=False):
+        def deliver(self, name, pressed, captured=False, *, stale=0, physical=0,
+                    retained=0, suppressed=False):
             if pressed:
                 self.event_down.add(name)
             else:
                 self.event_down.discard(name)
+                self.unverified_modifiers.discard(name)
+            cleared = _modifiers_from_mask(stale & ~retained)
+            if cleared:
+                self.event_down.difference_update(cleared)
+                keys = getattr(app, 'current_keys', None)
+                if keys is not None:
+                    held = {base_modifier(key) for key in self.event_down}
+                    cleared_bases = {base_modifier(key) for key in cleared} - held
+                    keys.difference_update(cleared_bases)
+                    times = getattr(app, 'key_press_times', {})
+                    for base in cleared_bases:
+                        times.pop(base, None)
+                logger.info("[HOTKEY_STALE_MODS] mods=%#x physical=%#x cleared=%#x",
+                            stale | physical, physical, stale & ~retained)
+            if pressed:
+                verified = _modifiers_from_mask(physical)
+                self.unverified_modifiers = (self.event_down & _MODIFIER_BITS.keys()) - verified
             if captured:
                 keys = getattr(app, 'current_keys', None)
                 if keys is not None:
@@ -322,7 +418,10 @@ def hold_listener(app, keyboard, press, release):
                     keys.update(base_modifier(key) for key in self.event_down)
                 return
             key = SimpleNamespace(name=base_modifier(name), hold_name=name,
-                                  hold_keys=frozenset(self.event_down))
+                                  hold_keys=frozenset(self.event_down),
+                                  hold_unverified_modifiers=frozenset(self.unverified_modifiers),
+                                  hold_mods=stale | physical, hold_physical_mods=physical,
+                                  hold_suppressed=suppressed)
             (self.on_press if pressed else self.on_release)(key)
 
     listener = Listener()
