@@ -94,10 +94,12 @@ def run_take(pcm, release_s, model, config=None, *, partials=True):
     external_path(os.environ["SAMSARA_HOME_DIR"])
     from samsara.streaming import StreamingSession, StreamingWorker
     from samsara.audio_engine import FrameBus, DictationSessionConsumer, FRAME_SIZE
+    from samsara.audio_engine.frame import FRAME_MS
     from samsara.transcription_params import get_transcription_params
     from samsara.formatting_tokens import apply_formatting_tokens_if_enabled
     from samsara import config_defaults
     from samsara.constants import HOLD_RELEASE_TAIL_SPEECH_THRESHOLD
+    from samsara.mic_silence_watch import SilenceWatch
     from samsara.speech_presence import HoldEvidence
 
     settings = dict(config_defaults.DEFAULTS)
@@ -120,16 +122,43 @@ def run_take(pcm, release_s, model, config=None, *, partials=True):
              _schedule_ui=lambda fn, *a: fn(*a),
              _on_streaming_session_finished=lambda *a: None, _paste_preserving_clipboard=paste,
              _log_history=lambda **row: history.append(row))
+    app._mic_silence_watch_1252 = SilenceWatch(app, deliver=lambda *_: None)
     app.process_transcription = lambda text: process_transcription(app, text)
     app._apply_formatting_tokens = lambda text: apply_formatting_tokens_if_enabled(
         text, settings.get("formatting_tokens", {}).get("enabled", True))
     app.get_transcription_params = lambda **kw: get_transcription_params(
         settings, language=settings.get("language", "en"), initial_prompt=settings.get("initial_prompt"),
         no_speech_threshold=.6, log_prob_threshold=-1.)
+
+    class ReplayConsumer(DictationSessionConsumer):
+        # Keep the production threshold, cap and audit path. Only the wait
+        # loop uses the replay clock, scoped to this consumer.
+        def _wait_for_release_quiet(self, next_rms, threshold, silence_ms, max_tail_ms,
+                                    should_abort=None):
+            result = dict(reason="max", elapsed_ms=max_tail_ms, frames=0,
+                          threshold=threshold, last_frame_rms=0.)
+            if max_tail_ms <= 0:
+                return result
+            # The first pending block arrives at release. A block arriving
+            # at the cutoff is committed before capture closes.
+            quiet_ms = 0
+            for at_ms in range(0, max_tail_ms + 1, FRAME_MS):
+                if should_abort is not None and should_abort():
+                    result.update(reason="abort", elapsed_ms=at_ms)
+                    break
+                feed_frame()
+                drained()
+                last_rms, = next_rms()
+                result.update(frames=result["frames"] + 1, last_frame_rms=last_rms)
+                quiet_ms = quiet_ms + FRAME_MS if last_rms < threshold else 0
+                if quiet_ms >= silence_ms:
+                    result.update(reason="silence", elapsed_ms=at_ms)
+                    break
+            return result
+
     bus = FrameBus()
-    consumer = DictationSessionConsumer(NS(register_consumer=bus.new_reader, _overflow_count=0), app)
+    consumer = ReplayConsumer(NS(register_consumer=bus.new_reader, _overflow_count=0), app)
     app._dictation_consumer = consumer
-    app._speech_presence_capture = HoldEvidence(time.perf_counter())
     session = StreamingSession.__new__(StreamingSession)
     session.app, session.start_time = app, time.time()
     session.stop_event, session.cancel_event = threading.Event(), threading.Event()
@@ -151,59 +180,57 @@ def run_take(pcm, release_s, model, config=None, *, partials=True):
     release_frame = int(np.ceil(max(0, release_s) * RATE / FRAME_SIZE))
     if release_frame * FRAME_SIZE > len(pcm) + FRAME_SIZE:
         raise ValueError("Release boundary is outside the input")
-    needed = max(len(pcm), release_frame * FRAME_SIZE + round(1.2 * RATE))
+    silence_ms = int(settings.get("recording_tail_silence_ms", 300))
+    max_tail_ms = int(settings.get("recording_tail_max_ms", 1200))
+    speech_floor = float(settings.get("recording_tail_speech_threshold", HOLD_RELEASE_TAIL_SPEECH_THRESHOLD))
+    needed = max(len(pcm), release_frame * FRAME_SIZE)
     padded = np.pad(pcm, (0, int(np.ceil(needed / FRAME_SIZE)) * FRAME_SIZE - len(pcm)))
-    tail_thread = None
-    tail_errors = []
-    release_time = None
+    silence = np.zeros(FRAME_SIZE, dtype="<i2")
+    # Timestamp the PCM on its sample timeline, ending before the live
+    # perf_counter cutoff used by finish_capture().
+    capture_span = (release_frame + 1) * FRAME_SIZE / RATE + max(0, silence_ms, max_tail_ms) / 1000
+    capture_start = time.perf_counter() - capture_span
+    app._speech_presence_capture = HoldEvidence(capture_start)
     preview_count = 0
+
     def drained():
         deadline = time.monotonic() + 3
-        while consumer._reader._read_cursor < bus.write_cursor:
+        while True:
+            with consumer._streaming_lock:
+                if len(consumer._streaming_frames) == bus.write_cursor:
+                    return
             if time.monotonic() >= deadline:
                 raise RuntimeError("Replay capture drain timed out")
             time.sleep(.002)
-    def tail():
-        try:
-            result = consumer.wait_for_streaming_release_tail(
-                silence_ms=300, max_tail_ms=1200, speech_threshold=HOLD_RELEASE_TAIL_SPEECH_THRESHOLD,
-                should_abort=session.cancel_event.is_set)
-            session._release_tail_signals = dict(result, speech_floor=HOLD_RELEASE_TAIL_SPEECH_THRESHOLD)
-            consumer.finish_capture(force=True)
-        except Exception as error:
-            tail_errors.append(error)
+
+    def feed_frame():
+        index = bus.write_cursor
+        start = index * FRAME_SIZE
+        block = padded[start:start + FRAME_SIZE] if start < len(padded) else silence
+        bus.write(block, capture_start + (index + 1) * FRAME_SIZE / RATE, 0)
+
     try:
         if not consumer.activate_streaming():
             raise RuntimeError("Replay capture did not activate")
         next_preview = 13.
-        for index, start in enumerate(range(0, len(padded), FRAME_SIZE)):
-            if index == release_frame:
+        for index in range(release_frame):
+            feed_frame()
+            if index % 20 == 19:
                 drained()
-                release_time = time.perf_counter()
-                tail_thread = threading.Thread(target=tail, name="corpus-release-tail")
-                tail_thread.start()
-                time.sleep(.015)
-            if tail_thread is not None and not tail_thread.is_alive():
-                break
-            bus.write(padded[start:start + FRAME_SIZE], time.perf_counter(), 0)
-            if tail_thread is not None:
-                # Tail policy is a real clock boundary, so deliver at device pace.
-                time.sleep(FRAME_SIZE / RATE)
-            elif index % 20 == 19:
-                drained()
-            if partials and tail_thread is None and start / RATE >= next_preview:
+            if partials and index * FRAME_SIZE / RATE >= next_preview:
                 drained()
                 preview = worker._transcribe_partial()
                 if preview:
                     session.on_partial(preview)
                     preview_count += 1
                 next_preview += 13.
-        if tail_thread:
-            tail_thread.join(3)
-            if tail_thread.is_alive() or tail_errors:
-                raise RuntimeError("Production release tail did not complete")
-        if release_time is None:
-            raise RuntimeError("Release boundary was not replayed")
+        drained()
+        tail = consumer.wait_for_streaming_release_tail(
+            silence_ms=silence_ms, max_tail_ms=max_tail_ms, speech_threshold=speech_floor,
+            should_abort=session.cancel_event.is_set)
+        session._release_tail_signals = dict(tail, speech_floor=speech_floor)
+        consumer.finish_capture(force=True)
+        final_started = time.perf_counter()
         session.finalize()
         worker._final_pass()
         job = getattr(app, "_hold_decode_job", None)
@@ -214,13 +241,17 @@ def run_take(pcm, release_s, model, config=None, *, partials=True):
         if consumer.capture_loss:
             raise RuntimeError("Replay lost PCM frames")
         captured = getattr(session, "_stopped_audio_1042", None)
-        expected = padded[:len(captured)] if captured is not None else np.array([], dtype="<i2")
-        preserved = captured is not None and np.allclose(captured, expected.astype(np.float32) / 32767, atol=1e-7)
+        expected_samples = bus.write_cursor * FRAME_SIZE
+        expected = pcm[:expected_samples].astype(np.float32) / 32767
+        preserved = (captured is not None and len(captured) == expected_samples
+                     and np.array_equal(captured[:len(expected)], expected)
+                     and not np.any(captured[len(expected):]))
         if not preserved:
             raise RuntimeError("Replay changed captured PCM")
         text = "".join(delivered).strip()
         raw = finals[-1][1] if finals else ""
-        return dict(text=text, raw=raw, release_to_text_ms=(time.perf_counter() - release_time) * 1000,
+        return dict(text=text, raw=raw,
+                    release_to_text_ms=tail["elapsed_ms"] + (time.perf_counter() - final_started) * 1000,
                     captured_samples=len(captured), pcm_preserved=preserved, partials=preview_count,
                     tail=session._release_tail_signals,
                     final_state=session._state, delivery_count=len(delivered),
@@ -228,8 +259,6 @@ def run_take(pcm, release_s, model, config=None, *, partials=True):
                     held_keep_routed=not delivered and getattr(getattr(app, "_kept_dictations", None), "armed", False))
     finally:
         session.cancel_event.set()
-        if tail_thread:
-            tail_thread.join(3)
         consumer.stop_streaming()
         consumer.cancel()
         store = getattr(app, "_kept_dictations", None)
