@@ -2861,18 +2861,11 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
         return _deep_update(self, target, source)
     
     def save_config(self):
-        """Save configuration to JSON file, then rotate a timestamped backup.
-        Prefers a true atomic os.replace() for the final swap into place,
-        with a short retry + fallback (see step 3) -- a concurrent
-        config-watcher read can transiently hold config.json open without
-        FILE_SHARE_DELETE on Windows. If serialization throws partway
-        through (as happened with the MenuItem-in-config bug), config.json
-        is left untouched instead of being truncated.
-        Also keeps the previous good copy at config.json.bak, AND
-        (2026-07-2x config-backup safeguard) a rolling, timestamped copy of
-        the PRE-write on-disk state under _config_backups_dir() (newest
-        _CONFIG_BACKUP_KEEP kept -- see _rotate_config_backup()) so a bad
-        write is never the only surviving copy of a user's settings.
+        """Save configuration by atomically replacing the primary JSON file.
+
+        Keep a .bak and a rolling backup of the prior on-disk configuration.
+        If staging or replacement fails, propagate the error to the caller.
+
         SAVE LATCH: a no-op if self._config_load_failed is set -- meaning
         load_config() could not read an existing config file THIS session
         (see its failure branch and _quarantine_corrupt_config()). This is
@@ -2904,11 +2897,11 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
             self._config_migration_pending = True
             return
 
-        tmp_path = self.config_path.with_suffix('.json.tmp')
-        bak_path = self.config_path.with_suffix('.json.bak')
         from samsara import model_guard
+        from samsara.config_persistence import write_config
+
         try:
-            # 0. Three-way merge: (last-known-disk, in-memory, current-disk).
+            # Three-way merge: (last-known-disk, in-memory, current-disk).
             #    External edits (keys changed on disk since our last read/write)
             #    are preserved unless the app also changed the same key at
             #    runtime (in which case the runtime value wins).
@@ -2926,69 +2919,13 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                     merged = self.config
 
             merged = model_guard.protect_save(self, merged)
-            # 1. Serialize to temp file. If json.dump raises, the real
-            #    config.json is unaffected.
-            with open(tmp_path, 'w') as f:
-                json.dump(merged, f, indent=2)
+            write_config(self.config_path, merged, self._rotate_config_backup)
 
-            # 2a. Rolling, timestamped backup of the CURRENT on-disk state,
-            #     taken before this write replaces it (2026-07-2x
-            #     config-backup safeguard).
-            if self.config_path.exists():
-                self._rotate_config_backup()
-
-            # 2b. Back up current config to the single .bak slot too (kept
-            #     for existing recovery callers -- load_config()'s
-            #     JSONDecodeError fallback, Import's own note to the user).
-            #     Use shutil.copy2 (read -> write to a different path)
-            #     rather than os.replace/rename for THIS copy specifically:
-            #     on Windows, MoveFileExW fails with access denied when any
-            #     open handle on the source file lacks FILE_SHARE_DELETE --
-            #     Python's default open() never sets that flag, so the
-            #     config watcher's background read would block the rename.
-            if self.config_path.exists():
-                try:
-                    shutil.copy2(self.config_path, bak_path)
-                except OSError as e:
-                    logger.warning(f"[WARN] Could not backup config to .bak: {e}")
-
-            # 3. Swap the new content into place. Prefer a true atomic
-            #    os.replace() (same guarantee the module docstring always
-            #    claimed but the code didn't actually deliver); retry
-            #    briefly since a concurrent config-watcher read can
-            #    transiently hold config.json open without FILE_SHARE_DELETE
-            #    on Windows, then fall back to the historical direct
-            #    overwrite (open('w') succeeds even under a shared read
-            #    handle) so a save can never simply fail outright.
-            swapped = False
-            for _attempt in range(3):
-                try:
-                    os.replace(tmp_path, self.config_path)
-                    swapped = True
-                    break
-                except OSError as exc:
-                    logger.debug(f"[CONFIG] os.replace attempt {_attempt + 1} failed: {exc}")
-                    time.sleep(0.02)
-            if not swapped:
-                tmp_text = tmp_path.read_text(encoding='utf-8')
-                with open(self.config_path, 'w', encoding='utf-8') as f:
-                    f.write(tmp_text)
-                try:
-                    tmp_path.unlink()
-                except OSError as e:
-                    logger.debug(f"Temp config file cleanup failed: {e}")
-
-            # 4. Sync in-memory config and snapshot to what was written.
+            # Sync in-memory config and snapshot to what was written.
             self.config = merged
             self._config_last_disk_snapshot = copy.deepcopy(merged)
             model_guard.saved(self)
         except Exception as e:
-            # Clean up the temp file if we left one lying around
-            try:
-                if tmp_path.exists():
-                    tmp_path.unlink()
-            except OSError as _cleanup_err:
-                logger.debug(f"Temp config file cleanup failed after save error: {_cleanup_err}")
             safe_exception(logger, f"[ERROR] save_config failed: {describe_text(e)}")
             raise
 
