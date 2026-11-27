@@ -268,3 +268,91 @@ def test_failure_and_restore_warning_reach_actual_displays(qapp, monkeypatch, di
         recovery._attempt.reset(token)
         (controller or indicator).close()
         qapp.processEvents()
+
+
+def _hold(s, text='Synthetic fenced hold.'):
+    s.app._paste_preserving_clipboard = lambda text: paste.paste_preserving_clipboard(
+        s.app, text, type_text_unicode_fn=s.typed, get_foreground_hwnd_fn=lambda: 42)
+    return paste.paste_ordinary_hold(s.app, text)
+
+
+def _refused_hold(s, caplog, reason):
+    initial = dict(s.fake.formats)
+    with caplog.at_level('INFO', logger='Samsara'):
+        assert _hold(s) is False
+    assert f'unsaveable({reason})' in caplog.text
+    s.typed.assert_not_called()
+    assert s.fake.formats == initial and s.fake.empties == 0 and not s.target.pasted
+
+
+@pytest.mark.parametrize('size_mb', [5, 50, 100, 200])
+def test_over_cap_text_stays_on_clipboard(session, caplog, monkeypatch, size_mb):
+    s = session
+    s.fake.formats = {cb.CF_UNICODETEXT: b'synthetic original text'}
+    s.fake.size_override = {cb.CF_UNICODETEXT: size_mb * 1024 * 1024}
+    read = Mock(side_effect=s.fake.string_at)
+    monkeypatch.setattr(cb.ctypes, 'string_at', read)
+    _refused_hold(s, caplog, 'too_large')
+    read.assert_not_called()
+
+
+@pytest.mark.parametrize('fmt, expected', [(cb.CF_DIB, 'too_large'), (cb.CF_BITMAP, 'image')])
+def test_large_or_unsnapshottable_image_stays_on_clipboard(session, caplog, fmt, expected):
+    session.fake.formats = {fmt: b'synthetic image'}
+    session.fake.size_override = {fmt: 200 * 1024 * 1024}
+    _refused_hold(session, caplog, expected)
+
+
+def test_many_formats_total_memory_budget_keeps_all_formats(session, caplog, monkeypatch):
+    s = session
+    s.fake.formats = {0xC001: b'x' * (3 * 1024 * 1024), 0xC002: b'x' * (2 * 1024 * 1024)}
+    s.fake.size_override = {}
+    read = Mock(side_effect=s.fake.string_at)
+    monkeypatch.setattr(cb.ctypes, 'string_at', read)
+    _refused_hold(s, caplog, 'too_large')
+    assert read.call_count == 1
+
+
+def test_refusal_keeps_exact_draft_without_opening_choices(session):
+    # 1304i: master refuses an unreadable non-image only after typing fails.
+    s = session
+    s.fake.formats = {cb.CF_UNICODETEXT: b'synthetic'}
+    s.fake.size_override = {cb.CF_UNICODETEXT: cb._MAX_FORMAT_BYTES + 1}
+    s.typed.return_value = False
+    exact = s.manager.dictate_pending_buffer
+    result = s.manager.commit_pending_dictation()
+    assert result.kind == 'dictate_commit_failed'
+    assert s.manager.dictate_pending_buffer == exact
+    s.typed.assert_called_once_with(exact)
+    assert not s.target.pasted and not s.fake.empties
+    assert recovery.answer(s.manager, 'paste anyway') is None
+
+
+def test_standalone_refusal_is_visible_and_clipboard_unchanged(session):
+    s = session
+    s.app._show_outcome_chip = Mock()
+    original = dict(s.fake.formats)
+    assert _hold(s, 'Synthetic refused delivery.') is False
+    s.app._show_outcome_chip.assert_called_once_with(paste.FAILED_DELIVERY, 'error')
+    assert s.fake.formats == original and not s.target.pasted
+    s.typed.assert_not_called()
+    assert recovery.current_attempt() is None
+
+
+@pytest.mark.parametrize('standalone', [False, True])
+def test_restore_write_failure_is_visible_after_text_sent(session, standalone):
+    s = session
+    s.fake.formats = {cb.CF_UNICODETEXT: b'original\0\0'}
+    s.fake.size_override = {}
+    s.target.after_paste.append(lambda: s.fake.set_fail_fmts.add(cb.CF_UNICODETEXT))
+    s.app._show_outcome_chip = Mock()
+    if standalone:
+        assert _hold(s, 'Synthetic sent text.')
+        assert s.app._show_outcome_chip.call_args.args == (recovery.RESTORE_MESSAGE, 'warning')
+    else:
+        result = s.manager.commit_pending_dictation()
+        assert result.kind == 'dictate_committed'
+        assert sm.outcome_chip(result.kind, result.detail) == (recovery.RESTORE_UNCONFIRMED_MESSAGE, 'warning')
+    # 1304i: the master draft restore still tries a full rebuild after failure.
+    assert len(s.target.pasted) == 1 and s.fake.empties == (2 if standalone else 3)
+    assert not s.fake.allocated

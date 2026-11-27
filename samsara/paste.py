@@ -5,6 +5,7 @@ The low-level clipboard snapshot/restore implementation lives in
 typed Unicode delivery, coordinates focus checks, and tracks native undo.
 """
 
+from contextvars import ContextVar
 import ctypes
 import logging
 import time
@@ -17,6 +18,7 @@ from samsara.clipboard import (
     PRESERVE,
     DeliveryOutcome,
     TypedDispatch,
+    Unsaveable,
     paste_with_preservation,
     type_text_unicode,
 )
@@ -219,6 +221,18 @@ class DeliveryResult(tuple):
         return result
 
 
+_ordinary_hold_app = ContextVar("ordinary_hold_paste_app", default=None)
+
+
+def paste_ordinary_hold(app, text, **kwargs):
+    """Mark one batch hold as it passes through the standard app wrapper."""
+    token = _ordinary_hold_app.set(app)
+    try:
+        return app._paste_preserving_clipboard(text, **kwargs)
+    finally:
+        _ordinary_hold_app.reset(token)
+
+
 @recovery.scoped_attempt
 def paste_preserving_clipboard(
     app,
@@ -244,12 +258,17 @@ def paste_preserving_clipboard(
     either default explicitly. The policy travels on this attempt's receipt,
     so injected paste callables keep their signatures.
     """
+    ordinary_hold = _ordinary_hold_app.get() is app
+    if ordinary_hold:
+        # Consume before UI callbacks or dispatch can enter another route.
+        _ordinary_hold_app.set(None)
+    fenced = ordinary_hold or clipboard_only
     app._last_delivery = None  # 823: a new/failed attempt fences older selection receipts.
     app._unit_before = None
     app._undo_unit = None
     app._redo_unit = None
     attempt = recovery.current_attempt()
-    if attempt is not None:
+    if not fenced and attempt is not None:
         attempt.incomplete_policy = incomplete_snapshot_policy or (
             PRESERVE if clipboard_only or feedback == 'silent' else PASTE_AND_WARN)
         schedule = getattr(app, '_schedule_ui', None)
@@ -427,20 +446,58 @@ def paste_preserving_clipboard(
     # the clipboard sequence number immediately after Samsara's copy, so
     # an unrelated copy made during the paste window is never overwritten
     # by restoring our stale snapshot.
-    receipt = {"outcome": DeliveryOutcome.SENT}
-    paste_ok = paste_with_preservation_fn(
-        text,
-        paste_delay=CLIPBOARD_PASTE_DELAY,
-        restore_delay=delay,
-        before_paste=_capture_target_before_paste,
-        incomplete_snapshot_fallback=None if clipboard_only or (attempt is not None and attempt.mode == 'paste') else _typed_fallback_without_clipboard,
-        delivery_observer=lambda outcome: receipt.update(outcome=outcome),
-    )
-    outcome = receipt["outcome"]
+    if fenced:
+        paste_target['hwnd'] = get_foreground_hwnd_fn()
+
+        def staging_guard():
+            if ((before_paste is not None and not before_paste())
+                    or get_foreground_hwnd_fn() != paste_target['hwnd']):
+                paste_target['abort'] = 'target_changed'
+                return False
+            return True
+
+        def capture_before_dispatch():
+            if not clipboard_only:
+                paste_target['proof'] = delivery_verify.snapshot()
+            app._unit_before = _editor_snapshot()
+            return staging_guard()
+
+        if not staging_guard():
+            return _result(False, False, reason='target_changed')
+        from samsara.recent_privacy import before_delivery
+        if not before_delivery(app, text):
+            return _result(False, False, reason='privacy_refused')
+        receipt = {"outcome": DeliveryOutcome.SENT}
+        paste_ok = paste_with_preservation_fn(
+            text,
+            paste_delay=CLIPBOARD_PASTE_DELAY,
+            restore_delay=delay,
+            clipboard_fence=True,
+            before_stage=staging_guard,
+            before_paste=capture_before_dispatch,
+            # Retain the keyword for existing injected delivery callables.
+            incomplete_snapshot_fallback=None,
+            delivery_observer=lambda outcome: receipt.update(outcome=outcome),
+        )
+    else:
+        receipt = {"outcome": DeliveryOutcome.SENT}
+        paste_ok = paste_with_preservation_fn(
+            text,
+            paste_delay=CLIPBOARD_PASTE_DELAY,
+            restore_delay=delay,
+            before_paste=_capture_target_before_paste,
+            incomplete_snapshot_fallback=None if clipboard_only or (attempt is not None and attempt.mode == 'paste') else _typed_fallback_without_clipboard,
+            delivery_observer=lambda outcome: receipt.update(outcome=outcome),
+        )
+
+    if isinstance(paste_ok, Unsaveable):
+        return _result(False, False, paste_ok, reason=paste_ok.kind.value)
+    outcome = DeliveryOutcome.NOT_SENT if fenced and not paste_ok else receipt["outcome"]
     # Accept existing boolean observers while the native seam uses three states.
     if isinstance(outcome, bool):
         outcome = DeliveryOutcome.CONFIRMED if outcome else DeliveryOutcome.UNVERIFIED
-    if typed_fallback_used["value"] or (_verdict is not None and not getattr(_verdict, 'confirmed_ok', False)):
+    if typed_fallback_used["value"] or ((paste_ok or not fenced) and _verdict is not None
+                                         and not getattr(_verdict, 'confirmed_ok', False)):
         outcome = DeliveryOutcome.UNVERIFIED
     delivery_confirmed = outcome == DeliveryOutcome.CONFIRMED
     readback_unit = None

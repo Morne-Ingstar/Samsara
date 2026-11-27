@@ -307,6 +307,7 @@ def test_clipboard_only_delivery_never_waits_for_accessibility(rig, monkeypatch)
     guard = Mock(return_value=True)
     def central(text, **kwargs):
         assert kwargs['incomplete_snapshot_fallback'] is None
+        assert kwargs['clipboard_fence'] is True  # 1304i: agent opt-in.
         assert kwargs['before_paste']()
         kwargs['delivery_observer'](clipboard.DeliveryOutcome.SENT)
         return True
@@ -314,7 +315,7 @@ def test_clipboard_only_delivery_never_waits_for_accessibility(rig, monkeypatch)
         feedback=False, before_paste=guard, paste_with_preservation_fn=central,
         get_foreground_hwnd_fn=lambda: editor.window)
     readback.assert_not_called()
-    guard.assert_called_once_with()
+    assert guard.call_count == 2
     app._show_outcome_chip.assert_not_called()
     app.play_sound.assert_not_called()
     assert m.dispatch_utterance('scratch that', GOOD).kind == 'scratch_refuse'

@@ -1,28 +1,11 @@
 """392 paste undo: fake app/window inputs, no dictation bootstrap or clipboard."""
-import ast
 import logging
-import subprocess
-from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 
 from samsara import paste
-
-
-@pytest.fixture(scope='module')
-def head_delivery():
-    """Compile the exact HEAD delivery function without app bootstrap."""
-    source = subprocess.run(
-        ['git', 'show', 'HEAD:samsara/paste.py'], cwd=Path(__file__).resolve().parents[1],
-        check=True, capture_output=True, text=True, encoding='utf-8',
-    ).stdout
-    node = next(n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef)
-                and n.name == 'paste_preserving_clipboard')
-    namespace = dict(vars(paste))
-    exec(compile(ast.Module(body=[node], type_ignores=[]), '<HEAD paste delivery>', 'exec'), namespace)
-    return namespace['paste_preserving_clipboard']
 
 
 @pytest.fixture
@@ -42,23 +25,21 @@ def app(monkeypatch):
     )
 
 
-def deliver(app, *, before=101, after=101, ok=True, capture=True, function=None):
+def deliver(app, *, before=101, after=101, ok=True, capture=True):
     foreground = Mock(side_effect=[before, after])
     def central(text, **kwargs):
         if capture:
             assert kwargs['before_paste']() is True
         return ok
-    return (function or paste.paste_preserving_clipboard)(
+    return paste.paste_preserving_clipboard(
         app, 'synthetic test sentence', return_delivery_confirmation=True,
         paste_with_preservation_fn=central, type_text_unicode_fn=Mock(),
         get_foreground_hwnd_fn=foreground,
     )
 
 
-def test_same_window_arms_without_confirming_or_learning(app, head_delivery):
-    baseline = deliver(app, function=head_delivery)
-    app._record_undoable_paste.reset_mock()
-    assert deliver(app) == baseline == (True, False)
+def test_same_window_arms_without_confirming_or_learning(app):
+    assert deliver(app) == (True, False)
     app._record_undoable_paste.assert_called_once_with('synthetic test sentence', target_hwnd=101)
     app.adaptive_learner.record_transcription.assert_not_called()
 
@@ -97,17 +78,16 @@ def test_unknown_and_editor_processes_arm(app, monkeypatch, process):
     app._record_undoable_paste.assert_called_once_with('synthetic test sentence', target_hwnd=101)
 
 
-def test_failed_paste_keeps_error_path(app, caplog, head_delivery):
-    baseline = deliver(app, ok=False, function=head_delivery)
+def test_failed_paste_keeps_error_path(app, caplog):
     with caplog.at_level(logging.ERROR, logger='Samsara'):
-        assert deliver(app, ok=False) == baseline == (False, False)
+        assert deliver(app, ok=False) == (False, False)
     app._record_undoable_paste.assert_not_called()
     app.adaptive_learner.record_transcription.assert_not_called()
     assert '[PASTE] Ctrl+V delivery failed; text retained by caller when possible' in caplog.text
 
 
 @pytest.mark.parametrize('path', ['typed', 'snapshot_fallback', 'typed_failed_snapshot_fallback'])
-def test_typed_delivery_calls_match_head(app, path, head_delivery):
+def test_typed_delivery_calls_match_head(app, path):
     app._foreground_wants_typed_injection.return_value = True
     text = 't' * (300 if path == 'snapshot_fallback' else 20)
     def run(function):
@@ -126,7 +106,22 @@ def test_typed_delivery_calls_match_head(app, path, head_delivery):
         return (result, type_text.call_args_list, central_calls,
                 app._record_undoable_paste.call_args_list,
                 app.adaptive_learner.record_transcription.call_args_list)
-    assert run(paste.paste_preserving_clipboard) == run(head_delivery)
+    # 1304i: pin master calls directly so the assertions work in an export.
+    result, typing, clipboard, undo, learner = run(paste.paste_preserving_clipboard)
+    if path == 'typed':
+        assert result == (True, False)
+        assert typing == [call(text)] and clipboard == []
+        assert undo == [call(text, target_hwnd=101)] and learner == [call(text)]
+    elif path == 'snapshot_fallback':
+        assert result == (True, False)
+        assert typing == [call(text, key_interval=0.05)]
+        assert clipboard == [(text, paste.CLIPBOARD_PASTE_DELAY, 0.23)]
+        assert undo == [call(text, target_hwnd=101)] and learner == []
+    else:
+        assert result == (False, False)
+        assert typing == [call(text)]
+        assert clipboard == [(text, paste.CLIPBOARD_PASTE_DELAY, 0.23)]
+        assert undo == [] and learner == []
 
 
 def test_undo_sends_one_ctrl_z_clears_and_shows_40_character_preview(app, monkeypatch):

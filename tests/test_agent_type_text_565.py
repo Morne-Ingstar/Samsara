@@ -834,19 +834,24 @@ def test_delivery_queued_past_ui_timeout_cannot_paste_later(rig, monkeypatch):
 
 @pytest.mark.parametrize('case', ['typed_allowlist', 'incomplete_snapshot', 'clipboard_timeout', 'clipboard_copy_failed'])
 def test_real_clipboard_path_has_no_unicode_injection_or_fallback(rig, monkeypatch, case, fake_delivery_target):
-    from samsara import clipboard, injection_safety
+    from samsara import clipboard, clipboard_snapshot, injection_safety
     copied, keys, restored, typed = [], [], [], []
     snapshot = clipboard.ClipboardSnapshot()
-    if case == 'incomplete_snapshot': snapshot.lost[1] = 'fake unavailable format'
+    snapshot.source_seq = 10
+    if case == 'incomplete_snapshot':
+        snapshot = clipboard.Unsaveable(clipboard.UnsaveableKind.UNREADABLE)
     monkeypatch.setattr(injection_safety, 'window_integrity', lambda *a: SimpleNamespace(blocked=False, confirmed_ok=True))
     monkeypatch.setattr(clipboard, 'HAS_PYPERCLIP', True)
-    def copy(text):
-        if case == 'clipboard_copy_failed': raise RuntimeError('fake failure')
+    def stage(_cb, text, *, expected_seq, expected_owner, state, before_stage):
+        if case == 'clipboard_copy_failed' or not before_stage():
+            return False
         copied.append(text)
-    monkeypatch.setattr(clipboard, 'pyperclip', SimpleNamespace(copy=copy))
-    monkeypatch.setattr(clipboard, 'copy_private_text', copy)  # 1230 / 9217bb0c.
-    monkeypatch.setattr(clipboard, 'save_clipboard', lambda: snapshot)
-    monkeypatch.setattr(clipboard, 'restore_clipboard', lambda saved: restored.append(saved) or True)
+        state.update(owner=777, seq=expected_seq)
+        return True
+    monkeypatch.setattr(clipboard_snapshot, '_stage_fenced_text', stage)
+    monkeypatch.setattr(clipboard, 'preflight_clipboard', lambda: snapshot)
+    monkeypatch.setattr(clipboard_snapshot, '_restore_fenced_clipboard',
+                        lambda _cb, saved, **kw: restored.append(saved) or True)
     monkeypatch.setattr(clipboard, 'get_clipboard_sequence_number', lambda: 10)
     monkeypatch.setattr(clipboard, 'wait_for_clipboard_ready', lambda *a: 'timeout' if case == 'clipboard_timeout' else 'ready')
     monkeypatch.setattr(clipboard, '_paste_target', lambda: (10, 20))

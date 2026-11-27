@@ -15,6 +15,7 @@ class FakeClipboard:
         self.formats = dict(formats or {})
         self.seq = 100
         self.is_open = False
+        self.opener = None
         self.mem = {}
         self.handle_fmt = {}
         self.next_handle = 5000
@@ -38,11 +39,13 @@ class FakeClipboard:
     def CreateWindowExW(self, *_args):
         return 777
 
-    def DestroyWindow(self, _window):
+    def DestroyWindow(self, window):
+        if self.owner == window:
+            self.owner = 0
         return True
 
     # -- user32 ---------------------------------------------------------
-    def OpenClipboard(self, _hwnd):
+    def OpenClipboard(self, hwnd):
         self.open_attempts += 1
         if self.open_failures_remaining:
             self.open_failures_remaining -= 1
@@ -53,10 +56,12 @@ class FakeClipboard:
             hook, self.before_open = self.before_open, None
             hook()
         self.is_open = True
+        self.opener = hwnd
         return 1
 
     def CloseClipboard(self):
         self.is_open = False
+        self.opener = None
         return 1
 
     def GetOpenClipboardWindow(self):
@@ -68,6 +73,7 @@ class FakeClipboard:
     def EmptyClipboard(self):
         assert self.is_open, "EmptyClipboard without OpenClipboard"
         self.formats = {}
+        self.owner = self.opener or 0
         self.seq += 1
         self.empties += 1
         return 1
@@ -116,8 +122,9 @@ class FakeClipboard:
     def GetClipboardFormatNameW(self, fmt, buf, _n):
         if fmt == SHELL_IDLIST:
             buf.value = "Shell IDList Array"
-            return len(buf.value)
-        return 0
+        else:
+            buf.value = next((name for name, value in self.registered.items() if value == fmt), '')
+        return len(buf.value)
 
     # -- kernel32 -------------------------------------------------------
     def GlobalAlloc(self, _flags, size):
@@ -161,6 +168,7 @@ class FakeClipboard:
     def user_copies_text(self, text):
         """What pyperclip.copy / a user's Ctrl+C does: one atomic replace."""
         self.formats = {CF_UNICODETEXT: _utf16(text)}
+        self.owner = 0
         self.seq += 1
 
     def text(self):

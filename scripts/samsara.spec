@@ -646,10 +646,26 @@ mouse_exe = EXE(
     debug=False, strip=False, upx=False,
 )
 
+# The reader reuses clipboard definitions, whose delivery-only imports are
+# outside the helper's entry point.
+clipboard_analysis = Analysis(
+    [str(app_dir / 'samsara' / 'clipboard_preflight_worker.py')],
+    pathex=[str(app_dir)], binaries=[], datas=[], hiddenimports=[],
+    hookspath=[], runtime_hooks=[], noarchive=False,
+    excludes=['samsara.commands', 'samsara.paste', 'samsara.session_modes', 'samsara.ui',
+              'PySide6', 'pyautogui', 'pyperclip', 'numpy'],
+)
+clipboard_exe = EXE(
+    PYZ(clipboard_analysis.pure), clipboard_analysis.scripts, [], exclude_binaries=True,
+    name='samsara-clipboard-preflight', console=True, contents_directory='_internal',
+    debug=False, strip=False, upx=False,
+)
+
 coll = COLLECT(
     exe,
     relay_exe,
     mouse_exe,
+    clipboard_exe,
     a.binaries,
     a.zipfiles,
     a.datas,
@@ -657,6 +673,8 @@ coll = COLLECT(
     relay_analysis.datas,
     mouse_analysis.binaries,
     mouse_analysis.datas,
+    clipboard_analysis.binaries,
+    clipboard_analysis.datas,
     strip=False,
     upx=False,
     upx_exclude=[],

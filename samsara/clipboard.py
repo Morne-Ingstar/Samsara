@@ -56,6 +56,8 @@ from samsara.constants import (
     CLIPBOARD_READY_TIMEOUT, CLIPBOARD_READY_POLL,
 )
 from samsara.log import get_logger
+from samsara import clipboard_preflight_worker, clipboard_snapshot
+from samsara.clipboard_snapshot import Unsaveable, UnsaveableKind
 from samsara import clipboard_recovery as recovery
 # 1166s (T84 P1): paced one-pair-per-call typing and its receipt; the names
 # are re-exported here for existing callers.
@@ -98,6 +100,8 @@ PRIVATE_CLIPBOARD_FORMATS = (
     "CanIncludeInClipboardHistory",
     "CanUploadToCloudClipboard",
 )
+
+_FENCED_PRIVATE_CLIPBOARD_FORMATS = (*PRIVATE_CLIPBOARD_FORMATS, "Clipboard Viewer Ignore")
 
 _FORMAT_NAMES = {
     1: "CF_TEXT", 2: "CF_BITMAP", 3: "CF_METAFILEPICT", 4: "CF_SYLK", 5: "CF_DIF",
@@ -426,6 +430,11 @@ class ClipboardSnapshot(dict):
         self.synthesized = frozenset()
         # 1167s: the owner missed the WM_NULL ping (advisory only).
         self.owner_slow = False
+        self.source_seq = None
+        self.source_owner = None
+        self.transport_owner = None
+        self.preflight = False
+        self.privacy_markers = 0  # One bit per fenced privacy format.
         # 1167s: what the last restore did -- 'put_back' (every captured
         # format is back), 'kept_newer' (a later copy was left alone),
         # 'failed' (captured content could not be put back) or None.
@@ -1060,6 +1069,18 @@ def _copy_with_image_consent(text, receipt):
     return _copy_private_text_windows(text, receipt)
 
 
+def preflight_clipboard():
+    """Read readiness and restorable content without publishing clipboard data."""
+    if sys.platform != 'win32':
+        # The fallback can see text only. It cannot certify all formats.
+        return Unsaveable(UnsaveableKind.COMPLEX)
+
+    from samsara import clipboard_snapshot
+
+    deadline = time.monotonic() + clipboard_snapshot.PREFLIGHT_TIMEOUT_S
+    return clipboard_preflight_worker.capture(sys.modules[__name__], deadline)
+
+
 def paste_with_preservation(
     text: str,
     paste_delay: float = CLIPBOARD_PASTE_DELAY,
@@ -1068,7 +1089,10 @@ def paste_with_preservation(
     incomplete_snapshot_fallback: Optional[Callable[[], bool]] = None,
     delivery_observer: Optional[Callable[[DeliveryOutcome], None]] = None,
     incomplete_snapshot_policy: Optional[str] = None,
-) -> bool:
+    *,
+    clipboard_fence: bool = False,
+    before_stage: Optional[Callable[[], bool]] = None,
+) -> bool | Unsaveable:
     """
     Paste text via clipboard while preserving original clipboard content.
 
@@ -1092,6 +1116,12 @@ def paste_with_preservation(
     Returns:
         True if input was sent (does not confirm receipt by the target).
     """
+    if clipboard_fence:
+        return clipboard_snapshot.paste_with_fence(
+            sys.modules[__name__], text, paste_delay, restore_delay, before_paste,
+            delivery_observer, before_stage,
+        )
+
     if not HAS_PYPERCLIP:
         _log_error("pyperclip not available")
         return False

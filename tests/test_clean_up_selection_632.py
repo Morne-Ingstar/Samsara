@@ -4,7 +4,7 @@ import sys
 
 import pytest
 
-from samsara import clipboard as cb, teach_patterns as tp
+from samsara import clipboard as cb, clipboard_snapshot, injection_safety, teach_patterns as tp
 from samsara.ava_edit import intent, model, sanitize, selection, session, targets
 from samsara.ava_edit.proposal import Proposal
 
@@ -42,7 +42,19 @@ def rig(monkeypatch):
         state.snapshots.append(saved)
         return saved
 
-    def restore(saved):
+    def preflight():
+        saved = save()
+        saved.source_seq = state.seq
+        return saved
+
+    def stage(_cb, text, *, expected_seq, expected_owner, state, before_stage):
+        if not before_stage() or expected_seq != cb.get_clipboard_sequence_number():
+            return False
+        copy(text)
+        state.update(owner=777, seq=cb.get_clipboard_sequence_number())
+        return True
+
+    def restore(saved, *, prepared=None):
         state.restored.append(saved)
         state.text = saved.fake_text
         state.seq += 1
@@ -55,13 +67,18 @@ def rig(monkeypatch):
     monkeypatch.setitem(sys.modules, "pyperclip", clip)
     monkeypatch.setitem(sys.modules, "pyautogui", keys)
     monkeypatch.setattr(cb, "pyperclip", clip)
-    # 1146: selection delivery uses the protected copy boundary.
     monkeypatch.setattr(cb, "copy_private_text", copy)
+    monkeypatch.setattr(cb, "preflight_clipboard", preflight)
+    monkeypatch.setattr(clipboard_snapshot, "_stage_fenced_text", stage)
     monkeypatch.setattr(cb, "HAS_PYPERCLIP", True)
     monkeypatch.setattr(cb, "save_clipboard", save)
     monkeypatch.setattr(cb, "restore_clipboard", restore)
+    monkeypatch.setattr(clipboard_snapshot, "_restore_fenced_clipboard",
+                        lambda _cb, saved, **kw: restore(saved, **kw))
     monkeypatch.setattr(cb, "get_clipboard_sequence_number", lambda: state.seq)
     monkeypatch.setattr(cb, "_paste_target", lambda: state.target)
+    monkeypatch.setattr(injection_safety, "window_integrity",
+                        lambda *_: SimpleNamespace(blocked=False, confirmed_ok=True))
     monkeypatch.setattr(cb, "message_paste_to_focused_control", lambda: cb.DeliveryOutcome.SENT)
     monkeypatch.setattr(cb, "wait_for_clipboard_ready", lambda *_: "ready")
     # Keep fake time local: other test-owned workers use the real time module.

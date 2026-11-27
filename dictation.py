@@ -11032,7 +11032,7 @@ class DictationApp(SamsaraNavigationMixin, CommandFastPathMixin):
                     except Exception as _bench_exc:
                         logger.debug(f"[BENCH] append_sample failed: {_bench_exc}")
                     if self.config['auto_paste'] or tutorial_waiting:
-                        delivered = self._paste_preserving_clipboard(text, **tutorial_capture.kwargs(tutorial_waiting))
+                        delivered = _paste.paste_ordinary_hold(self, text, **tutorial_capture.kwargs(tutorial_waiting))
                         hold_continuation.remember(self, text, delivered)
                         if (delivered is False
                                 and self._live_surface_hold_parking_enabled()):

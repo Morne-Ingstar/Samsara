@@ -420,6 +420,8 @@ def _paste(staged) -> bool:
         return True
 
     payload = ("\n" if staged.selection_mode == "below" else "") + staged.proposal.rewritten
+    if staged.proposal.instruction == DEFAULT_INSTRUCTION:
+        return bool(clipboard.paste_with_preservation(payload, before_paste=prepare, clipboard_fence=True))
     return clipboard.paste_with_preservation(payload, before_paste=prepare)
 
 

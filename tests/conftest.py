@@ -582,10 +582,19 @@ def _no_real_clipboard_1148():
 
 
 @pytest.fixture(autouse=True)
-def fake_clipboard(_no_real_clipboard_1148):
+def fake_clipboard(_no_real_clipboard_1148, monkeypatch):
     """Fresh shared memory per test; local fake backends may still override it."""
     guard = _no_real_clipboard_1148
     guard.reset()
+    from samsara import clipboard_preflight_worker as worker
+
+    def capture_fake(cb, deadline):
+        # The isolated child cannot inherit an in-memory Win32 fake. Keep
+        # transaction tests on the fake in this process. Process tests inject
+        # a synthetic child command and exercise the real transport separately.
+        return worker.read_snapshot(cb, deadline)
+
+    monkeypatch.setattr(worker, 'capture', capture_fake)
     yield guard.clipboard
     if guard.violations:
         names = ', '.join(guard.violations)

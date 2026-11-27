@@ -456,7 +456,9 @@ def test_frozen_entry_resolves_to_separate_console_helper(monkeypatch):
     # replaced; never execute the expensive application analysis/bootstrap.
     root = Path(__file__).resolve().parents[1]
     spec = ast.parse((root / 'scripts/samsara.spec').read_text(encoding='utf-8'))
-    names = {'mouse_analysis', 'mouse_pyz', 'mouse_exe', 'coll'}
+    # 1304j: the collection also depends on the clipboard helper.
+    names = {'mouse_analysis', 'mouse_pyz', 'mouse_exe', 'clipboard_analysis',
+             'clipboard_exe', 'coll'}
     nodes = [n for n in spec.body if isinstance(n, ast.Assign) and any(
         isinstance(t, ast.Name) and t.id in names for t in n.targets)]
     analysis_calls, exe_calls, collect_calls = [], [], []
@@ -476,6 +478,10 @@ def test_frozen_entry_resolves_to_separate_console_helper(monkeypatch):
     assert analysis_calls[0][1]['runtime_hooks'] == []
     assert exe_calls[0][1]['console'] is True
     assert 'samsara-mouse-hook' in collect_calls[0]
+    assert analysis_calls[1][0] == [str(root / 'samsara/clipboard_preflight_worker.py')]
+    assert analysis_calls[1][1]['runtime_hooks'] == []
+    assert exe_calls[1][1]['console'] is True
+    assert 'samsara-clipboard-preflight' in collect_calls[0]
     monkeypatch.setattr(mh.sys, 'frozen', True, raising=False)
     monkeypatch.setattr(mh.sys, 'executable', str(root / 'Samsara.exe'))
     assert mp._worker_command() == [str(root / 'samsara-mouse-hook.exe')]

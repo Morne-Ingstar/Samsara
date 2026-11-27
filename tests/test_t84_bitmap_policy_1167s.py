@@ -6,11 +6,13 @@ Nothing here touches a real clipboard, a real window or Snipping Tool; these
 are simulations of Windows' documented conversions, not end-to-end proof of
 what a real screenshot tool or Electron editor does.
 """
+from io import BytesIO
 import threading
 import time
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+from PIL import Image
 import pytest
 
 from samsara import clipboard as cb, clipboard_recovery as recovery, paste
@@ -556,3 +558,112 @@ def test_warning_reaches_both_displays_without_a_green_chip(qapp, monkeypatch, d
         recovery._attempt.reset(token)
         (controller or indicator).close()
         qapp.processEvents()
+
+
+def _image_bytes(kind):
+    data = BytesIO()
+    Image.new('RGB', (3, 2), (19, 72, 201)).save(data, format=kind)
+    return data.getvalue()
+
+PNG_BYTES = _image_bytes('PNG')
+
+
+def _fenced_standalone(s, text='Synthetic dictated sentence.'):
+    s.app._paste_preserving_clipboard = lambda text: _standalone(s, text)
+    return paste.paste_ordinary_hold(s.app, text)
+
+
+def test_bitmap_and_complete_png_paste_once_and_restore(dictation, monkeypatch):
+    s = dictation
+    _names(monkeypatch)
+    s.fake.formats = {cb.CF_BITMAP: b'synthetic HBITMAP', PNG: PNG_BYTES}
+    conv = _windows_conversion(s.fake, monkeypatch)
+    text = 'Synthetic full sentence for a screenshot clipboard.'
+    assert _fenced_standalone(s, text) is True
+    assert s.target.pasted == [text]
+    s.typed.assert_not_called()
+    restored = s.fake.formats
+    assert restored[PNG] == PNG_BYTES
+    assert cb.CF_DIBV5 in restored
+    assert cb.CF_BITMAP not in conv.locked and cb.CF_BITMAP not in conv.requests
+    assert _chip(s)[0] == 'typed'
+
+
+def test_unresponsive_owner_keeps_clipboard_without_reading_formats(dictation, monkeypatch):
+    s = dictation
+    s.fake.owner = 4242
+    monkeypatch.setattr(cb._user32, 'SendMessageTimeoutW', lambda *a: 0)
+    original = {cb.CF_UNICODETEXT: _utf16('synthetic slow owner'), cb.CF_DIB: DIB_BYTES}
+    s.fake.formats = dict(original)
+    read = Mock(side_effect=AssertionError('must not force a hung render'))
+    monkeypatch.setattr(cb._user32, 'GetClipboardData', read)
+    assert _fenced_standalone(s) is False
+    read.assert_not_called()
+    assert s.fake.formats == original and not s.target.pasted
+
+
+@pytest.mark.parametrize('case', ['bitmap_no_bytes', 'over_cap_image', 'over_cap_files', 'hung_owner'])
+def test_incomplete_snapshot_refuses_without_clipboard_or_typing(dictation, monkeypatch, case):
+    s = dictation
+    if case == 'bitmap_no_bytes':
+        s.fake.formats = {cb.CF_BITMAP: b'synthetic HBITMAP'}
+        _windows_conversion(s.fake, monkeypatch, None)
+    elif case in ('over_cap_image', 'over_cap_files'):
+        fmt = cb.CF_DIB if case == 'over_cap_image' else cb.CF_HDROP
+        s.fake.formats = {cb.CF_UNICODETEXT: _utf16('original'), fmt: b'oversized'}
+        s.fake.size_override = {fmt: cb._MAX_FORMAT_BYTES + 1}
+    else:
+        s.fake.formats = {cb.CF_UNICODETEXT: _utf16('frozen')}
+        s.fake.owner = 4242
+        monkeypatch.setattr(cb._user32, 'IsHungAppWindow', lambda _h: True)
+    original = dict(s.fake.formats)
+    assert _fenced_standalone(s) is False
+    assert not s.target.pasted and not s.fake.empties
+    assert s.fake.formats == original
+    assert _chip(s) == (paste.FAILED_DELIVERY, 'error')
+    s.typed.assert_not_called()
+    _no_success(s)
+
+
+def test_confirming_target_still_refuses_an_unsaved_image(dictation, monkeypatch):
+    s = dictation
+    s.fake.formats = {cb.CF_BITMAP: b'synthetic HBITMAP'}
+    _windows_conversion(s.fake, monkeypatch, None)
+    monkeypatch.setattr(cb, 'message_paste_to_focused_control', lambda: cb.DeliveryOutcome.CONFIRMED)
+    assert _fenced_standalone(s) is False
+    assert _chip(s) == (paste.FAILED_DELIVERY, 'error')
+    _no_success(s)
+
+
+def test_hands_free_refusal_clears_stale_loss_offer(dictation, monkeypatch):
+    # 1304i: master still sends and warns when a known image cannot be saved.
+    s = dictation
+    s.fake.formats = {cb.CF_BITMAP: b'synthetic HBITMAP'}
+    _windows_conversion(s.fake, monkeypatch, None)
+    text = s.manager.dictate_pending_buffer
+    s.manager._clipboard_choice = ('stale',) * 6
+    result = s.manager.commit_pending_dictation()
+    assert result.kind == 'dictate_committed'
+    assert s.target.pasted == [text] and not s.manager.dictate_pending_buffer
+    assert result.detail['clipboard_image_removed'] is True
+    s.typed.assert_not_called()
+    assert s.manager._clipboard_choice is None
+    assert recovery.answer(s.manager, 'paste anyway') is None
+
+
+def test_hands_free_focus_change_after_stage_restores_clipboard(dictation, monkeypatch):
+    s = dictation
+    original = {cb.CF_UNICODETEXT: _utf16('old')}
+    s.fake.formats = dict(original)
+    text = s.manager.dictate_pending_buffer
+
+    def readiness(*_):
+        s.foreground[1] = 99   # target moves after the clipboard was replaced
+        return 'ready'
+    monkeypatch.setattr(cb, 'wait_for_clipboard_ready', readiness)
+    result = s.manager.commit_pending_dictation()
+    assert result.kind == 'dictate_commit_blocked_focus_lock'
+    assert s.manager.dictate_pending_buffer == text and not s.target.pasted
+    assert result.detail['clipboard_image_removed'] is False
+    assert s.manager._clipboard_choice is None
+    assert s.fake.formats == original

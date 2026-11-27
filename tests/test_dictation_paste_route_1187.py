@@ -5,7 +5,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from samsara import clipboard as cb, clipboard_recovery as recovery, paste
+from samsara import clipboard as cb, clipboard_recovery as recovery, clipboard_snapshot, paste
+from tests.test_clipboard_audit6 import fake, target  # noqa: F401
 from tests.test_clipboard_settle_474 import transport  # noqa: F401
 
 
@@ -16,7 +17,7 @@ READY_NOTICE = 'Typing instead of pasting because the clipboard is busy or not r
 @pytest.fixture
 def app(monkeypatch, fake_delivery_target):
     monkeypatch.setattr(paste.injection_safety, 'window_integrity',
-                        lambda: NS(blocked=False, confirmed_ok=True))
+                        lambda *_: NS(blocked=False, confirmed_ok=True))
     monkeypatch.setattr(paste, '_editor_snapshot', lambda: None)
     monkeypatch.setattr(paste.delivery_verify, 'snapshot', lambda: None)
     monkeypatch.setattr(paste.delivery_verify, 'verified_snapshot', lambda *args: None)
@@ -110,8 +111,11 @@ def test_impossible_paste_announces_one_reason_then_types_without_retry(
 
 
 @pytest.mark.parametrize('caller', ['clipboard_only', 'no_feedback', 'silent'])
-def test_clipboard_safety_fallback_keeps_existing_caller_contract(app, transport, caller):
+def test_clipboard_safety_fallback_keeps_existing_caller_contract(app, transport, caller, monkeypatch):
     transport.saved.lost[0] = 'clipboard backup timed out'
+    if caller == 'clipboard_only':
+        # 1304i: the opt-in agent timeout uses the preflight reader.
+        monkeypatch.setattr(cb, 'preflight_clipboard', lambda: cb.Unsaveable(cb.UnsaveableKind.TIMEOUT))
     kwargs = {'clipboard_only': True} if caller == 'clipboard_only' else (
         {'feedback': 'silent'} if caller == 'silent' else {})
     if caller == 'no_feedback':
@@ -251,3 +255,72 @@ def test_fallback_notice_reaches_both_displays_before_typing(
     finally:
         (controller or indicator).close()
         qapp.processEvents()
+
+
+@pytest.fixture
+def fenced_transport(fake, target, monkeypatch):
+    fake.formats = {cb.CF_UNICODETEXT: 'original'.encode('utf-16-le') + bytes(2)}
+    copy = Mock(wraps=clipboard_snapshot._stage_fenced_text)
+    restore = Mock(wraps=clipboard_snapshot._restore_fenced_clipboard)
+    monkeypatch.setattr(clipboard_snapshot, '_stage_fenced_text', copy)
+    monkeypatch.setattr(clipboard_snapshot, '_restore_fenced_clipboard', restore)
+    monkeypatch.setattr(cb, 'message_paste_to_focused_control', lambda: cb.DeliveryOutcome.SENT)
+    return NS(fake=fake, target=target, restore=restore, copy=copy)
+
+def deliver_hold(app, text, **kwargs):
+    app._paste_preserving_clipboard = lambda text, **options: deliver(app, text, **options)
+    return paste.paste_ordinary_hold(app, text, **kwargs)
+
+
+@pytest.mark.parametrize('failure', ['backup', 'not_ready'])
+@pytest.mark.parametrize('length', [246, 301, 5000])
+def test_refusal_never_types_at_any_length(app, fenced_transport, caplog, monkeypatch, failure, length):
+    kind = cb.UnsaveableKind.TIMEOUT if failure == 'backup' else cb.UnsaveableKind.BUSY
+    if failure == 'backup':
+        monkeypatch.setattr(cb, 'preflight_clipboard', lambda: cb.Unsaveable(kind))
+    else:
+        monkeypatch.setattr(cb, 'wait_for_clipboard_ready', lambda *_: 'timeout')
+    text = 'x' * length
+    typed = Mock()
+    with caplog.at_level(logging.INFO, logger='Samsara'):
+        result = deliver_hold(app, text, type_text_unicode_fn=typed, return_delivery_confirmation=True)
+    assert result == (False, False) and result.outcome == cb.Unsaveable(kind)
+    assert 'unsaveable(' + kind.value + ')' in caplog.text
+    assert text not in caplog.text
+    assert fenced_transport.fake.text() == 'original' and not fenced_transport.target.pasted
+    typed.assert_not_called()
+    app._record_undoable_paste.assert_not_called()
+    if failure == 'backup':
+        fenced_transport.copy.assert_not_called()
+        fenced_transport.restore.assert_not_called()
+    else:
+        fenced_transport.restore.assert_called_once()
+
+
+@pytest.mark.parametrize('caller', ['clipboard_only', 'no_feedback', 'silent'])
+def test_timeout_never_types_for_any_caller(app, fenced_transport, monkeypatch, caller):
+    outcome = cb.Unsaveable(cb.UnsaveableKind.TIMEOUT)
+    monkeypatch.setattr(cb, 'preflight_clipboard', lambda: outcome)
+    kwargs = {'clipboard_only': True} if caller == 'clipboard_only' else (
+        {'feedback': 'silent'} if caller == 'silent' else {})
+    if caller == 'no_feedback':
+        app._show_outcome_chip = None
+    typed = Mock()
+    send = deliver if caller == 'clipboard_only' else deliver_hold
+    result = send(app, 'Synthetic words.', type_text_unicode_fn=typed,
+                     return_delivery_confirmation=True, **kwargs)
+    assert result == (False, False) and result.outcome == outcome
+    typed.assert_not_called()
+    fenced_transport.copy.assert_not_called()
+    assert not fenced_transport.target.pasted
+
+
+def test_changed_target_cancels_before_preflight(app, fenced_transport, monkeypatch):
+    preflight = Mock(side_effect=AssertionError('target check must run first'))
+    monkeypatch.setattr(cb, 'preflight_clipboard', preflight)
+    typed = Mock()
+    assert not deliver_hold(app, 'Synthetic words.', type_text_unicode_fn=typed,
+                       before_paste=lambda: False)
+    typed.assert_not_called()
+    preflight.assert_not_called()
+    fenced_transport.copy.assert_not_called()

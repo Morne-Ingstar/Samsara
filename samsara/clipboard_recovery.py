@@ -7,7 +7,12 @@ target window and clipboard sequence; none of these receipts are persisted.
 from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import wraps
+import logging
 
+from samsara.clipboard_snapshot import Unsaveable
+
+
+HISTORY_NOTICE = "Text wasn't inserted. Copy your words from History."
 
 IMAGE_MESSAGE = "Clipboard has a large image Samsara can't put back."
 BITMAP_MESSAGE = "Clipboard has an image Samsara can't put back."
@@ -43,6 +48,18 @@ def loss_message(receipt, sent, outcome):
     if receipt.restore_failed:
         return (RESTORE_UNCONFIRMED_MESSAGE if outcome == 'unverified' else RESTORE_MESSAGE), 'warning'
     return (IMAGE_REMOVED_CONFIRMED if outcome == 'confirmed' else IMAGE_REMOVED_UNCONFIRMED), 'warning'
+
+
+def unsaveable(kind):
+    outcome = Unsaveable(kind)
+    receipt = current_attempt()
+    if receipt is not None:
+        receipt.unsaveable = outcome
+        receipt.reason = HISTORY_NOTICE
+    logging.getLogger("Samsara").info("[CLIP] Delivery refused: unsaveable(%s)", kind.value)
+    return outcome
+
+
 _IMAGE_NAMES = frozenset({"PNG", "JFIF", "GIF", "WebP", "image/svg+xml"})
 
 
@@ -95,6 +112,7 @@ class Attempt:
     # 1167s: which incomplete-snapshot policy this one delivery uses
     # (samsara.clipboard PRESERVE / PASTE_AND_WARN); None = PRESERVE.
     incomplete_policy: str | None = None
+    unsaveable: Unsaveable | None = None
 
 
 def current_attempt():

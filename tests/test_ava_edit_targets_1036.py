@@ -34,7 +34,8 @@ def rig(monkeypatch):
         state.calls.append((text, instruction))
         return (REWRITE if text == SOURCE else text[:1].upper() + text[1:]), None
 
-    def paste(text, before_paste):
+    # 1304j: Clean up opts in to the fence at the clipboard boundary.
+    def paste(text, before_paste, *, clipboard_fence=False):
         if not before_paste():
             return False
         state.mutations.append(text)

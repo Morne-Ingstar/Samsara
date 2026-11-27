@@ -21,10 +21,10 @@ def _focus_api(monkeypatch, label, rig):
         return rig.target[1]
 
     rig.pid = 23
-    monkeypatch.setattr(cb, "_user32", SimpleNamespace(
-        GetClassNameW=class_name, GetWindowThreadProcessId=window_pid))
+    monkeypatch.setattr(cb._user32, "GetClassNameW", class_name, raising=False)
+    monkeypatch.setattr(cb._user32, "GetWindowThreadProcessId", window_pid, raising=False)
     monkeypatch.setattr(injection_safety, "window_integrity",
-                        lambda _hwnd: SimpleNamespace(confirmed_ok=True))
+                        lambda _hwnd: SimpleNamespace(blocked=False, confirmed_ok=True))
     monkeypatch.setattr(tp, "_selection_clipboard_inventory",
                         lambda _cb: (rig.seq, 201, frozenset()))
     monkeypatch.setattr(selection, "_native_selection", _native_selection)
