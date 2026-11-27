@@ -12,7 +12,7 @@ from time import monotonic
 from typing import Any, Callable
 
 from PySide6.QtCore import QEvent, QEasingCurve, QRect, QRectF, QPropertyAnimation, QSignalBlocker, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import (QCloseEvent, QColor, QFont, QImage, QKeyEvent, QMouseEvent, QPainter,
+from PySide6.QtGui import (QCloseEvent, QColor, QCursor, QFont, QImage, QKeyEvent, QMouseEvent, QPainter,
                            QPaintEvent, QPainterPath, QPen, QRegion)
 from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QPushButton, QTextBrowser, QWidget, QSizePolicy, QGraphicsOpacityEffect
 
@@ -24,6 +24,7 @@ from samsara.live_surface.feedback import (FILL_TOKENS, KIND_WORDS,
 from samsara.ui.live_surface_accessibility import LiveSurfaceAnnouncer, system_reduced_motion
 from samsara.ui.tray_qt import paint_mark
 from samsara.ui.indicator_message_layout import message_lines, message_height
+from samsara.ui.indicator_drag import is_mouse_activate
 from samsara.draft_selection import select_range, highlighted
 
 
@@ -649,9 +650,11 @@ class LiveSurfaceWidget(QWidget):
 
     def focus_review(self) -> None:
         self.setWindowFlag(Qt.WindowType.WindowDoesNotAcceptFocus, False); self.show()
+        retry = getattr(self, '_paste_again_control', None)
         for child in (*self.findChildren(QPushButton), *self.findChildren(QLineEdit),
                       *self.findChildren(QTextBrowser)):
-            child.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            if retry is None or child is not retry.button:
+                child.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._transcript.setFocus(Qt.FocusReason.ShortcutFocusReason)
 
     def _restore_passive(self) -> None:
@@ -842,6 +845,17 @@ class LiveSurfaceWidget(QWidget):
             + "".join(parts).replace("\n", "<br/>") + "</p>")
 
     def _form_rect(self, form: VisibleForm) -> QRect:
+        target = self._base_form_rect(form)
+        control = getattr(self, '_paste_again_control', None)
+        if control is None or not control.active:
+            return target
+        if form is VisibleForm.MARK:
+            target.setWidth(target.width() + control.width() + REGION_GAP)
+        else:
+            target.setHeight(target.height() + self._paste_again_row_height(form, target.width()))
+        return target
+
+    def _base_form_rect(self, form: VisibleForm) -> QRect:
         if form is VisibleForm.MARK: return QRect(self.x(), self.y(), COMPACT_WIDTH, MARK_SIZE)
         if form is VisibleForm.DRAFT_BADGE: return QRect(self.x(), self.y(), LIVE_SIZE[0], 112)
         width = STATUS_SIZE[0] if form is VisibleForm.STATUS else LIVE_SIZE[0]
@@ -932,7 +946,66 @@ class LiveSurfaceWidget(QWidget):
             if self._view.capture is CaptureState.UNAVAILABLE:
                 state = self._state.geometry()
                 self._state.setGeometry(state.x()+26, state.y(), max(1, state.width()-26), state.height())
+            self._layout_paste_again()
             bar.setValue(bar.maximum() if self._follow_latest else position)
+
+    def _status_clearable(self) -> bool:
+        return self._view.capture is CaptureState.RECORDING or self._view.notice.kind in (
+            NoticeKind.ERROR, NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER)
+
+    def _paste_again_header_right(self, width: int) -> int:
+        right = width - CARD_INSET
+        if self._status_clearable():
+            right -= self._button_width(self._clear, 64) + REGION_GAP
+        if self._cleanup_visible() and not self._cleanup_row_height():
+            right -= self._button_width(self._clean_up) + REGION_GAP
+        return right
+
+    def _paste_again_row_height(self, form: VisibleForm, width: int) -> int:
+        control = getattr(self, '_paste_again_control', None)
+        if control is None or not control.active:
+            return 0
+        if form is VisibleForm.STATUS:
+            available = self._paste_again_header_right(width) - CARD_INSET - MARK_SIZE - 12
+            state_width = self._state.fontMetrics().horizontalAdvance(self._state.text())
+            if self._view.capture is CaptureState.UNAVAILABLE:
+                state_width += 26
+            lane_width = self._lane.fontMetrics().horizontalAdvance(self._lane.text())
+            if available >= max(state_width, lane_width) + control.width() + REGION_GAP:
+                return 0
+        return control.height() + REGION_GAP
+
+    def _layout_paste_again(self) -> None:
+        control = getattr(self, '_paste_again_control', None)
+        if control is None or not control.active:
+            return
+        form = self._display_form()
+        if form is VisibleForm.MARK:
+            x = self.width() - REGION_GAP - control.width()
+            y = (MARK_SIZE - control.height()) // 2
+            labels = (self._state,)
+        elif self._paste_again_row_height(form, self.width()):
+            content = self.card_content_rect
+            x, y = content.left(), content.bottom() + 1 - control.height()
+            labels = ()
+        else:
+            x = self._paste_again_header_right(self.width()) - control.width()
+            y = CARD_INSET + (HEADER_HEIGHT - control.height()) // 2
+            labels = (self._lane, self._state)
+        for label in labels:
+            label.resize(max(1, min(label.width(), x - REGION_GAP - label.x())), label.height())
+        control.move(x, y)
+        control.show()
+
+    def _relayout_paste_again(self) -> None:
+        if self._dragging:
+            return
+        if self._animation is not None:
+            self._animation.stop()
+        self.reset_default_size()
+        place = getattr(self._controller, '_place_widget', None)
+        if callable(place):
+            place()
 
     def _cleanup_visible(self) -> bool:
         return (getattr(self._controller, "idle_capture", None) is CaptureState.HANDS_FREE_LISTENING
@@ -957,6 +1030,7 @@ class LiveSurfaceWidget(QWidget):
             self._badge.setGeometry(16, 60, self.width()-24-insert_width-REGION_GAP, MARK_SIZE); self._badge.show()
             self._insert.setGeometry(self.width()-8-insert_width, 60, insert_width, MARK_SIZE); self._insert.show(); return
         content = self.card_content_rect
+        content.adjust(0, 0, 0, -self._paste_again_row_height(form, self.width()))
         self._mark.setGeometry(content.x(), content.y(), MARK_SIZE, MARK_SIZE)
         state_x = content.x()+MARK_SIZE+12
         clear_width = self._button_width(self._clear, 64)
@@ -977,8 +1051,7 @@ class LiveSurfaceWidget(QWidget):
                 content.width(), self._secondary_band.required_height(content.width()))
             self._secondary_band.show()
         if form is VisibleForm.STATUS:
-            clearable = self._view.capture is CaptureState.RECORDING or self._view.notice.kind in (
-                NoticeKind.ERROR, NoticeKind.CONFIRMATION, NoticeKind.ALIAS_OFFER)
+            clearable = self._status_clearable()
             if clearable:
                 self._clear.setGeometry(content.right()+1-clear_width, content.y(), clear_width, MARK_SIZE); self._clear.show()
             right = self._clear.x()-REGION_GAP if clearable else content.right()+1
@@ -1145,7 +1218,10 @@ class LiveSurfaceWidget(QWidget):
             self._drag_offset = event.globalPosition().toPoint() - self.pos()
             self._drag_drop_bounds = None
             event.accept(); return
-        if self._view.form in (VisibleForm.MARK,VisibleForm.DRAFT_BADGE) and self.mask().contains(event.position().toPoint()): self.show_requested.emit(); event.accept(); return
+        if (event.button() == Qt.MouseButton.LeftButton
+                and self._view.form in (VisibleForm.MARK, VisibleForm.DRAFT_BADGE)
+                and self.mask().contains(event.position().toPoint())):
+            self.show_requested.emit(); event.accept(); return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
@@ -1183,14 +1259,40 @@ class LiveSurfaceWidget(QWidget):
             if self._dragging:
                 self._dragging=False; self.setGeometry(self._drag_restore); event.accept(); return
             if self._selection is not None or self._picker_active or self._word_menu.learning:self._cancel_correction()
-            else:self.dismiss_feedback_requested.emit()
+            else:
+                self._dismiss_paste_again()
+                self.dismiss_feedback_requested.emit()
             event.accept(); return
         if event.key() in (Qt.Key.Key_Return,Qt.Key.Key_Enter) and event.modifiers() & Qt.KeyboardModifier.ControlModifier: self.commit_requested.emit(); event.accept(); return
         if event.key()==Qt.Key.Key_Delete and event.modifiers() & Qt.KeyboardModifier.AltModifier: self.clear_requested.emit(); event.accept(); return
         if event.key()==Qt.Key.Key_Pause: self.pause_requested.emit(); event.accept(); return
         super().keyPressEvent(event)
 
+    def _open_display_menu(self, event) -> bool:
+        app = getattr(self._controller, "app", None)
+        if app is None:
+            return False
+        from samsara.ui.listening_display_menu import open_menu
+        return open_menu(app, self, event)
+
+    def contextMenuEvent(self, event) -> None:
+        if not self._open_display_menu(event):
+            super().contextMenuEvent(event)
+
+    def nativeEvent(self, event_type, message):
+        if is_mouse_activate(event_type, message):
+            control = getattr(self, '_paste_again_control', None)
+            if (self.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus
+                    or (control is not None and control.isVisible()
+                        and control.geometry().contains(self.mapFromGlobal(QCursor.pos())))):
+                return True, 3  # Keep the editor active and deliver the click.
+        return super().nativeEvent(event_type, message)
+
     def eventFilter(self, watched, event):
+        if (event.type() == QEvent.Type.ContextMenu
+                and watched in (self._transcript.viewport(), self._transcript.verticalScrollBar())
+                and self._open_display_menu(event)):
+            return True
         if (event.type() == QEvent.Type.Wheel and watched in
                 (self._transcript.viewport(), self._transcript.verticalScrollBar())):
             self._follow_latest = False
@@ -1198,7 +1300,14 @@ class LiveSurfaceWidget(QWidget):
                 self._transcript.verticalScrollBar().value()))
         return super().eventFilter(watched, event)
 
-    def closeEvent(self,event:QCloseEvent)->None: self.hide(); self.collapse_requested.emit(); event.ignore()
+    def _dismiss_paste_again(self) -> None:
+        control = getattr(self, '_paste_again_control', None)
+        if control is not None:
+            control.dismiss()
+
+    def closeEvent(self,event:QCloseEvent)->None:
+        self._dismiss_paste_again()
+        self.hide(); self.collapse_requested.emit(); event.ignore()
     def _anchor_clicked(self,url:QUrl)->None:
         try:index=int(url.toString().split(":",1)[1])
         except (ValueError,IndexError):return

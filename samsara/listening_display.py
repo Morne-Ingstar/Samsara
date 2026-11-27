@@ -71,6 +71,9 @@ def build_display(app, compact_factory, full_factory=None, adapter_factory=None)
         app.listening_indicator = adapter_factory(app.live_surface)
     else:
         app.listening_indicator = compact_factory()
+        bind_menu = getattr(app.listening_indicator, "bind_display_menu", None)
+        if callable(bind_menu):
+            bind_menu(app)
     from samsara.speech_readiness import show
     show(app)  # 918: the shell can precede the async model by minutes.
     return choice.full
@@ -89,7 +92,11 @@ def require_full_surface(app):
 
 def toggle_display_visibility(app):
     """Tray visibility is session-local; never rewrite either legacy key."""
-    app._listening_display_visible = not display_visible(app)
+    set_display_visibility(app, not display_visible(app))
+
+
+def set_display_visibility(app, visible):
+    app._listening_display_visible = visible
     app.apply_listening_indicator_settings()
 
 

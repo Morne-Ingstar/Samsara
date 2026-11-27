@@ -70,7 +70,7 @@ from PySide6.QtWidgets import QApplication, QMenu, QWidget
 
 from samsara.ui import theme
 from samsara.ui.indicator_docking import IndicatorDocking
-from samsara.ui.indicator_drag import IndicatorDrag
+from samsara.ui.indicator_drag import IndicatorDrag, _PillWindow
 from samsara.dictation_retry import CompactRetryNotice
 from samsara.consent_feedback import compact_max_lines
 from samsara.ui.splash_qt import _system_reduced_motion as _reduced_motion
@@ -252,7 +252,20 @@ STATE_ARMED = "armed"
 CAPTURE_STATES = frozenset({"capture", "command-capture"})
 
 
+class _ListeningPill(_PillWindow):
+    """The pill's context menu and child actions belong to the listening indicator."""
+
+    def contextMenuEvent(self, event):
+        from samsara.ui.listening_display_menu import open_menu
+        if not open_menu(getattr(self._owner, "_display_menu_app", None), self, event):
+            super().contextMenuEvent(event)
+
+
 class ListeningIndicator(CompactRetryNotice, IndicatorDrag, IndicatorDocking, QWidget):
+    _pill_window_type = _ListeningPill
+
+    def bind_display_menu(self, app):
+        self._display_menu_app = app
     """Always-on-top, draggable pill with transparent surroundings."""
 
     # Emitted once a placement change is committed (drag release, or a

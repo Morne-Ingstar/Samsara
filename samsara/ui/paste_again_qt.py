@@ -1,36 +1,32 @@
-"""Passive saved-dictation actions, inside Compact and beside Full."""
-from ctypes import wintypes
+"""The passive saved-dictation action shared by both listening displays."""
 from time import monotonic
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QPainter, QPen
+from PySide6.QtCore import QRectF, Qt, QTimer
 from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
 
 from samsara import paste_again
 from samsara.ui import theme
+from samsara.ui.indicator_drag import capsule_region
 
 
 class PasteAgainControl(QWidget):
     def __init__(self, owner, app):
-        super().__init__(owner, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint
-                         | Qt.WindowType.WindowStaysOnTopHint
-                         | Qt.WindowType.WindowDoesNotAcceptFocus
-                         | Qt.WindowType.NoDropShadowWindowHint)
+        pill = getattr(owner, '_pill_window', None)
+        super().__init__(pill if pill is not None else owner)
         self.owner = owner
-        self._compact = hasattr(owner, '_pill_window')
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self._app = app
+        self._compact = pill is not None
+        self._deadline = 0.0
+        self._shown_for_retry = None
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.setAccessibleName('Paste again')
         layout = QHBoxLayout(self)
-        margin = 0 if self._compact else 6
-        layout.setContentsMargins(margin, margin, margin, margin)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
         self.button = QPushButton('Paste again', self)  # PLACEHOLDER COPY (1163)
         self.button.setAccessibleName('Paste again')
         self.button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.button.setToolTip('Say “paste that again” to insert your last dictation into the current window.')
-        self.button.clicked.connect(lambda: paste_again.request(app))
+        self.button.clicked.connect(self._request)
         layout.addWidget(self.button)
         self.apply_theme()
         self._timer = QTimer(self)
@@ -43,91 +39,87 @@ class PasteAgainControl(QWidget):
         self.button.setFont(theme.qfont(theme.TYPE_MIN))
         self.button.setStyleSheet(f"QPushButton {{ background: {theme.BG2}; color: {theme.TEXT_PRIMARY}; border: 1px solid {theme.BORDER}; border-radius: 5px; padding: 0; font-size: {theme.TYPE_MIN}px; }} QPushButton:hover {{ border-color: {theme.ACCENT}; }}")
         self.button.ensurePolished()
-        self.button.setFixedSize(self.button.fontMetrics().horizontalAdvance(self.button.text()) + 24, 28)
-        self.adjustSize()
-        if self._compact and getattr(self.owner, '_paste_again_width', 0):
-            self.owner._paste_again_width = self.width() + 18
-            self.owner._reposition()
-        self.update()
+        size = self.button.fontMetrics().horizontalAdvance(self.button.text()) + 24
+        self.button.setFixedSize(size, 28)
+        self.setFixedSize(self.button.size())
+        if self.active:
+            self._reserve_space()
 
-    def paintEvent(self, event):
-        if self._compact:
-            return  # The indicator paints the enclosing pill and its outline.
-        # An opaque display-coloured backing keeps it legible over any app.
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QPen(theme.qcolor(theme.BORDER), 1))
-        painter.setBrush(theme.qcolor(theme.BG1))
-        painter.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), 8, 8)
-        painter.end()
+    @property
+    def active(self):
+        return bool(self._deadline)
 
-    def nativeEvent(self, event_type, message):
-        # WM_MOUSEACTIVATE: keep the editor active AND deliver the click.
-        # MA_NOACTIVATE (3), unlike MA_NOACTIVATEANDEAT, retains the click.
-        if event_type == b'windows_generic_MSG':
-            msg = wintypes.MSG.from_address(int(message))
-            if msg.message == 0x0021:
-                return True, 3
-        return super().nativeEvent(event_type, message)
+    def _request(self):
+        if self.isVisible() and self._deadline > monotonic() and not _explicitly_hidden(self._app):
+            paste_again.request(self._app)
 
     def present(self):
         self._deadline = monotonic() + paste_again.CONTROL_MS / 1000
         self.apply_theme()
         self._timer.start()
+        self.sync()
+
+    def _reserve_space(self):
         if self._compact:
             self.owner._paste_again_width = self.width() + 18
             self.owner._reposition()
             self.owner.update()
-        self.sync()
+        else:
+            relayout = getattr(self.owner, '_relayout_paste_again', None)
+            if callable(relayout):
+                relayout()
 
     def dismiss(self):
+        if not self.active:
+            return
+        self._deadline = 0.0
         self._timer.stop()
         self.hide()
         if self._compact:
             self.owner._paste_again_width = 0
             self.owner._reposition()
             self.owner.update()
+        else:
+            self._reserve_space()
+            if (self._shown_for_retry is not None and self._shown_for_retry is self.owner.view
+                    and getattr(self._app, '_listening_display_visible', None) is not True):
+                self.owner.hide()
+            self._shown_for_retry = None
 
     def sync(self):
-        if monotonic() >= self._deadline:
+        if not self.active:
+            return
+        if monotonic() >= self._deadline or _explicitly_hidden(self._app):
             self.dismiss()
             return
         if self._compact:
             # Keep the containing indicator until this action expires, even
             # when its shorter delivery receipt has already disappeared.
             body = self.owner._layout()[2].toRect().translated(self.owner.pos())
-            pill = self.owner._pill_window
+            pill = self.parentWidget()
             pill.setGeometry(body)
-            from samsara.ui.indicator_drag import capsule_region
-            from PySide6.QtCore import QRectF
             pill.setMask(capsule_region(QRectF(pill.rect())))
             pill.show()
             pill.update()
-            self.move(body.right() - self.width() - 11,
-                      body.top() + (body.height() - self.height()) // 2)
+            self.move(body.width() - self.width() - 12, (body.height() - self.height()) // 2)
             self.show()
-            return
-        bounds = self.owner.frameGeometry()
-        screen = self.owner.screen().availableGeometry()
-        x = bounds.right()+7
-        y = bounds.bottom()-self.height()+1
-        if x+self.width() > screen.right()+1:
-            x = bounds.left()-self.width()-6
-        if x < screen.left():
-            x, y = bounds.left(), bounds.top()-self.height()-6
-            if y < screen.top():
-                y = bounds.bottom()+7
-        x = min(max(x, screen.left()), max(screen.left(), screen.right()-self.width()+1))
-        y = min(max(y, screen.top()), max(screen.top(), screen.bottom()-self.height()+1))
-        self.move(x, y)
-        self.show()
+        elif not self.owner.isVisible():
+            # Like Compact, keep the short-lived action when its receipt ends.
+            if not hasattr(self.owner, 'view'):
+                return
+            self._shown_for_retry = self.owner.view
+            self.owner.show()
+
+
+def _explicitly_hidden(app):
+    return getattr(app, '_listening_display_visible', None) is False
 
 
 def show_control(owner, app, available=True):
     if not isinstance(owner, QWidget):
         return
     control = getattr(owner, '_paste_again_control', None)
-    if not available:
+    if not available or _explicitly_hidden(app):
         if control is not None:
             control.dismiss()
         return

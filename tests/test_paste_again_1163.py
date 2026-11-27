@@ -219,17 +219,18 @@ def test_button_on_both_real_displays_and_expiry(qapp, qt_widget_scope, rig, mon
         control = owner._paste_again_control
         assert control.isVisible() and control.button.text() == 'Paste again'
         assert control.width() < 180
-        if display == 'compact':
-            # 1163 n2: the whole clickable action is inside the painted box.
-            assert owner._pill_window.frameGeometry().contains(control.frameGeometry())
-        assert control.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus
-        assert control.testAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        # 1383: the action is now a child of the real masked input window.
+        host = owner._pill_window if display == 'compact' else owner
+        assert host.rect().contains(control.geometry())
+        assert control.parentWidget() is host and not control.isWindow()
+        assert host.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus
+        assert host.testAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         assert control.focusPolicy() == control.button.focusPolicy() == Qt.FocusPolicy.NoFocus
         # 1163 FINISH IT: exercise the Windows click-activation decision without
         # manipulating the owner's real desktop, clipboard or foreground.
         message = wintypes.MSG()
         message.message = 0x0021  # WM_MOUSEACTIVATE
-        assert control.nativeEvent(b'windows_generic_MSG', ctypes.addressof(message)) == (True, 3)
+        assert host.nativeEvent(b'windows_generic_MSG', ctypes.addressof(message)) == (True, 3)
         assert any(action.label == 'Paste again' for action in visible_actions(qapp))
         QTest.mouseClick(control.button, Qt.MouseButton.LeftButton)
         assert len(rig.jobs) == 1
@@ -286,6 +287,7 @@ def test_button_matches_existing_display_actions_and_rethemes(qapp, qt_widget_sc
     previous = theme.active_theme()
     try:
         with qt_widget_scope(QWidget()) as owner:
+            owner.show()
             control = PasteAgainControl(owner, rig.app)
             reference = _FeedbackBand(owner, 'exampleFeedback')
             control.present()
@@ -294,11 +296,10 @@ def test_button_matches_existing_display_actions_and_rethemes(qapp, qt_widget_sc
             assert control.button.styleSheet() == reference.report.styleSheet()
             assert control.button.font() == reference.report.font()
             assert control.button.height() == 28
-            assert control.layout().contentsMargins().left() == 6
+            assert control.layout().contentsMargins().left() == 0  # 1383: inline and flush.
             assert control.layout().spacing() == 6
             assert control.button.width() >= control.button.fontMetrics().horizontalAdvance('Paste again') + 24
-            assert control.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-            # Both text/background and the opaque backing are theme tokens.
+            assert not control.isWindow()  # 1383: the display provides the backing.
             assert theme.TEXT_PRIMARY in control.button.styleSheet()
             assert theme.BG2 in control.button.styleSheet()
     finally:
@@ -339,19 +340,20 @@ def test_compact_border_and_contained_action_follow_receipts_and_lifetime(
                 owner.set_mode(label)
                 qapp.processEvents()
                 pill = owner._pill_window.frameGeometry()
-                assert pill.contains(control.frameGeometry())
-                assert pill.center().y() == control.frameGeometry().center().y()
+                # 1383: child geometry is local to the pill.
+                assert owner._pill_window.rect().contains(control.geometry())
+                assert owner._pill_window.rect().center().y() == control.geometry().center().y()
                 assert control.height() == control.button.height() == 28
                 assert owner.screen().availableGeometry().contains(pill)
                 # The reserved label area ends before the button begins.
-                assert pill.right() - owner._paste_again_width < control.x()
+                assert owner._pill_window.rect().right() - owner._paste_again_width < control.x()
             owner.set_mode('Hold to talk')
             owner._chip_deadline = 0
             owner.clear_outcome()
             owner.hide()
             control.sync()
             assert owner._pill_window.isVisible()
-            assert owner._pill_window.frameGeometry().contains(control.frameGeometry())
+            assert owner._pill_window.rect().contains(control.geometry())  # 1383: parent-local.
             paste_again_qt.show_control(owner, rig.app)
             assert owner._layout()[2].width() == width_without_action + control.width() + 18
             theme.set_theme('light' if palette == 'dark' else 'dark')

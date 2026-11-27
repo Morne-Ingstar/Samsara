@@ -1,4 +1,5 @@
 """Separate native pill input from transparent receipts; preserve composite captures."""
+from ctypes import wintypes
 import weakref
 
 from PySide6.QtCore import QEvent, QRectF, Qt, QTimer
@@ -10,6 +11,11 @@ def capsule_region(rect):
     path = QPainterPath()
     path.addRoundedRect(rect, rect.height()/2, rect.height()/2)
     return QRegion(path.toFillPolygon().toPolygon())
+
+
+def is_mouse_activate(event_type, message):
+    return (event_type == b'windows_generic_MSG'
+            and wintypes.MSG.from_address(int(message)).message == 0x0021)
 
 
 class _PillWindow(QWidget):
@@ -54,6 +60,11 @@ class _PillWindow(QWidget):
     def contextMenuEvent(self, event):
         event.accept()
 
+    def nativeEvent(self, event_type, message):
+        if is_mouse_activate(event_type, message):
+            return True, 3  # MA_NOACTIVATE, with the press delivered to the pill or its button.
+        return super().nativeEvent(event_type, message)
+
     def event(self, event):
         kind = event.type()
         if kind in (QEvent.Type.WindowDeactivate, QEvent.Type.UngrabMouse):
@@ -69,6 +80,8 @@ class _PillWindow(QWidget):
 
 
 class IndicatorDrag:
+    _pill_window_type = _PillWindow
+
     def _paint_find_outline(self, painter, rect):
         if not getattr(self, "_find_flash_on", False):
             return
@@ -100,7 +113,7 @@ class IndicatorDrag:
         if not hasattr(self, '_chip_label'):
             return
         if getattr(self, '_pill_window', None) is None:
-            self._pill_window = _PillWindow(self)
+            self._pill_window = self._pill_window_type(self)
         self._sync_receipt()
 
     def _retire_input_window(self):
@@ -110,6 +123,10 @@ class IndicatorDrag:
         self._clear_gesture()
         window = getattr(self, '_pill_window', None)
         if window is not None:
+            retry = getattr(self, '_paste_again_control', None)
+            if retry is not None:
+                retry.dismiss()
+                self._paste_again_control = None
             window.hide()
             self._pill_window = None
             delete(window)
