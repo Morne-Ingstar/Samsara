@@ -40,8 +40,10 @@ def test_silent_hold_requires_visible_correct_notice_and_keeps_hold_evidence(
         harness, clock, visible, title_correct, expected):
     calls = []
 
-    def call(operation):
+    def call(operation, *, timeout=None):
         calls.append(operation)
+        if operation == 'wait_for_speech_clear':  # 1404b adds the pre-hold speech check.
+            return dict(speech_clear=True)
         released = 'mouse_up' in calls
         if operation in ('mouse_down', 'mouse_state'):
             return dict(recording=not released, stopping=False)
@@ -59,7 +61,8 @@ def test_silent_hold_requires_visible_correct_notice_and_keeps_hold_evidence(
     assert row['observations'] == dict(capture_started=True, capture_stopped=True,
                                        notice_visible=visible, notice_title_correct=title_correct,
                                        build_newer_than_landing=True)
-    assert calls[:5] == ['mouse_down', 'mouse_state', 'mouse_up', 'mouse_state', 'silence_state']
+    assert calls[:6] == ['wait_for_speech_clear', 'mouse_down', 'mouse_state', 'mouse_up',
+                         'mouse_state', 'silence_state']
     if visible:
         assert clock.now == 1.0
     else:

@@ -141,6 +141,10 @@ def run_diagnostics(failure, *, phase, operation, path):
     return [dict(phase=phase, operation=operation, action=operation, path=path, **error_details(failure))]
 
 
+class SpeechWindowTimeout(Exception):
+    """Speech was still masking the silent hold when the wait ended."""
+
+
 class DailyHarness(Harness):
     def __init__(self, app, home, report, identity, take, model, rect, *, root):
         super().__init__(app, home, report, identity, root=root)
@@ -165,6 +169,9 @@ class DailyHarness(Harness):
         diagnostics = None
         try:
             row = make_row(feature, self.identity, trigger, evidence, fn(), limitation=limitation)
+        except SpeechWindowTimeout as error:
+            row = make_row(feature, self.identity, trigger, evidence, limitation=str(error),
+                           result='NOT COVERED')
         except Exception as error:
             if isinstance(error, ReceiptFailure):
                 if error.diagnostic['phase'] != 'transaction' or error.code == 'ProbeExited':
@@ -227,6 +234,10 @@ class DailyHarness(Harness):
         return dict(manual_fixture_ready=True, **super().game())
 
     def silent(self):
+        # Allow mailbox delivery time around the probe's ten-second speech wait.
+        if self.channel.call('wait_for_speech_clear', timeout=12)['speech_clear'] is False:
+            # PLACEHOLDER COPY (1404b)
+            raise SpeechWindowTimeout("Ava's speech window, including its grace period, stayed active for 10 seconds.")
         # Quiet continuous input is expected. A completed silent hold still warns.
         capture = self.mouse(hold_seconds=1.0)
         notice = dict(notice_visible=False, notice_title_correct=False)

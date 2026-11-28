@@ -1,6 +1,7 @@
 """1262 fixed-operation adapter, imported only after installed_probe's guard."""
 import json
 import os
+import time
 
 from receipt_probe import on_ui, perform as legacy_perform, serve as serve_mailbox, state
 import receipt_replay
@@ -115,6 +116,18 @@ class MicCheckReplay:
 
 
 def perform(app, home, operation):
+    if operation == 'wait_for_speech_clear':
+        coordinator = app.audio_coordinator
+        deadline_ns = time.perf_counter_ns() + 10_000_000_000
+        while (now_ns := time.perf_counter_ns()) < deadline_ns:
+            if not coordinator.is_speaking:
+                window = coordinator.speech_window()
+                if window is None or window.end_ns <= now_ns:
+                    return dict(speech_clear=True)
+            remaining = (deadline_ns - time.perf_counter_ns()) / 1e9
+            if remaining > 0:
+                time.sleep(min(.1, remaining))
+        return dict(speech_clear=False)
     replay = app._receipt_replay
     if operation == 'state':
         game = getattr(app, '_game_mode', None)

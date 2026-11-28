@@ -175,8 +175,10 @@ def test_silence_receipt_checks_notice_after_the_hold_is_released(monkeypatch, t
                                  root=tmp_path)
     calls = []
 
-    def call(operation):
+    def call(operation, *, timeout=None):
         calls.append(operation)
+        if operation == 'wait_for_speech_clear':  # 1404b adds the pre-hold speech check.
+            return dict(speech_clear=True)
         if operation in ('mouse_down', 'mouse_state'):
             return dict(recording='mouse_up' not in calls)
         if operation == 'mouse_up':
@@ -190,7 +192,8 @@ def test_silence_receipt_checks_notice_after_the_hold_is_released(monkeypatch, t
 
     assert harness.silent() == dict(capture_started=True, capture_stopped=True, notice_visible=True,
                                     notice_title_correct=True)
-    assert calls == ['mouse_down', 'mouse_state', 'mouse_up', 'mouse_state', 'silence_state']
+    assert calls == ['wait_for_speech_clear', 'mouse_down', 'mouse_state', 'mouse_up',
+                     'mouse_state', 'silence_state']
 
 
 def test_daily_seeds_speech_queue_without_audible_playback(monkeypatch, tmp_path):
